@@ -2,7 +2,7 @@ import sqlite3
 
 import pytest
 
-from firebot.db.store import Store
+from firebot.db.store import SCHEMA_VERSION, Store
 
 
 def test_session_and_events_roundtrip():
@@ -38,4 +38,4 @@ def test_constraints_enforced():
 def test_schema_version_set(tmp_path):
     path = tmp_path / "t.db"
     Store(path).close()
-    assert sqlite3.connect(path).execute("PRAGMA user_version").fetchone()[0] == 1
+    assert sqlite3.connect(path).execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
