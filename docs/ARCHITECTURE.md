@@ -11,7 +11,8 @@ data structures, so switching to the robot changes drivers only.
 2. [x] Python sim core (world, sensors, Gymnasium-style env, EIF in the loop)
 3. [x] Rule-based confrontation controller (baseline), `firebot-sim` records to both DBs
 4. [ ] Planning: RRT*/OMPL
-5. [ ] Gymnasium env + DRL, benchmarked against baseline
+5. [x] DRL: `FireGymEnv` (gymnasium.Env) + PPO (Stable-Baselines3), benchmarked against the
+   rule baseline via `firebot-eval` / `v_run_summary`
 6. [ ] Pan-tilt aiming
 7. [ ] LLM command layer (validated JSON intents), then speech
 8. [ ] Hardware drivers (Pi / ESP)

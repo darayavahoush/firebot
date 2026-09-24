@@ -11,9 +11,12 @@ dependencies = ["numpy>=1.24"]
 
 [project.scripts]
 firebot-sim = "firebot.sim.run:main"
+firebot-train = "firebot.drl.train:main"
+firebot-eval = "firebot.drl.evaluate:main"
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "ruff>=0.5"]
+drl = ["gymnasium>=0.29", "stable-baselines3>=2.3"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

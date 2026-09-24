@@ -12,12 +12,18 @@ pytest -q && ruff check .
 ## Quick start
 ```bash
 firebot-sim --episodes 20   # runs the baseline, writes firebot.db + training.db
+
+# DRL (needs the `drl` extra: pip install -e ".[dev,drl]")
+firebot-train --timesteps 200000 --n-envs 8 --out runs/ppo   # PPO via Stable-Baselines3
+firebot-eval --model runs/ppo/model_final.zip --episodes 30  # vs. the rule baseline
 ```
 
 ## Layout
 - `src/firebot/db/` operational DB (`Store`), training DB (`TrainingStore`), migrations, device registry
 - `src/firebot/fusion/` bearing-only Extended Information Filter
 - `src/firebot/sim/` world, sensor models, `FireEnv` (Gymnasium-style), rule-based baseline, `firebot-sim` CLI
+- `src/firebot/drl/` `FireGymEnv` (real `gymnasium.Env` wrapper for SB3), `firebot-train` (PPO),
+  `firebot-eval` (compares a checkpoint against the rule baseline via `v_run_summary`)
 - `web/firebot-sim.html` standalone browser visualiser (open in any browser)
 - `docs/ARCHITECTURE.md`, `docs/DATABASE.md` design, roadmap, schema reference
 
