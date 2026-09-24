@@ -15,9 +15,11 @@ firebot-train = "firebot.drl.train:main"
 firebot-eval = "firebot.drl.evaluate:main"
 firebot-plan = "firebot.planning.run:main"
 firebot-cmd = "firebot.command.run:main"
+firebot-listen = "firebot.speech.run:main"
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "ruff>=0.5"]
+speech = ["vosk>=0.3.44", "sounddevice>=0.4"]
 drl = ["gymnasium>=0.29", "stable-baselines3>=2.3"]
 
 [tool.setuptools.packages.find]

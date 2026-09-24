@@ -40,6 +40,11 @@ _COORD = re.compile(rf"\bx\s*[=:]?\s*{_NUM}[\s,;and]*y\s*[=:]?\s*{_NUM}|"
                     rf"\(?\s*{_NUM}\s*(?:,|\s)\s*{_NUM}\s*\)?")
 
 
+def mentions_stop(text: str) -> bool:
+    """True if `text` contains a stop word. Used by the speech backstop on partial results."""
+    return bool(_STOP.search(normalise(text)))
+
+
 def normalise(text: str) -> str:
     t = text.lower().strip()
     t = re.sub(r"[^\w\s.,()=:;-]", " ", t)
