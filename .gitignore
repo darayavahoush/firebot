@@ -11,3 +11,6 @@ dist/
 *.db-shm
 .DS_Store
 .env
+firebot-console/frontend/node_modules/
+firebot-console/frontend/dist/
+firebot-console/backend/.venv/
