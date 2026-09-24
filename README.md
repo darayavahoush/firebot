@@ -9,9 +9,15 @@ pip install -e ".[dev]"
 pytest -q && ruff check .
 ```
 
+## Quick start
+```bash
+firebot-sim --episodes 20   # runs the baseline, writes firebot.db + training.db
+```
+
 ## Layout
 - `src/firebot/db/` operational DB (`Store`), training DB (`TrainingStore`), migrations, device registry
 - `src/firebot/fusion/` bearing-only Extended Information Filter
+- `src/firebot/sim/` world, sensor models, `FireEnv` (Gymnasium-style), rule-based baseline, `firebot-sim` CLI
 - `web/firebot-sim.html` standalone browser visualiser (open in any browser)
 - `docs/ARCHITECTURE.md`, `docs/DATABASE.md` design, roadmap, schema reference
 
