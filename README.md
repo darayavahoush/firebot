@@ -18,6 +18,11 @@ firebot-plan --episodes 30   # RRT* planning controller vs. the rule baseline
 firebot-listen --model ~/models/vosk-model-small-en-us-0.15
 firebot-cmd --script "go to the east side; put out the fire; status"   # operator commands
 
+# PC brain + thin robot (needs the `pc` extra for PostgreSQL: pip install -e ".[pc]")
+export FIREBOT_TOKEN=change-me
+firebot-brain --host 0.0.0.0 --db postgresql://user:pw@localhost/firebot   # on the PC; type commands here
+firebot-pi --sim --host <pc-ip>          # on the robot (--sim = simulated robot; real drivers: item 8)
+
 # DRL (needs the `drl` extra: pip install -e ".[dev,drl]")
 firebot-train --timesteps 200000 --n-envs 8 --out runs/ppo   # PPO via Stable-Baselines3
 firebot-eval --model runs/ppo/model_final.zip --episodes 30  # vs. the rule baseline
@@ -35,6 +40,9 @@ firebot-eval --model runs/ppo/model_final.zip --episodes 30  # vs. the rule base
   validator, executor, `firebot-cmd` CLI
 - `src/firebot/speech/` offline speech input: Vosk recogniser, restricted grammar, STOP backstop,
   `firebot-listen` CLI
+- `src/firebot/link/` robot<->PC link: Pi agent (stdlib only), wire protocol, brain, network server,
+  PostgreSQL telemetry sink, simulated hardware; `firebot-brain`, `firebot-pi`
+- `src/firebot/perception.py` sensor frame -> observation (fusion), shared by the sim and the brain
 - `web/firebot-sim.html` standalone browser visualiser (open in any browser)
 - `docs/ARCHITECTURE.md`, `docs/DATABASE.md` design, roadmap, schema reference
 

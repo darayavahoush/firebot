@@ -1,7 +1,12 @@
 # Architecture
 
-sim/real sensors -> fusion (EIF) -> planning (OMPL / DRL) -> commands -> ESP
-                          \-> db (SQLite): sessions, fire_events, sensor_readings, actions
+Robot (Pi)  --sensor frames-->  PC brain  --commands-->  Robot (Pi)
+                                 fusion (EIF) -> planning / DRL -> command layer
+                                     \-> PostgreSQL (telemetry, operator commands)
+
+The Pi is a thin terminal: it streams sensors and applies commands, nothing else -- no
+database, no planning, no numpy. See "Robot link" below. (`firebot-sim` and the training DB
+still use local SQLite on the PC for offline experiments.)
 
 Rule: algorithms depend on interfaces, never on hardware. Sim and real drivers emit the same
 data structures, so switching to the robot changes drivers only.
@@ -19,7 +24,9 @@ data structures, so switching to the robot changes drivers only.
 7. [x] Command layer: rule-based intent parser -> validated JSON intents -> executor; optional
    local SLM fallback (confirm-before-act), logged to `voice_commands`/`actions`;
    `firebot-cmd`. Speech: see below
-8. [ ] Hardware drivers (Pi / ESP)
+8. [ ] Hardware drivers (Pi / ESP): implement the 3-method `Hardware` interface
+   (`read` / `apply` / `stop`) in `firebot.link.agent`; sim already implements it (`SimHardware`)
+9. [x] Robot link: thin Pi agent <-> PC brain over TCP, PostgreSQL telemetry, fail-safes
 
 ## Command layer (`firebot.command`)
 operator text -> `RuleParser` (deterministic) -> [`SLMParser`, only if rules returned UNKNOWN]
@@ -44,3 +51,36 @@ mic (16 kHz mono PCM) -> `VoskRecognizer` (offline, restricted word-list grammar
   vocabulary) and understood by the rule parser -- extend the grammar and the rules together.
 - Model: download e.g. `vosk-model-small-en-us-0.15` from alphacephei.com/vosk/models and pass
   its directory to `firebot-listen --model`.
+
+## Robot link (`firebot.link`)
+```
+Pi: Hardware.read() -> frame --TCP/JSON lines--> brain: Perception -> CommandController -> cmd
+Pi: Hardware.apply(cmd) <------------------------------------------------------ +-> Postgres
+```
+- **Pi (`agent.py`, `protocol.py`; stdlib only):** send a frame every 1/rate s, apply each command,
+  reconnect on its own. Implement `Hardware` (`read`, `apply`, `stop`) for the real drivers.
+- **Brain (`brain.py`, `server.py`):** one frame in, one command out. Starts IDLE on every
+  connection. Operator text (`Brain.submit_text`, from the terminal or a speech recogniser) goes
+  through the existing interpreter/validator/executor.
+- **Telemetry (`sink.py`, `pg.py`):** frames, fused fire estimate, mode, commands and operator
+  commands go to PostgreSQL through a background writer. The control loop never waits on the
+  database; during an outage rows are buffered (bounded, newest kept) and written on recovery.
+  Session ids are UUIDs made by the brain, so a session can start while the DB is unreachable.
+  Thermal frames are stored every Nth frame (`--thermal-every`, default 10).
+- **Wire format:** newline-delimited JSON, `hello` (version + token) -> `welcome`, then `frame`
+  (Pi -> PC) and `cmd` (PC -> Pi, normalised v/w + pump). Everything is validated on receipt.
+
+Fail-safes
+| Failure | What happens |
+|---|---|
+| PC silent / link down / brain hung | Pi watchdog (default 0.5 s) stops motors and pump; agent keeps reconnecting |
+| Brain busy planning (RRT*) | brain sends "hold still" keepalives every 0.15 s so the watchdog stays fed |
+| Operator says stop | detected on submit; overrides any command already being computed; sent as zeros |
+| Bad token / protocol version | rejected before any command is sent; brain refuses non-loopback bind without a token |
+| Garbage / NaN / wrong-shape frames | dropped and counted; commands from the Pi are clamped and type-checked too |
+| Database down | control unaffected; rows buffered, then written on recovery |
+| Pi restarts / reconnects | fresh brain state, mode IDLE |
+
+Limits: the token authenticates but the link is not encrypted -- use it over a trusted LAN or a
+VPN (WireGuard/Tailscale). Odometry pose comes from the Pi (wheel encoders/IMU); there is no SLAM
+yet. `Brain` assumes the sim's room map (`World`) until a real map is configured.
