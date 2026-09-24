@@ -10,10 +10,10 @@ pytest -q && ruff check .
 ```
 
 ## Layout
-- `src/firebot/db/` SQLite schema + `Store` (sessions, fire events, readings, actions)
+- `src/firebot/db/` operational DB (`Store`), training DB (`TrainingStore`), migrations, device registry
 - `src/firebot/fusion/` bearing-only Extended Information Filter
 - `web/firebot-sim.html` standalone browser visualiser (open in any browser)
-- `docs/ARCHITECTURE.md` design and roadmap
+- `docs/ARCHITECTURE.md`, `docs/DATABASE.md` design, roadmap, schema reference
 
 ## Workflow
 Branch from `main` (`feat/...`, `fix/...`), open a PR, CI must pass. Conventional commit messages

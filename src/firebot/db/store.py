@@ -5,11 +5,15 @@ import json
 import sqlite3
 import time
 from collections.abc import Iterable
-from importlib import resources
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = 1
+import numpy as np
+
+from .devices import DEFAULT_DEVICES
+from .migrate import apply_migrations
+
+SCHEMA_VERSION = 2
 FIRE_KINDS = ("detected", "localised", "suppressing", "extinguished", "lost")
 
 
@@ -25,12 +29,7 @@ class Store:
         self._migrate()
 
     def _migrate(self) -> None:
-        version = self.conn.execute("PRAGMA user_version").fetchone()[0]
-        if version < 1:
-            sql = resources.files("firebot.db").joinpath("schema.sql").read_text()
-            with self.conn:
-                self.conn.executescript(sql)
-                self.conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+        apply_migrations(self.conn, "migrations")
 
     def close(self) -> None:
         self.conn.close()
@@ -81,10 +80,12 @@ class Store:
         self, session_id: int, readings: Iterable[tuple[float, str, float]]
     ) -> None:
         """Batch insert (ts, sensor, value) tuples in one transaction."""
+        ids = self.device_ids()
         with self.conn:
             self.conn.executemany(
-                "INSERT INTO sensor_readings(session_id, ts, sensor, value) VALUES (?, ?, ?, ?)",
-                [(session_id, ts, s, v) for ts, s, v in readings],
+                "INSERT INTO sensor_readings(session_id, ts, sensor, value, device_id)"
+                " VALUES (?, ?, ?, ?, ?)",
+                [(session_id, ts, s, v, ids.get(s)) for ts, s, v in readings],
             )
 
     def log_action(
@@ -120,3 +121,89 @@ class Store:
             "SELECT ts, value FROM sensor_readings WHERE session_id = ? AND sensor = ? ORDER BY ts",
             (session_id, sensor),
         ).fetchall()
+
+    # equipment
+    def register_device(self, name: str, **fields: Any) -> int:
+        """Insert or update a device by unique name. Returns its id."""
+        fields.setdefault("kind", "sensor")
+        cols = ["name", *fields]
+        updates = ", ".join(f"{c}=excluded.{c}" for c in fields)
+        with self.conn:
+            self.conn.execute(
+                f"INSERT INTO devices({', '.join(cols)}) VALUES ({', '.join('?' * len(cols))})"
+                f" ON CONFLICT(name) DO UPDATE SET {updates}",
+                [name, *fields.values()],
+            )
+        return self.device_ids()[name]
+
+    def seed_default_devices(self) -> None:
+        for d in DEFAULT_DEVICES:
+            self.register_device(**d)
+
+    def device_ids(self) -> dict[str, int]:
+        return {r["name"]: r["id"] for r in self.conn.execute("SELECT id, name FROM devices")}
+
+    # telemetry
+    def log_pose(self, session_id: int, x: float, y: float, theta: float, source: str = "fused",
+                 v: float | None = None, w: float | None = None, ts: float | None = None) -> None:
+        with self.conn:
+            self.conn.execute(
+                "INSERT INTO robot_poses(session_id, ts, x, y, theta, v, w, source)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (session_id, ts if ts is not None else time.time(), x, y, theta, v, w, source),
+            )
+
+    def log_power(self, session_id: int, rail: str, voltage: float | None = None,
+                  current: float | None = None, ts: float | None = None) -> None:
+        with self.conn:
+            self.conn.execute(
+                "INSERT INTO power_samples(session_id, ts, rail, voltage, current)"
+                " VALUES (?, ?, ?, ?, ?)",
+                (session_id, ts if ts is not None else time.time(), rail, voltage, current),
+            )
+
+    def set_actuator(self, session_id: int, device: str, value: float,
+                     ts: float | None = None) -> None:
+        with self.conn:
+            self.conn.execute(
+                "INSERT INTO actuator_states(session_id, device_id, ts, value)"
+                " VALUES (?, ?, ?, ?)",
+                (session_id, self.device_ids()[device], ts if ts is not None else time.time(),
+                 value),
+            )
+
+    def log_thermal_frame(self, session_id: int, frame: np.ndarray, device: str = "thermal_cam",
+                          ts: float | None = None) -> int:
+        f = np.ascontiguousarray(frame, dtype="<f4")
+        r, c = f.shape
+        hot = int(np.argmax(f))
+        with self.conn:
+            cur = self.conn.execute(
+                "INSERT INTO thermal_frames(session_id, device_id, ts, rows, cols, min_c, max_c,"
+                " hot_row, hot_col, data) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (session_id, self.device_ids().get(device),
+                 ts if ts is not None else time.time(), r, c, float(f.min()), float(f.max()),
+                 hot // c, hot % c, f.tobytes()),
+            )
+        return int(cur.lastrowid)
+
+    def thermal_frame(self, frame_id: int) -> np.ndarray:
+        row = self.conn.execute(
+            "SELECT rows, cols, data FROM thermal_frames WHERE id = ?", (frame_id,)
+        ).fetchone()
+        return np.frombuffer(row["data"], dtype="<f4").reshape(row["rows"], row["cols"])
+
+    def log_voice_command(self, session_id: int, transcript: str,
+                          intent: dict[str, Any] | None = None, validated: bool = False,
+                          action_id: int | None = None, ts: float | None = None) -> int:
+        with self.conn:
+            cur = self.conn.execute(
+                "INSERT INTO voice_commands(session_id, ts, transcript, intent, validated,"
+                " action_id) VALUES (?, ?, ?, ?, ?, ?)",
+                (session_id, ts if ts is not None else time.time(), transcript,
+                 json.dumps(intent) if intent else None, int(validated), action_id),
+            )
+        return int(cur.lastrowid)
+
+    def incidents(self) -> list[sqlite3.Row]:
+        return self.conn.execute("SELECT * FROM v_incidents ORDER BY detected_ts").fetchall()

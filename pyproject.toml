@@ -16,7 +16,7 @@ dev = ["pytest>=8", "ruff>=0.5"]
 where = ["src"]
 
 [tool.setuptools.package-data]
-firebot = ["db/*.sql"]
+firebot = ["db/migrations/*.sql", "db/training_migrations/*.sql"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -24,3 +24,6 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 100
 src = ["src", "tests"]
+
+[tool.ruff.lint]
+ignore = ["C408"]
