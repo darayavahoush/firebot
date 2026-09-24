@@ -13,6 +13,7 @@ dependencies = ["numpy>=1.24"]
 firebot-sim = "firebot.sim.run:main"
 firebot-train = "firebot.drl.train:main"
 firebot-eval = "firebot.drl.evaluate:main"
+firebot-plan = "firebot.planning.run:main"
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "ruff>=0.5"]
