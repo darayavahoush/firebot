@@ -21,6 +21,7 @@ firebot-cmd --script "go to the east side; put out the fire; status"   # operato
 # PC brain + thin robot (needs the `pc` extra for PostgreSQL: pip install -e ".[pc]")
 export FIREBOT_TOKEN=change-me
 firebot-brain --host 0.0.0.0 --db postgresql://user:pw@localhost/firebot   # on the PC; type commands here
+firebot-brain ... --voice-model ~/models/vosk-model-small-en-us-0.15   # + speak to the PC (needs the `speech` extra)
 firebot-pi --sim --host <pc-ip>          # on the robot (--sim = simulated robot; real drivers: item 8)
 
 # DRL (needs the `drl` extra: pip install -e ".[dev,drl]")
@@ -41,7 +42,7 @@ firebot-eval --model runs/ppo/model_final.zip --episodes 30  # vs. the rule base
 - `src/firebot/speech/` offline speech input: Vosk recogniser, restricted grammar, STOP backstop,
   `firebot-listen` CLI
 - `src/firebot/link/` robot<->PC link: Pi agent (stdlib only), wire protocol, brain, network server,
-  PostgreSQL telemetry sink, simulated hardware; `firebot-brain`, `firebot-pi`
+  PostgreSQL telemetry sink, simulated hardware, voice hookup (`voice.py`); `firebot-brain`, `firebot-pi`
 - `src/firebot/perception.py` sensor frame -> observation (fusion), shared by the sim and the brain
 - `web/firebot-sim.html` standalone browser visualiser (open in any browser)
 - `docs/ARCHITECTURE.md`, `docs/DATABASE.md` design, roadmap, schema reference

@@ -41,7 +41,7 @@ class Brain:
         self.say = say or (lambda msg: None)
         self.robot, self.auto, self.seed = robot, auto, seed
         self.sid = self.sink.start_session(robot, "brain session", {"seed": seed, "auto": auto})
-        self._texts: queue.Queue[str] = queue.Queue()
+        self._texts: queue.Queue[tuple[str, str]] = queue.Queue()
         self.estop = threading.Event()
         self.pending: Intent | None = None
         self.last_t: float | None = None
@@ -49,38 +49,43 @@ class Brain:
         self._started = False
 
     # ---- operator input (callable from any thread) --------------------------------------
-    def submit_text(self, text: str) -> None:
-        """Queue an operator command. STOP is detected immediately, not at the next frame."""
+    def submit_text(self, text: str, channel: str = "typed") -> None:
+        """Queue an operator command ("typed", "voice" or "backstop" -- recorded with it).
+
+        STOP is detected immediately, not at the next frame.
+        """
         if RuleParser().parse(text).name == "STOP":
             self.estop.set()
-        self._texts.put(text)
+        self._texts.put((text, channel))
 
     def _drain_texts(self) -> None:
         while True:
             try:
-                text = self._texts.get_nowait()
+                text, channel = self._texts.get_nowait()
             except queue.Empty:
                 return
-            self._handle_text(text)
+            self._handle_text(text, channel)
 
-    def _handle_text(self, text: str) -> None:
+    def _handle_text(self, text: str, channel: str) -> None:
         if self.pending is not None:
             intent, self.pending = self.pending, None
             if text.strip().lower() in CONFIRM_YES:
                 res = self.ctrl.handle(intent, confirmed=True)
-                self._record(text, intent, True, res)
+                self._record(text, intent, True, res, channel)
                 return
         intent, valid, reason = self.interp.interpret(text)
         res = self.ctrl.handle(intent) if valid else Result(False, f"rejected: {reason}")
         if res.pending is not None:
             self.pending = res.pending
-        self._record(text, intent, valid, res)
+        self._record(text, intent, valid, res, channel)
 
-    def _record(self, text: str, intent: Intent, valid: bool, res: Result) -> None:
+    def _record(self, text: str, intent: Intent, valid: bool, res: Result,
+                channel: str) -> None:
         if intent.name == "STOP" and valid:
             self.estop.clear()  # the executor is now IDLE; later frames are safe again
         self.say(res.message)
-        self.sink.log_operator(self.sid, text, intent.to_json(), valid and res.ok, res.message)
+        self.sink.log_operator(self.sid, text, {**intent.to_json(), "channel": channel},
+                               valid and res.ok, res.message)
 
     # ---- control --------------------------------------------------------------------------
     def on_frame(self, frame: Frame) -> Command:

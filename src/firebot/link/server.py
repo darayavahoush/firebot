@@ -47,9 +47,19 @@ class BrainServer:
         if self._server:
             await self._server.wait_closed()
 
-    def say_to_operator(self, text: str) -> None:
-        if self.brain is not None:
-            self.brain.submit_text(text)
+    def submit_command(self, text: str, channel: str = "typed") -> bool:
+        """Operator text (typed or transcribed) for the connected robot. False if none."""
+        brain = self.brain
+        if brain is None:
+            return False
+        brain.submit_text(text, channel)
+        return True
+
+    say_to_operator = submit_command  # older name
+
+    def emergency_stop(self, heard: str = "stop") -> bool:
+        """STOP backstop: called the instant a stop word is heard, mid-utterance."""
+        return self.submit_command("stop", "backstop")
 
     async def _handle(self, r: asyncio.StreamReader, w: asyncio.StreamWriter) -> None:
         if self._active is not None and not self._active.done():
