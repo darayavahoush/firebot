@@ -14,6 +14,8 @@ pytest -q && ruff check .
 firebot-sim --episodes 20   # runs the baseline, writes firebot.db + training.db
 
 firebot-plan --episodes 30   # RRT* planning controller vs. the rule baseline
+# voice (needs the `speech` extra + a Vosk model directory)
+firebot-listen --model ~/models/vosk-model-small-en-us-0.15
 firebot-cmd --script "go to the east side; put out the fire; status"   # operator commands
 
 # DRL (needs the `drl` extra: pip install -e ".[dev,drl]")
@@ -31,6 +33,8 @@ firebot-eval --model runs/ppo/model_final.zip --episodes 30  # vs. the rule base
   (plans to a spray stand-off point, pure-pursuit follow), `firebot-plan` benchmark
 - `src/firebot/command/` rule-based command interpreter (+ optional SLM fallback), intent schema/
   validator, executor, `firebot-cmd` CLI
+- `src/firebot/speech/` offline speech input: Vosk recogniser, restricted grammar, STOP backstop,
+  `firebot-listen` CLI
 - `web/firebot-sim.html` standalone browser visualiser (open in any browser)
 - `docs/ARCHITECTURE.md`, `docs/DATABASE.md` design, roadmap, schema reference
 
