@@ -8,8 +8,8 @@ data structures, so switching to the robot changes drivers only.
 
 ## Roadmap
 1. [x] DB layer + tests, EIF fusion + tests, browser visualiser (`web/`)
-2. [ ] Python sim core (world, fire/gas model, sensor models)
-3. [ ] Rule-based confrontation FSM (baseline)
+2. [x] Python sim core (world, sensors, Gymnasium-style env, EIF in the loop)
+3. [x] Rule-based confrontation controller (baseline), `firebot-sim` records to both DBs
 4. [ ] Planning: RRT*/OMPL
 5. [ ] Gymnasium env + DRL, benchmarked against baseline
 6. [ ] Pan-tilt aiming
