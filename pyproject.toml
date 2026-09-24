@@ -16,17 +16,21 @@ firebot-eval = "firebot.drl.evaluate:main"
 firebot-plan = "firebot.planning.run:main"
 firebot-cmd = "firebot.command.run:main"
 firebot-listen = "firebot.speech.run:main"
+firebot-brain = "firebot.link.run:brain_main"
+firebot-pi = "firebot.link.run:pi_main"
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "ruff>=0.5"]
 speech = ["vosk>=0.3.44", "sounddevice>=0.4"]
+pc = ["psycopg[binary]>=3.1"]
+pgtest = ["pgserver>=0.1.4", "psycopg[binary]>=3.1"]
 drl = ["gymnasium>=0.29", "stable-baselines3>=2.3"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-firebot = ["db/migrations/*.sql", "db/training_migrations/*.sql"]
+firebot = ["db/migrations/*.sql", "db/training_migrations/*.sql", "db/pg_migrations/*.sql"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

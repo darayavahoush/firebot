@@ -6,9 +6,9 @@ from __future__ import annotations
 
 import numpy as np
 
-from firebot.fusion import BearingEIF
+from firebot.perception import Perception
 
-from .sensors import FLAME, US, read_sensors, thermal_bearing
+from .sensors import read_sensors
 from .world import Fire, World
 
 DT, VMAX, WMAX = 0.1, 0.7, 1.6
@@ -37,37 +37,17 @@ class FireEnv:
         self.rng = np.random.default_rng(seed)
         self.robot = np.array([1.2, 1.0, 0.6])  # x, y, theta
         fx, fy = self.world.random_free_point(self.rng, .5, self.robot[:2], 4.0)
-        self.fire, self.eif = Fire(fx, fy), BearingEIF()
+        self.fire, self.perception = Fire(fx, fy), Perception(VMAX)
         self.t, self.tank, self.collisions, self.water = 0, 1.0, 0, 0.0
         self.meas_speed = 0.0
         self.prev_d = float(np.hypot(fx - self.robot[0], fy - self.robot[1]))
         self.last = read_sensors(self.world, self.fire, *self.robot, self.rng)
         return self._obs(), {}
 
-    def _fuse(self, s: dict) -> tuple[bool, float]:
-        x, y, th = self.robot
-        zt = thermal_bearing(s["thermal"])
-        seen = zt is not None
-        if seen:
-            self.eif.update(x, y, th, zt, 0.04)
-        else:
-            f = np.array([s[n] for n in FLAME])
-            if f.sum() > .15:
-                self.eif.update(x, y, th, float((f * np.array(list(FLAME.values()))).sum() / f.sum()), .3)
-        return seen, zt or 0.0
-
     def _obs(self) -> np.ndarray:
-        s, (x, y, th) = self.last, self.robot
-        seen, zt = self._fuse(s)
-        m, P = self.eif.mean, self.eif.cov
-        eb = float(np.arctan2(m[1] - y, m[0] - x) - th)
-        eb = float(np.arctan2(np.sin(eb), np.cos(eb)))
-        sigma = float(np.sqrt(max(P[0, 0], P[1, 1])))
-        self.est = {"x": float(m[0]), "y": float(m[1]), "sigma": sigma}
-        o = [*(s[n] / 4 for n in US), *(s[n] for n in FLAME), max(s["mq2_front"], s["mq2_rear"]),
-             float(seen), zt / .5, eb / np.pi, min(np.hypot(m[0] - x, m[1] - y), 10) / 10,
-             min(sigma, 4) / 4, (float(s["thermal"].max()) - 25) / 325, self.tank, self.meas_speed / VMAX]
-        return np.array(o, dtype=np.float32)
+        obs = self.perception.update(self.last, self.robot, self.tank, self.meas_speed)
+        self.est, self.eif = self.perception.est, self.perception.eif
+        return obs
 
     def step(self, action):
         v = float(np.clip(action[0], 0, 1)) * VMAX
