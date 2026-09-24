@@ -81,6 +81,15 @@ Fail-safes
 | Database down | control unaffected; rows buffered, then written on recovery |
 | Pi restarts / reconnects | fresh brain state, mode IDLE |
 
+Voice (`firebot-brain --voice-model DIR [--voice-wav FILE] [--voice-device N]`): the mic is on the
+PC, never the Pi. Final transcripts go to `BrainServer.submit_command(text, "voice")` -- the same
+interpreter/validator/executor as typed input. The STOP backstop calls `emergency_stop()` on the
+first partial result containing a stop word, mid-sentence; it flags the brain's e-stop at once, so
+it overrides a command already being computed. Each operator command is logged with its channel
+(`operator_commands.intent->>'channel'` = typed / voice / backstop). If the mic or model fails at
+start-up the brain exits with an error; if the audio stream dies later, typed control continues.
+Voice complements a physical e-stop; it does not replace one.
+
 Limits: the token authenticates but the link is not encrypted -- use it over a trusted LAN or a
 VPN (WireGuard/Tailscale). Odometry pose comes from the Pi (wheel encoders/IMU); there is no SLAM
 yet. `Brain` assumes the sim's room map (`World`) until a real map is configured.

@@ -43,6 +43,13 @@ def brain_main() -> None:
     p.add_argument("--thermal-every", type=int, default=10,
                    help="store the 24x32 thermal frame every Nth frame (0 = never)")
     p.add_argument("--auto", action="store_true", help="start extinguishing as soon as connected")
+    p.add_argument("--voice-model", help="path to an unpacked Vosk model: enables voice control "
+                                         "(needs the `speech` extra)")
+    p.add_argument("--voice-wav", help="with --voice-model: read a 16 kHz mono WAV instead of the mic")
+    p.add_argument("--voice-device", help="microphone device index or name (see: python -m "
+                                          "sounddevice)")
+    p.add_argument("--open-vocab", action="store_true",
+                   help="voice: accept any words instead of the restricted command grammar")
     p.add_argument("--seed", type=int, default=0)
     a = p.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s: %(message)s")
@@ -67,12 +74,29 @@ def brain_main() -> None:
 
     def operator_input() -> None:
         for line in sys.stdin:
-            if line.strip():
-                if server.brain is None:
-                    print("  (no robot connected)", flush=True)
-                else:
-                    server.say_to_operator(line.strip())
+            if line.strip() and not server.submit_command(line.strip()):
+                print("  (no robot connected)", flush=True)
     threading.Thread(target=operator_input, daemon=True).start()
+    if a.voice_model:
+        from itertools import chain
+
+        from firebot.speech.audio import mic_chunks, wav_chunks
+        from firebot.speech.recognizer import VoskRecognizer
+
+        from .voice import start_voice
+        try:
+            rec = VoskRecognizer(a.voice_model, restrict=not a.open_vocab)
+            if a.voice_wav:
+                chunks = wav_chunks(a.voice_wav)
+            else:
+                dev = int(a.voice_device) if a.voice_device and a.voice_device.isdigit() \
+                    else a.voice_device
+                mic = mic_chunks(device=dev)
+                chunks = chain([next(mic)], mic)   # open the mic now so failures show up now
+        except Exception as e:  # noqa: BLE001
+            sys.exit(f"voice input unavailable: {e}")
+        start_voice(server, rec, chunks, say=lambda m: print(m, flush=True))
+        log.info("voice control on (say: put out the fire / go to the east side / status / stop)")
     try:
         loop.run_until_complete(serve_forever(server))
     except KeyboardInterrupt:
