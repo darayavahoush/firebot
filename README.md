@@ -14,6 +14,7 @@ pytest -q && ruff check .
 firebot-sim --episodes 20   # runs the baseline, writes firebot.db + training.db
 
 firebot-plan --episodes 30   # RRT* planning controller vs. the rule baseline
+firebot-cmd --script "go to the east side; put out the fire; status"   # operator commands
 
 # DRL (needs the `drl` extra: pip install -e ".[dev,drl]")
 firebot-train --timesteps 200000 --n-envs 8 --out runs/ppo   # PPO via Stable-Baselines3
@@ -28,6 +29,8 @@ firebot-eval --model runs/ppo/model_final.zip --episodes 30  # vs. the rule base
   `firebot-eval` (compares a checkpoint against the rule baseline via `v_run_summary`)
 - `src/firebot/planning/` numpy RRT* (`RRTStar`, `Planner` interface), `PlanningController`
   (plans to a spray stand-off point, pure-pursuit follow), `firebot-plan` benchmark
+- `src/firebot/command/` rule-based command interpreter (+ optional SLM fallback), intent schema/
+  validator, executor, `firebot-cmd` CLI
 - `web/firebot-sim.html` standalone browser visualiser (open in any browser)
 - `docs/ARCHITECTURE.md`, `docs/DATABASE.md` design, roadmap, schema reference
 

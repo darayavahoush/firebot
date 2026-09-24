@@ -26,6 +26,37 @@ def _wrap(a: float) -> float:
     return float(np.arctan2(np.sin(a), np.cos(a)))
 
 
+def follow_path(path: np.ndarray, pose: np.ndarray) -> np.ndarray | None:
+    """Pure-pursuit step along `path`. Returns [v, w, pump=0] (normalised), or None on arrival."""
+    p = np.asarray(pose, float)[:2]
+    if float(np.hypot(*(path[-1] - p))) < 0.25:
+        return None
+    a, b = path[:-1], path[1:]
+    ab = b - a
+    seg = np.hypot(*ab.T)
+    # project the robot onto every segment; nearest projection is where we are on the path
+    t = np.clip(((p - a) * ab).sum(axis=1) / np.maximum(seg**2, 1e-9), 0.0, 1.0)
+    proj = a + ab * t[:, None]
+    k = int(np.argmin(np.hypot(*(proj - p).T)))
+    remaining = LOOKAHEAD + 0.0
+    pos, i = proj[k], k
+    target = path[-1]
+    while True:  # walk `remaining` metres forward from the projection
+        left = float(np.hypot(*(path[i + 1] - pos)))
+        if left >= remaining:
+            target = pos + (path[i + 1] - pos) * remaining / max(left, 1e-9)
+            break
+        remaining -= left
+        pos, i = path[i + 1], i + 1
+        if i >= len(path) - 1:
+            target = path[-1]
+            break
+    err = _wrap(float(np.arctan2(target[1] - p[1], target[0] - p[0])) - pose[2])
+    w = float(np.clip(2.5 * err, -WMAX, WMAX))
+    v = 0.0 if abs(err) > 0.9 else VMAX * float(np.clip(np.cos(err), 0.15, 1.0))
+    return np.array([v / VMAX, w / WMAX, 0.0], dtype=np.float32)
+
+
 def standoff_point(world: World, cmap: CostMap, fire: np.ndarray, robot: np.ndarray):
     """Free point ~STANDOFF from `fire`, with line of sight to it, nearest to `robot`."""
     best, best_d = None, np.inf
@@ -102,21 +133,8 @@ class PlanningController:
         self.path = path
 
     def _follow(self, pose: np.ndarray, base: np.ndarray) -> np.ndarray:
-        p = pose[:2]
-        seg = np.hypot(*np.diff(self.path, axis=0).T)
-        # closest point on path, then look ahead along it
-        k = int(np.argmin(np.hypot(*(self.path - p).T)))
-        target, remaining = self.path[-1], LOOKAHEAD
-        for i in range(k, len(self.path) - 1):
-            s = seg[i]
-            if s >= remaining:
-                target = self.path[i] + (self.path[i + 1] - self.path[i]) * remaining / s
-                break
-            remaining -= s
-        if float(np.hypot(*(self.path[-1] - p))) < 0.25:
+        a = follow_path(self.path, pose)
+        if a is None:  # arrived
             self.path = None
             return base
-        err = _wrap(float(np.arctan2(target[1] - p[1], target[0] - p[0])) - pose[2])
-        w = float(np.clip(2.5 * err, -WMAX, WMAX))
-        v = 0.0 if abs(err) > 0.9 else VMAX * float(np.clip(np.cos(err), 0.15, 1.0))
-        return np.array([v / VMAX, w / WMAX, 0.0], dtype=np.float32)
+        return a
