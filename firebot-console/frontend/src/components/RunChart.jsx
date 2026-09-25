@@ -60,26 +60,27 @@ export default function RunChart({ runId, detail }) {
             />
             <Line
               type="monotone"
-              dataKey="temp_c"
+              dataKey="est_sigma"
               stroke="#F4B942"
               strokeWidth={1.5}
               dot={false}
-              name="Temp °C"
+              name="Fire Est. σ"
+              connectNulls
             />
             <Line
               type="monotone"
-              dataKey="battery_v"
+              dataKey="tank"
               stroke="#2FB8A6"
               strokeWidth={1.5}
               dot={false}
-              name="Battery V"
+              name="Tank"
             />
           </LineChart>
         </ResponsiveContainer>
       </div>
       <div className="border-t border-line px-4 py-2 flex gap-4 font-mono text-[10px] text-muted">
-        <Legend color="#F4B942" label="Temp °C" />
-        <Legend color="#2FB8A6" label="Battery V" />
+        <Legend color="#F4B942" label="Fire Est. σ" />
+        <Legend color="#2FB8A6" label="Tank" />
       </div>
     </div>
   );
