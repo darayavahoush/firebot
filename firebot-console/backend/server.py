@@ -201,6 +201,7 @@ async def post_estop() -> dict[str, Any]:
 async def ws_telemetry(ws: WebSocket) -> None:
     await ws.accept()
     last_seq: int | None = None
+    last_cmd_id = 0
     try:
         while True:
             async with _pool.acquire() as conn:
@@ -220,6 +221,12 @@ async def ws_telemetry(ws: WebSocket) -> None:
                     session["id"],
                 )
 
+                cmd_rows = await conn.fetch(
+                    "SELECT id, at, text, intent, valid, message FROM operator_commands "
+                    "WHERE session_id = $1 AND id > $2 ORDER BY id ASC",
+                    session["id"], last_cmd_id,
+                )
+
             if row is not None and row["seq"] != last_seq:
                 last_seq = row["seq"]
                 d = dict(row)
@@ -227,7 +234,23 @@ async def ws_telemetry(ws: WebSocket) -> None:
                 d["sensors"] = json.loads(sensors) if isinstance(sensors, str) else sensors
                 d["thermal"] = _reshape_thermal(d["thermal"])
                 d["session_id"] = str(session["id"])
+                d["type"] = "frame"
                 await ws.send_text(json.dumps(d, default=str))
+
+            for c in cmd_rows:
+                last_cmd_id = c["id"]
+                intent = c["intent"]
+                intent = json.loads(intent) if isinstance(intent, str) else intent
+                channel = (intent or {}).get("channel", "system")
+                await ws.send_text(json.dumps({
+                    "type": "command",
+                    "id": c["id"],
+                    "at": c["at"],
+                    "text": c["text"],
+                    "channel": channel,
+                    "valid": c["valid"],
+                    "message": c["message"],
+                }, default=str))
 
             await asyncio.sleep(0.4)
     except WebSocketDisconnect:

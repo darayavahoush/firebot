@@ -244,7 +244,11 @@ export function followPath(path, pose, lookahead = 0.6) {
   }
   const err = wrapA(Math.atan2(target[1] - p[1], target[0] - p[0]) - pose[2]);
   const w = clamp(2.5 * err, -WMAX, WMAX);
-  const v = Math.abs(err) > 0.9 ? 0.0 : VMAX * clamp(Math.cos(err), 0.15, 1.0);
+  // cos(err) tapers continuously to 0 near +/-90 deg heading error and clips there -- no hard
+  // cutoff, no speed floor (mirrors planning/controller.py::follow_path). Either of those makes
+  // a discontinuity that a jittery pursuit-target angle (any path with a kink, RRT* included)
+  // turns into visible stutter between full speed and a dead stop.
+  const v = VMAX * clamp(Math.cos(err), 0.0, 1.0);
   return [v / VMAX, w / WMAX];
 }
 

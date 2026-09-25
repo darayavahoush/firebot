@@ -37,19 +37,28 @@ export async function sendEstop() {
 }
 
 // Live telemetry stream. onFrame receives a raw frames-table row:
-// { seq, t, x, y, theta, speed, tank, sensors: {us_*, flame_*, mq2_front, mq2_rear},
+// { type: "frame", seq, t, x, y, theta, speed, tank,
+//   sensors: {us_*, flame_*, mq2_front, mq2_rear},
 //   thermal: number[24][32] | null, est_x, est_y, est_sigma, mode,
 //   cmd_v, cmd_w, cmd_pump, compute_ms, session_id }
 // `thermal` is null except on every Nth frame (thermal_every on the brain).
-export function connectTelemetry(onFrame) {
+// onCommand (optional) receives new operator_commands rows as they land:
+// { type: "command", id, at, text, channel: "typed"|"voice"|"backstop"|"system",
+//   valid, message }
+export function connectTelemetry(onFrame, onCommand) {
   if (USE_MOCK) return mockTelemetryStream(onFrame);
 
   const ws = new WebSocket(`ws://${window.location.hostname}:8000/ws/telemetry`);
   ws.onmessage = (evt) => {
     try {
-      onFrame(JSON.parse(evt.data));
+      const msg = JSON.parse(evt.data);
+      if (msg.type === "command") {
+        onCommand?.(msg);
+      } else {
+        onFrame(msg);
+      }
     } catch (e) {
-      console.error("bad telemetry frame", e);
+      console.error("bad telemetry message", e);
     }
   };
   ws.onerror = (e) => console.error("telemetry ws error", e);

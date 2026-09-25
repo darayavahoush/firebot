@@ -73,6 +73,35 @@ def test_decode_rejects_junk():
             P.decode(line)
 
 
+def test_pi_main_max_steps_and_stop_on_fire_out_flags(monkeypatch):
+    """--max-steps 0 disables the cap; --no-stop-on-fire-out flips the default."""
+    from firebot.link.run import pi_main
+
+    captured = {}
+
+    class _StubSimHardware:
+        def __init__(self, seed=0, max_steps=1500, stop_on_fire_out=True):
+            captured["seed"] = seed
+            captured["max_steps"] = max_steps
+            captured["stop_on_fire_out"] = stop_on_fire_out
+
+    class _StubPiAgent:
+        def __init__(self, hw, host, port, token, robot, rate, watchdog, lockstep=True):
+            self.frames_sent = self.cmds_applied = self.watchdog_trips = 0
+
+        async def run(self):
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr("firebot.link.simhw.SimHardware", _StubSimHardware)
+    monkeypatch.setattr("firebot.link.agent.PiAgent", _StubPiAgent)
+    monkeypatch.setattr(sys, "argv", ["firebot-pi", "--host", "127.0.0.1", "--sim",
+                                       "--max-steps", "0", "--no-stop-on-fire-out"])
+    pi_main()
+
+    assert captured["max_steps"] == sys.maxsize
+    assert captured["stop_on_fire_out"] is False
+
+
 def test_pi_side_needs_no_numpy():
     code = ("import sys, firebot.link.agent, firebot.link.protocol; "
             "sys.exit(any(m.split('.')[0] in ('numpy','psycopg','sqlite3') for m in sys.modules))")

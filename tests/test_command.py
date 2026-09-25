@@ -40,6 +40,48 @@ def test_rule_parser_goto(text, xy):
     assert i.name == "GOTO" and (i.params["x"], i.params["y"]) == xy
 
 
+@pytest.mark.parametrize("text,name", [
+    # STOP
+    ("cut the pump", "STOP"), ("cut it", "STOP"), ("cease", "STOP"), ("belay", "STOP"),
+    ("belay that", "STOP"), ("stand down", "STOP"), ("please stand down now", "STOP"),
+    # EXTINGUISH
+    ("attack the fire", "EXTINGUISH"), ("attack it", "EXTINGUISH"),
+    ("knock it down", "EXTINGUISH"), ("knock down the blaze", "EXTINGUISH"),
+    ("tackle it", "EXTINGUISH"), ("tackle the fire", "EXTINGUISH"),
+    # RETURN_HOME
+    ("retreat", "RETURN_HOME"), ("retreat now", "RETURN_HOME"),
+    ("pull back", "RETURN_HOME"), ("pull back to base", "RETURN_HOME"),
+    ("fall back", "RETURN_HOME"),
+    # STATUS
+    ("sitrep", "STATUS"), ("give me an update", "STATUS"), ("check in", "STATUS"),
+])
+def test_expanded_synonyms(text, name):
+    assert P.parse(text).name == name
+
+
+@pytest.mark.parametrize("text,xy", [
+    ("roll to the west side", (2.0, 4.0)), ("roll to the center", (6.0, 4.0)),
+    ("advance to the north", (6.0, 7.0)), ("advance to the east side", (10.5, 4.0)),
+])
+def test_expanded_goto_synonyms(text, xy):
+    i = P.parse(text)
+    assert i.name == "GOTO" and (i.params["x"], i.params["y"]) == xy
+
+
+def test_expanded_synonym_vocabulary_stays_speakable():
+    """Every word the new synonym regexes accept must also be in Vosk's restricted grammar,
+    or the phrasing is unrecognizable no matter how clearly it's spoken (see test_speech.py's
+    test_grammar_covers_every_example_and_parses_it, which exercises this via EXAMPLES)."""
+    from firebot.speech import VOCAB
+    vocab = set(VOCAB)
+    phrases = ["cut the pump", "cease", "belay", "stand down", "attack the fire",
+               "knock it down", "tackle it", "retreat", "pull back", "fall back",
+               "sitrep", "give me an update", "check in", "roll to the west side",
+               "advance to the north"]
+    for phrase in phrases:
+        assert set(phrase.split()) <= vocab, phrase
+
+
 def test_custom_named_waypoint():
     p = RuleParser(places={"kitchen": (9.0, 2.0)})
     assert p.parse("go to the kitchen").params == {"x": 9.0, "y": 2.0}

@@ -57,6 +57,12 @@ def brain_main() -> None:
                                           "sounddevice)")
     p.add_argument("--open-vocab", action="store_true",
                    help="voice: accept any words instead of the restricted command grammar")
+    p.add_argument("--vad", action="store_true",
+                   help="voice: gate audio through Silero VAD before Vosk (needs the `vad` "
+                        "extra); filters non-speech chunks to save CPU, doesn't change Vosk's "
+                        "own end-of-utterance detection")
+    p.add_argument("--vad-threshold", type=float, default=0.5,
+                   help="voice: minimum Silero speech probability to open the gate (with --vad)")
     p.add_argument("--slm-cmd", help="shell command wrapping a local SLM (prompt on stdin, "
                                      "JSON intent on stdout); used as a fallback for voice/typed "
                                      "utterances the rule parser doesn't understand -- same "
@@ -124,6 +130,9 @@ def brain_main() -> None:
                     else a.voice_device
                 mic = mic_chunks(device=dev)
                 chunks = chain([next(mic)], mic)   # open the mic now so failures show up now
+            if a.vad:
+                from firebot.speech.vad import SileroGate
+                chunks = SileroGate(threshold=a.vad_threshold)(chunks)
         except Exception as e:  # noqa: BLE001
             sys.exit(f"voice input unavailable: {e}")
         start_voice(server, rec, chunks, say=lambda m: print(m, flush=True))
@@ -155,12 +164,19 @@ def pi_main() -> None:
     p.add_argument("--sim", action="store_true", help="use the simulated robot (no hardware)")
     p.add_argument("--realtime", action="store_true", help="with --sim: run at --rate, not lock-step")
     p.add_argument("--seed", type=int, default=0, help="with --sim")
+    p.add_argument("--max-steps", type=int, default=1500,
+                   help="with --sim: episode length in steps; 0 for no limit (run until Ctrl-C)")
+    p.add_argument("--no-stop-on-fire-out", action="store_true",
+                   help="with --sim: don't end the episode early just because the fire is out")
     a = p.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s: %(message)s")
     if not a.sim:
         sys.exit("real hardware drivers are not implemented yet (roadmap item 8); use --sim")
     from .simhw import SimHardware
-    agent = PiAgent(SimHardware(seed=a.seed), a.host, a.port, a.token, a.robot, a.rate, a.watchdog,
+    max_steps = sys.maxsize if a.max_steps == 0 else a.max_steps
+    agent = PiAgent(SimHardware(seed=a.seed, max_steps=max_steps,
+                                stop_on_fire_out=not a.no_stop_on_fire_out),
+                    a.host, a.port, a.token, a.robot, a.rate, a.watchdog,
                     lockstep=not a.realtime)
     try:
         asyncio.run(agent.run())

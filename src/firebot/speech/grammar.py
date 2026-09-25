@@ -9,7 +9,16 @@ import json
 
 from firebot.command.parser import PLACES
 
-COMMAND_WORDS = ["stop", "halt", "freeze", "abort", "cancel", "emergency", "hold", "on", "up", "position", "enough", "whoa", "please", "go", "to", "the", "move", "drive", "head", "navigate", "come", "back", "return", "home", "base", "dock", "charging", "put", "out", "extinguish", "douse", "suppress", "spray", "fight", "find", "search", "start", "begin", "resume", "carry", "continue", "fire", "flame", "flames", "blaze", "burning", "smoke", "it", "and", "then", "now", "status", "report", "state", "how", "much", "is", "are", "where", "you", "what", "do", "see", "any", "tank", "water", "level", "battery", "x", "y", "point", "comma", "corner", "side"]
+COMMAND_WORDS = ["stop", "halt", "freeze", "abort", "cancel", "emergency", "hold", "on", "up", "position", "enough", "whoa", "please", "go", "to", "the", "move", "drive", "head", "navigate", "come", "back", "return", "home", "base", "dock", "charging", "put", "out", "extinguish", "douse", "suppress", "spray", "fight", "find", "search", "start", "begin", "resume", "carry", "continue", "fire", "flame", "flames", "blaze", "burning", "smoke", "it", "and", "then", "now", "status", "report", "state", "how", "much", "is", "are", "where", "you", "what", "do", "see", "any", "tank", "water", "level", "battery", "x", "y", "point", "comma", "corner", "side",
+                 # everything below was already accepted by the parser's regexes (parser.py) but
+                 # missing here, so Vosk's restricted grammar silently rejected these phrasings
+                 # no matter how clearly they were spoken -- see EXAMPLES/test_speech.py.
+                 "shut", "off", "kill", "pump", "auto", "autonomous", "patrol", "explore", "deal",
+                 "with", "handle", "cease", "belay", "cut", "stand", "down",
+                 "attack", "knock", "tackle",
+                 "retreat", "pull", "fall",
+                 "sitrep", "give", "me", "an", "update", "check", "in",
+                 "roll", "advance"]
 NUMBER_WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve"]
 PLACE_WORDS = sorted({w for name in PLACES for w in [name]} |
                      {"top", "bottom", "left", "right", "upper", "lower", "north", "south",
@@ -20,11 +29,16 @@ VOCAB: list[str] = sorted(set(COMMAND_WORDS) | set(NUMBER_WORDS) | set(PLACE_WOR
 # phrase -> expected intent name (checked in tests against RuleParser)
 EXAMPLES: dict[str, str] = {
     "stop": "STOP", "emergency stop": "STOP", "halt": "STOP",
+    "cut the pump": "STOP", "cease": "STOP", "belay": "STOP", "stand down": "STOP",
     "put out the fire": "EXTINGUISH", "find the fire": "EXTINGUISH", "start": "EXTINGUISH",
+    "attack the fire": "EXTINGUISH", "knock it down": "EXTINGUISH", "tackle it": "EXTINGUISH",
     "go to the east side": "GOTO", "go to the top right": "GOTO", "go to the center": "GOTO",
     "go to five three": "GOTO", "go to x eight point five y six": "GOTO",
+    "roll to the west side": "GOTO", "advance to the north": "GOTO",
     "come back home": "RETURN_HOME", "return to base": "RETURN_HOME",
+    "retreat": "RETURN_HOME", "pull back": "RETURN_HOME",
     "status": "STATUS", "how much water is left": "STATUS", "where are you": "STATUS",
+    "sitrep": "STATUS", "give me an update": "STATUS", "check in": "STATUS",
 }
 
 
