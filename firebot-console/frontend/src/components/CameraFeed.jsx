@@ -22,6 +22,10 @@ export default function CameraFeed({ frame }) {
   const rafRef = useRef(null);
   const frameRef = useRef(frame);
   const thermalRef = useRef(null); // last known real thermal grid, persists between polls
+  // Driving response state: `phase` is how far the floor seams have "traveled" (drives the
+  // forward-rush illusion), `pan` is a smoothed vanishing-point offset that follows cmd_w so a
+  // turn command visibly swings the view. Both are integrated from real cmd_v/cmd_w, not time.
+  const motionRef = useRef({ phase: 0, pan: 0, lastNow: null });
   frameRef.current = frame;
   if (frame?.thermal) thermalRef.current = frame.thermal;
 
@@ -42,7 +46,16 @@ export default function CameraFeed({ frame }) {
       const f = frameRef.current;
       const cx = cssW / 2, cy = cssH * 0.42;
 
-      drawCorridor(ctx, cssW, cssH, cx, cy, f, t);
+      const m = motionRef.current;
+      const dt = m.lastNow == null ? 0 : Math.min(0.1, (now - m.lastNow) / 1000);
+      m.lastNow = now;
+      const v = f?.cmd_v ?? 0;   // m/s, commanded forward speed
+      const w = f?.cmd_w ?? 0;   // rad/s, commanded turn rate
+      m.phase += v * dt * 5.5;                       // seam flow speed scales with real v
+      m.pan += (w * 26 - m.pan) * Math.min(1, dt * 6); // smoothed pan toward turn command
+
+      drawCorridor(ctx, cssW, cssH, cx, cy, f, t, m.phase, m.pan);
+      if (v > 0.03) drawSpeedLines(ctx, cssW, cssH, cx, cy, v);
       if (thermalRef.current) {
         drawThermalOverlay(ctx, cssW, cssH, thermalRef.current);
       } else {
@@ -56,6 +69,7 @@ export default function CameraFeed({ frame }) {
   }, []);
 
   const peak = thermalPeak(thermalRef.current);
+  const driving = frame && (Math.abs(frame.cmd_v ?? 0) > 0.03 || Math.abs(frame.cmd_w ?? 0) > 0.03);
 
   return (
     <div className="panel h-full flex flex-col">
@@ -99,6 +113,12 @@ export default function CameraFeed({ frame }) {
         {frame && peak != null && (
           <div className="absolute bottom-8 left-3 font-mono text-[10px] text-[#E8A33D]">
             THERMAL PEAK {peak.toFixed(1)}°C
+          </div>
+        )}
+
+        {driving && (
+          <div className="absolute bottom-8 right-3 font-mono text-[10px] text-[#7FD8A0]">
+            {`v ${frame.cmd_v.toFixed(2)}m/s  w ${frame.cmd_w.toFixed(2)}rad/s`}
           </div>
         )}
       </div>
@@ -167,14 +187,19 @@ function thermalColor(norm) {
 // A simple one-point-perspective corridor: floor, two side walls, a door at
 // the vanishing point, and a couple of structural beams for texture — reads
 // immediately as "inside a building", which is what the demo needs to sell.
-function drawCorridor(ctx, w, h, cx, cy, f, t) {
+// `phase` (floor-seam travel) and `pan` (vanishing-point offset) are driven by
+// real cmd_v/cmd_w so the view actually responds to drive commands instead of
+// just idling on a cosmetic wobble.
+function drawCorridor(ctx, w, h, cx, cy, f, t, phase = 0, pan = 0) {
   const bg = ctx.createLinearGradient(0, 0, 0, h);
   bg.addColorStop(0, "#0B120F");
   bg.addColorStop(1, "#050807");
   ctx.fillStyle = bg;
   ctx.fillRect(0, 0, w, h);
 
-  const vpX = cx + Math.sin(t * 0.15) * 4, vpY = cy;
+  // idle wobble stays small so it doesn't fight the real turn-pan once driving starts
+  const idleWobble = Math.sin(t * 0.15) * (Math.abs(pan) > 1 ? 1 : 4);
+  const vpX = cx + idleWobble + pan, vpY = cy;
   const floorY = h * 0.98, ceilY = h * 0.04;
   const leftX = w * 0.02, rightX = w * 0.98;
 
@@ -185,12 +210,24 @@ function drawCorridor(ctx, w, h, cx, cy, f, t) {
   ctx.lineTo(vpX + 40, vpY + 6); ctx.lineTo(vpX - 40, vpY + 6);
   ctx.closePath(); ctx.fill();
 
-  // floor seams converging to the vanishing point
+  // floor seams converging to the vanishing point; seams "flow" toward the viewer
+  // (rungs sliding down the corridor) at a rate proportional to real cmd_v
   ctx.strokeStyle = "rgba(127,216,160,0.10)"; ctx.lineWidth = 1;
   for (let i = -3; i <= 3; i++) {
     ctx.beginPath();
     ctx.moveTo(cx + i * 46, floorY);
     ctx.lineTo(vpX + i * 6, vpY + 6);
+    ctx.stroke();
+  }
+  const rungSpacing = 34;
+  const rungOffset = ((phase * rungSpacing) % rungSpacing + rungSpacing) % rungSpacing;
+  ctx.strokeStyle = "rgba(127,216,160,0.16)";
+  for (let rung = rungOffset; rung < floorY - vpY; rung += rungSpacing) {
+    const frac = rung / (floorY - vpY);
+    const y = vpY + 6 + rung;
+    const halfW = 6 + frac * (rightX - leftX) * 0.5 * 0.94;
+    ctx.beginPath();
+    ctx.moveTo(vpX - halfW, y); ctx.lineTo(vpX + halfW, y);
     ctx.stroke();
   }
 
@@ -226,6 +263,26 @@ function drawCorridor(ctx, w, h, cx, cy, f, t) {
   ctx.fillRect(vpX - 22, vpY - 24, 44, 30);
   ctx.strokeStyle = "rgba(127,216,160,0.25)"; ctx.lineWidth = 1;
   ctx.strokeRect(vpX - 22, vpY - 24, 44, 30);
+}
+
+// Radial motion-blur streaks from the vanishing point, visible only while actually
+// driving forward — the clearest "the cam is responding to the command" tell, scaled
+// with real cmd_v so a fast command reads faster than a crawl.
+function drawSpeedLines(ctx, w, h, cx, cy, v) {
+  const n = 10;
+  const alpha = Math.min(0.22, v * 0.11);
+  ctx.save();
+  ctx.strokeStyle = `rgba(127,216,160,${alpha})`;
+  ctx.lineWidth = 1;
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2 + v * 0.4;
+    const rInner = 14, rOuter = 14 + Math.min(1, v / 1.5) * (Math.max(w, h) * 0.5);
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(a) * rInner, cy + Math.sin(a) * rInner);
+    ctx.lineTo(cx + Math.cos(a) * rOuter, cy + Math.sin(a) * rOuter);
+    ctx.stroke();
+  }
+  ctx.restore();
 }
 
 // Ambient heat blob shown only until the first real thermal frame arrives —
