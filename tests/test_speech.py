@@ -5,7 +5,7 @@ import pytest
 
 from firebot.command import Interpreter
 from firebot.db.store import Store
-from firebot.speech import EXAMPLES, VOCAB, Listener, grammar_json, spoken_to_text
+from firebot.speech import EXAMPLES, VOCAB, Listener, SileroGate, grammar_json, spoken_to_text
 from firebot.speech.audio import wav_chunks
 from firebot.speech.run import listen
 
@@ -114,3 +114,43 @@ def test_vosk_missing_gives_helpful_error(monkeypatch):
     monkeypatch.setitem(sys.modules, "vosk", None)
     with pytest.raises(RuntimeError, match="speech"):
         VoskRecognizer("/nonexistent")
+
+
+def test_vad_missing_install_gives_helpful_error(monkeypatch):
+    import sys
+    monkeypatch.setitem(sys.modules, "torch", None)
+    with pytest.raises(RuntimeError, match="vad"):
+        SileroGate()(chunks(1))   # loading is eager: raises here, before any chunk is pulled
+
+
+def test_vad_gate_passes_speech_and_hangover_drops_the_rest():
+    # "S"/"N" stand in for speech/non-speech chunks; the scorer never touches real audio.
+    seq = ["S", "N", "N", "N", "S", "N", "N", "N", "N"]
+    gate = SileroGate(threshold=0.5, hangover_chunks=2,
+                      speech_prob=lambda c: 1.0 if c == "S" else 0.0)
+    assert list(gate(seq)) == ["S", "N", "N", "S", "N", "N"]
+
+
+def test_vad_gate_never_calls_the_scorer_lazily_before_call(monkeypatch):
+    calls = []
+
+    def scorer(c):
+        calls.append(c)
+        return 1.0
+    gate = SileroGate(speech_prob=scorer)
+    it = gate(["a", "b"])
+    assert calls == []           # nothing scored yet: __call__ builds the generator lazily
+    assert next(it) == "a" and calls == ["a"]
+
+
+def test_vad_reset_clears_hangover_but_keeps_the_loaded_scorer():
+    calls = {"n": 0}
+
+    def scorer(c):
+        calls["n"] += 1
+        return 1.0 if c == "S" else 0.0
+    gate = SileroGate(threshold=0.5, hangover_chunks=5, speech_prob=scorer)
+    assert list(gate(["S", "N"])) == ["S", "N"]           # second N rides the hangover tail
+    gate.reset()
+    assert gate._speech_prob is scorer                    # scorer/model kept, not reloaded
+    assert list(gate(["N", "N"])) == []                   # hangover really was cleared

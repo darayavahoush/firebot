@@ -27,15 +27,20 @@ _ALIASES = {"top": "north", "bottom": "south", "right": "east", "left": "west",
 # Any of these anywhere in the utterance means STOP. Deliberately over-eager: a false stop
 # costs a repeat command, a missed stop costs a robot. ("don't stop" also stops.)
 _STOP = re.compile(r"\b(stop|halt|freeze|abort|cancel|emergency|e-?stop|hold (on|up|position)|"
-                   r"shut ?(it )?(off|down)|kill (it|the pump)|enough|whoa)\b")
+                   r"shut ?(it )?(off|down)|kill (it|the pump)|cut (it|the pump)|cease|belay|"
+                   r"stand down|enough|whoa)\b")
 _STATUS = re.compile(r"\b(status|report|state|how (much|is|are)|where are you|what do you see|"
-                     r"any (fire|flame)|tank|water level|battery|what'?s (going on|happening))\b")
+                     r"any (fire|flame)|tank|water level|battery|what'?s (going on|happening)|"
+                     r"sitrep|give me an update|check in)\b")
 _HOME = re.compile(r"\b(go|come|head|return|get|move|drive)?\s*(back )?(to )?"
-                   r"\b(home|base|dock|charging)\b|\bcome back\b|\breturn\b")
-_GOTO = re.compile(r"\b(go|move|drive|head|navigate|travel|drive|proceed|come|position)\b")
+                   r"\b(home|base|dock|charging)\b|\bcome back\b|\breturn\b|\bretreat\b|"
+                   r"\bpull back\b|\bfall back\b")
+_GOTO = re.compile(r"\b(go|move|drive|head|navigate|travel|drive|proceed|come|position|roll|"
+                   r"advance)\b")
 _FIRE = re.compile(r"\b(fire|flame|flames|blaze|burning|smoke)\b")
 _EXT = re.compile(r"\b(put out|extinguish|douse|suppress|spray|fight|find|search|start|begin|"
-                  r"resume|carry on|continue|auto|autonomous|patrol|explore|deal with|handle)\b")
+                  r"resume|carry on|continue|auto|autonomous|patrol|explore|deal with|handle|"
+                  r"attack|knock (it )?down|tackle)\b")
 _NUM = r"(-?\d+(?:\.\d+)?)"
 _COORD = re.compile(rf"\bx\s*[=:]?\s*{_NUM}[\s,;and]*y\s*[=:]?\s*{_NUM}|"
                     rf"\(?\s*{_NUM}\s*(?:,|\s)\s*{_NUM}\s*\)?")

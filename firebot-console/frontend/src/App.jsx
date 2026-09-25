@@ -27,13 +27,20 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const disconnect = connectTelemetry((f) => {
-      lastFrameAtRef.current = Date.now();
-      setLinkOk(true);
-      setFrame(f);
-      if (f.mode) setModeState(f.mode);
-    });
+    const disconnect = connectTelemetry(
+      (f) => {
+        lastFrameAtRef.current = Date.now();
+        setLinkOk(true);
+        setFrame(f);
+        if (f.mode) setModeState(f.mode);
+      },
+      (c) => {
+        const label = c.valid ? c.text : `${c.text} — rejected: ${c.message ?? "invalid"}`;
+        pushLog(c.channel, label);
+      },
+    );
     return disconnect;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const pushLog = useCallback((source, text) => {

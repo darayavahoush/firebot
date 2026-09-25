@@ -323,6 +323,37 @@ function PlannerTab({ t }) {
   );
 }
 
+// Reference list for the panel below -- kept in sync with parseIntent() in lib/simEngine.js,
+// which itself mirrors command/{intents,parser}.py. If a trigger word is added there, add it
+// here too.
+const COMMAND_HELP = [
+  {
+    intent: "STOP",
+    fn: "Halts immediately \u2014 motors and pump off, latched until the next command. Checked first and wins over every other intent, so it's deliberately over-eager.",
+    examples: ["stop", "halt", "freeze", "abort", "cancel", "emergency stop", "hold on / hold position", "shut it off", "kill the pump", "enough", "whoa"],
+  },
+  {
+    intent: "EXTINGUISH",
+    fn: "Resumes autonomous search \u2192 approach \u2192 suppress. Any mention of fire/smoke also triggers it, even without an explicit verb.",
+    examples: ["put out the fire", "extinguish", "douse", "suppress", "spray", "find the fire", "search", "start", "resume", "carry on", "patrol", "there's smoke"],
+  },
+  {
+    intent: "GOTO",
+    fn: "Drives to a location \u2014 either a named waypoint/compass direction or explicit coordinates.",
+    examples: ["go to the east side", "go to the top right", "go to the center", "go to five three", "go to x 8.5 y 6", "navigate to the northwest corner"],
+  },
+  {
+    intent: "RETURN_HOME",
+    fn: "Routes back to the dock/base position.",
+    examples: ["come back home", "return to base", "go home", "return", "head to dock"],
+  },
+  {
+    intent: "STATUS",
+    fn: "Reports mode, position, tank/battery level and current fire estimate \u2014 no motion.",
+    examples: ["status", "report", "how much water is left", "where are you", "what do you see", "battery", "what's going on"],
+  },
+];
+
 function VoiceTab({ t, speechSupported, listening, toggleListening, transcript, voiceError, textCmd, setTextCmd, sendCommand }) {
   return (
     <div>
@@ -358,6 +389,26 @@ function VoiceTab({ t, speechSupported, listening, toggleListening, transcript, 
           Send
         </button>
       </div>
+
+      <PanelHeader label="Eligible Commands" right={<span className="font-mono text-[10px] text-faint">{COMMAND_HELP.length} intents</span>} />
+      <div className="border-t border-line divide-y divide-line">
+        {COMMAND_HELP.map((c) => (
+          <div key={c.intent} className="px-4 py-2.5">
+            <div className="flex items-baseline gap-2 mb-1">
+              <span className="font-mono text-[11px] text-telemetry uppercase tracking-wide">{c.intent}</span>
+            </div>
+            <div className="text-[11px] text-muted leading-relaxed mb-1.5">{c.fn}</div>
+            <div className="flex flex-wrap gap-1.5">
+              {c.examples.map((ex) => (
+                <span key={ex} className="font-mono text-[10px] text-faint bg-panel2 border border-line rounded px-1.5 py-0.5">
+                  {ex}
+                </span>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+
       <PanelHeader label="Recognized Commands" />
       <div className="border-t border-line divide-y divide-line max-h-72 overflow-y-auto">
         {t.commandLog.length === 0 && <div className="px-4 py-3 text-[12px] text-faint font-mono">no commands yet \u2014 try \u201cstop\u201d, \u201creturn home\u201d, \u201cgo to the east room\u201d, \u201cstatus\u201d</div>}

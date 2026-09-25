@@ -22,6 +22,7 @@ firebot-pi = "firebot.link.run:pi_main"
 [project.optional-dependencies]
 dev = ["pytest>=8", "ruff>=0.5"]
 speech = ["vosk>=0.3.44", "sounddevice>=0.4"]
+vad = ["silero-vad>=5.1", "torch>=2.0", "numpy>=1.24"]
 pc = ["psycopg[binary]>=3.1"]
 pgtest = ["pgserver>=0.1.4", "psycopg[binary]>=3.1"]
 drl = ["gymnasium>=0.29", "stable-baselines3>=2.3"]

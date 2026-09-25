@@ -71,6 +71,12 @@ def main() -> None:
     p.add_argument("--wav", help="16 kHz mono WAV to transcribe instead of the microphone")
     p.add_argument("--open-vocab", action="store_true",
                    help="disable the restricted grammar (slower, less robust, any words)")
+    p.add_argument("--vad", action="store_true",
+                   help="gate audio through Silero VAD before Vosk (needs the `vad` extra): "
+                        "filters out non-speech chunks to save CPU. Doesn't change Vosk's own "
+                        "end-of-utterance detection, just what reaches it")
+    p.add_argument("--vad-threshold", type=float, default=0.5,
+                   help="minimum Silero speech probability to open the gate (with --vad)")
     p.add_argument("--steps", type=int, default=100)
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--ops-db", default="firebot.db")
@@ -84,6 +90,12 @@ def main() -> None:
               "Ctrl-C quits.")
         dev = int(a.device) if a.device and a.device.isdigit() else a.device
         chunks = mic_chunks(device=dev)
+    if a.vad:
+        from .vad import SileroGate
+        try:
+            chunks = SileroGate(threshold=a.vad_threshold)(chunks)
+        except RuntimeError as e:
+            raise SystemExit(f"--vad unavailable: {e}") from e
     try:
         listen(chunks, rec, a.seed, a.steps, a.ops_db)
     except KeyboardInterrupt:

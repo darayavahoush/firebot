@@ -42,8 +42,11 @@ operator text -> `RuleParser` (deterministic) -> [`SLMParser`, only if rules ret
 ## Speech (`firebot.speech`, optional `speech` extra)
 mic (16 kHz mono PCM) -> `VoskRecognizer` (offline, restricted word-list grammar) ->
 `spoken_to_text` (number words -> digits, drop `[unk]`) -> `Interpreter` -> same executor as typed.
-- Vosk does its own end-of-utterance detection, so no separate VAD is used. If CPU on the Pi
-  matters, a VAD gate (e.g. Silero) can be added in front of the recogniser without other changes.
+- Vosk does its own end-of-utterance detection, so no VAD is required. An optional Silero VAD
+  gate (`firebot.speech.vad.SileroGate`, `vad` extra) can sit in front of it if CPU on the Pi
+  matters: it's a pure filter that drops non-speech chunks (plus a short hangover tail) before
+  they reach Vosk, and doesn't change Vosk's own end-of-utterance logic. Opt in with `--vad` /
+  `--vad-threshold` on `firebot-listen` and `firebot-brain`.
 - STOP backstop: `Listener` watches Vosk *partial* results and calls `on_stop` the moment a stop
   word is heard, mid-sentence, bypassing the interpreter. It complements a physical e-stop; it is
   not a substitute (ASR can miss words, especially over motor/pump noise).

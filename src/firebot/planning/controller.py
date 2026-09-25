@@ -53,7 +53,12 @@ def follow_path(path: np.ndarray, pose: np.ndarray) -> np.ndarray | None:
             break
     err = _wrap(float(np.arctan2(target[1] - p[1], target[0] - p[0])) - pose[2])
     w = float(np.clip(2.5 * err, -WMAX, WMAX))
-    v = 0.0 if abs(err) > 0.9 else VMAX * float(np.clip(np.cos(err), 0.15, 1.0))
+    # cos(err) tapers continuously to 0 as the heading error approaches +/-90 deg and clips to 0
+    # beyond it (never drive backwards toward a target behind us) -- deliberately no hard cutoff
+    # and no speed floor here: either one creates a discontinuity that a jittery pursuit-target
+    # angle (normal on any path with a kink, RRT* included) turns into a stutter between full
+    # speed and a dead stop instead of a smooth slow-down-to-turn.
+    v = VMAX * float(np.clip(np.cos(err), 0.0, 1.0))
     return np.array([v / VMAX, w / WMAX, 0.0], dtype=np.float32)
 
 
