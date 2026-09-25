@@ -11,6 +11,7 @@ import time
 import numpy as np
 import pytest
 
+from firebot.command import Interpreter, SLMParser
 from firebot.link import protocol as P
 from firebot.link.agent import PiAgent
 from firebot.link.brain import Brain
@@ -180,6 +181,36 @@ def test_operator_goto_then_stop_is_immediate():
     ops = sink.backend.operator
     assert [o["text"] for o in ops] == ["go to the east side", "stop"]
     assert all(o["valid"] for o in ops)
+
+
+def test_brain_resolves_slm_fallback_for_unrecognized_utterance():
+    """`firebot-brain --slm-cmd` builds `Interpreter(fallback=slm_from_shell_command(...))` and
+    hands it to `Brain(interpreter=...)` (see link/run.py) -- this is the missing wiring that
+    made the SLM fully built and tested but never actually reachable from voice/typed commands.
+    Covers that path directly: a phrasing the rule parser can't handle ("do the fire thing") only
+    resolves to EXTINGUISH because a fallback SLM is plugged into the Brain the same way.
+    """
+    box = {}
+    hooks = {5: lambda: box["b"].submit_text("do the fire thing")}
+    hw = Probe(seed=2, max_steps=60, hooks=hooks)
+    slm = SLMParser(lambda _: '{"intent": "EXTINGUISH", "params": {}}')
+    interp = Interpreter(fallback=slm)
+
+    async def go():
+        sink = BufferedSink(MemoryBackend())
+        srv = BrainServer(
+            lambda: box.setdefault("b", Brain(sink=sink, seed=2, interpreter=interp)), token="t")
+        await srv.start()
+        ag = PiAgent(hw, "127.0.0.1", srv.bound_port, "t", lockstep=True, watchdog=1.0)
+        await asyncio.wait_for(ag.run(), 60)
+        await srv.stop()
+        return sink
+    sink = asyncio.run(go())
+    sink.close()
+    ops = sink.backend.operator
+    assert [o["text"] for o in ops] == ["do the fire thing"]
+    assert ops[0]["valid"]                                # only true because the SLM resolved it
+    assert any(m in ("AUTO", "GOTO") for m in (f.mode for f in sink.backend.frames))
 
 
 def test_reconnect_starts_idle_again():

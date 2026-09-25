@@ -1,7 +1,15 @@
 import numpy as np
 import pytest
 
-from firebot.command import CommandController, Intent, Interpreter, RuleParser, SLMParser, validate
+from firebot.command import (
+    CommandController,
+    Intent,
+    Interpreter,
+    RuleParser,
+    SLMParser,
+    slm_from_shell_command,
+    validate,
+)
 from firebot.command.run import run_script
 from firebot.db.store import Store
 from firebot.planning import follow_path
@@ -109,6 +117,23 @@ def test_manual_excluded_from_slm_schema_and_never_reaches_interpreter():
     interp = Interpreter(fallback=slm)
     intent, ok, reason = interp.interpret("floor it")
     assert not ok and intent.name == "UNKNOWN" and "MANUAL" in reason
+
+
+def test_slm_from_shell_command_wraps_any_executable():
+    """`slm_from_shell_command` is the mechanism both `firebot-cmd --slm-cmd` and
+    `firebot-brain --slm-cmd` use to plug in a local model -- it just needs to read the prompt
+    on stdin and print JSON on stdout, so a one-liner Python script stands in for a real SLM here.
+    """
+    cmd = ('python3 -c "import sys; sys.stdin.read(); '
+          'print(\'{\\\"intent\\\": \\\"STATUS\\\", \\\"params\\\": {}}\')"')
+    slm = slm_from_shell_command(cmd)
+    intent = slm.parse("what's going on out there")
+    assert intent.name == "STATUS" and intent.source == "slm"
+
+
+def test_slm_from_shell_command_bad_output_is_unknown():
+    slm = slm_from_shell_command('python3 -c "import sys; sys.stdin.read(); print(\'not json\')"')
+    assert slm.parse("anything").name == "UNKNOWN"
 
 
 def test_stop_zeroes_actions_and_latches():

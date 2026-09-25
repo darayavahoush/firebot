@@ -11,7 +11,6 @@ phrasings the rules don't cover (its output is confirmed with the operator befor
 from __future__ import annotations
 
 import argparse
-import subprocess
 import time
 
 from firebot.db.store import Store
@@ -19,7 +18,7 @@ from firebot.sim.env import DT, FireEnv
 
 from .executor import CommandController, Result
 from .intents import Intent
-from .parser import Interpreter, SLMParser
+from .parser import Interpreter, slm_from_shell_command
 
 
 def record(ops: Store, sid: int, text: str, intent: Intent, valid: bool, res: Result) -> None:
@@ -72,14 +71,6 @@ def run_script(commands: list[str], seed: int, steps: int, ops_path: str,
     return out
 
 
-def _slm_from_command(cmd: str) -> SLMParser:
-    """Any executable that reads the prompt on stdin and prints the model's reply."""
-    def generate(prompt: str) -> str:
-        return subprocess.run(cmd, shell=True, input=prompt, capture_output=True, text=True,
-                              timeout=20, check=False).stdout
-    return SLMParser(generate)
-
-
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -89,7 +80,7 @@ def main() -> None:
     p.add_argument("--ops-db", default="firebot.db")
     p.add_argument("--slm-cmd", help="shell command wrapping a local SLM (prompt on stdin)")
     a = p.parse_args()
-    interp = Interpreter(fallback=_slm_from_command(a.slm_cmd) if a.slm_cmd else None)
+    interp = Interpreter(fallback=slm_from_shell_command(a.slm_cmd) if a.slm_cmd else None)
     ask = lambda msg: input(f"  {msg} [y/N] ").strip().lower().startswith("y")
     if a.script:
         cmds = [c.strip() for c in a.script.split(";") if c.strip()]

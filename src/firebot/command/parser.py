@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 from collections.abc import Callable
 from typing import Protocol
 
@@ -131,6 +132,20 @@ class SLMParser:
                         needs_confirmation=name not in SAFE_WITHOUT_CONFIRMATION)
         ok, _ = validate(intent)
         return intent if ok else Intent("UNKNOWN", {}, 0.0, "slm", t)
+
+
+def slm_from_shell_command(cmd: str, timeout: float = 20.0) -> SLMParser:
+    """Wrap any executable that reads the prompt on stdin and prints the model's reply on
+    stdout as an `SLMParser`. Works with a local llama.cpp/Ollama CLI invocation, a thin
+    Python script around another runtime, etc. -- anything shell-callable.
+
+    Shared by both `firebot-cmd` (`command/run.py`, `--slm-cmd`) and `firebot-brain`
+    (`link/run.py`, `--slm-cmd`) so the two entry points offer the exact same mechanism.
+    """
+    def generate(prompt: str) -> str:
+        return subprocess.run(cmd, shell=True, input=prompt, capture_output=True, text=True,
+                              timeout=timeout, check=False).stdout
+    return SLMParser(generate)
 
 
 class Interpreter:

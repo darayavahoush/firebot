@@ -6,6 +6,10 @@ Test:  firebot-pi --sim --host <pc-ip> --token SECRET      (simulated robot, no 
 
 Type operator commands into the brain's terminal ("put out the fire", "go to the east side",
 "status", "stop"). Speech input calls `BrainServer.say_to_operator(text)` the same way.
+
+Both channels are rules-first: the deterministic `RuleParser` handles what it recognizes, and
+only unrecognized phrasings fall through to an SLM if one is wired in via --slm-cmd. Without
+--slm-cmd, unmatched utterances just come back UNKNOWN.
 """
 from __future__ import annotations
 
@@ -53,6 +57,12 @@ def brain_main() -> None:
                                           "sounddevice)")
     p.add_argument("--open-vocab", action="store_true",
                    help="voice: accept any words instead of the restricted command grammar")
+    p.add_argument("--slm-cmd", help="shell command wrapping a local SLM (prompt on stdin, "
+                                     "JSON intent on stdout); used as a fallback for voice/typed "
+                                     "utterances the rule parser doesn't understand -- same "
+                                     "mechanism as firebot-cmd's --slm-cmd. Confirmation-gated "
+                                     "like any other SLM-sourced intent; MANUAL can never come "
+                                     "from it (see command/parser.py)")
     p.add_argument("--seed", type=int, default=0)
     a = p.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s: %(message)s")
@@ -67,9 +77,16 @@ def brain_main() -> None:
         sink = NullSink()
         log.warning("no --db given: telemetry is NOT being stored")
 
+    interp = None
+    if a.slm_cmd:
+        from firebot.command import Interpreter, slm_from_shell_command
+        interp = Interpreter(fallback=slm_from_shell_command(a.slm_cmd))
+        log.info("SLM fallback enabled for voice/typed commands (--slm-cmd)")
+
     holder: dict = {}
     def make_brain() -> Brain:
-        return Brain(sink=sink, seed=a.seed, auto=a.auto, say=lambda m: print(f"  {m}", flush=True))
+        return Brain(sink=sink, seed=a.seed, auto=a.auto, interpreter=interp,
+                    say=lambda m: print(f"  {m}", flush=True))
 
     server = BrainServer(make_brain, a.host, a.port, a.token)
     holder["server"] = server
