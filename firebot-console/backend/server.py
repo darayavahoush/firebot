@@ -1,12 +1,21 @@
 """
-firebot.api.server — thin bridge between the React console and:
-  - the Postgres logging sink (historical runs)
-  - the brain's live telemetry + command channel (WebSocket)
+firebot.api.server — thin bridge between the React console and the
+Postgres logging sink (historical runs) and live telemetry.
 
-This is scaffolding: the queries below assume plausible table/column
-names (`runs`, `frames`, `commands`) that need to match your actual
-schema from the logging sink you built earlier. Adjust the SQL and the
-telemetry bridge to your real brain API before running it for real.
+Rewritten against the real schema (see src/firebot/db/pg_migrations/001_init.sql):
+  sessions(id, robot, started_at, ended_at, notes, meta)
+  frames(session_id, seq, t, recv_at, x, y, theta, speed, tank, sensors,
+         thermal, est_x, est_y, est_sigma, mode, cmd_v, cmd_w, cmd_pump, compute_ms)
+  operator_commands(id, session_id, at, text, intent, valid, message)
+
+Note: `frames.thermal` is stored FLATTENED (768-element row-major array) by
+PostgresBackend.insert_frames — it is only present on every Nth frame
+(thermal_every). We reshape it back to THERM_ROWS x THERM_COLS here before
+sending to the frontend.
+
+`/api/command` and `/api/command/estop` remain stubs: the brain has no HTTP
+command entrypoint yet, so manual control from the UI won't reach the robot
+until that's added separately.
 
 Run with: uvicorn server:app --reload --port 8000
 """
@@ -20,6 +29,8 @@ import asyncpg
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+
+from firebot.link.protocol import THERM_COLS, THERM_ROWS
 
 DATABASE_URL = "postgresql://firebot:firebot@localhost:5432/firebot"
 
@@ -46,16 +57,29 @@ async def shutdown() -> None:
         await _pool.close()
 
 
+def _reshape_thermal(flat: list[float] | None) -> list[list[float]] | None:
+    """Undo PostgresBackend's row-major flatten back into THERM_ROWS x THERM_COLS."""
+    if flat is None:
+        return None
+    return [flat[i * THERM_COLS:(i + 1) * THERM_COLS] for i in range(THERM_ROWS)]
+
+
 # ---- REST: historical runs, read from the Postgres sink ----
 
 @app.get("/api/runs")
 async def list_runs() -> list[dict[str, Any]]:
-    # TODO: match to the actual `runs` table your sink writes.
     query = """
-        SELECT id, started_at, duration_s, mode, extinguished,
-               max_temp_c, commands
-        FROM runs
-        ORDER BY started_at DESC
+        SELECT s.id, s.robot, s.started_at, s.ended_at, s.notes,
+               count(f.seq)                         AS frames,
+               max(f.t)                             AS duration_s,
+               min(f.tank)                           AS min_tank,
+               coalesce(bool_or(f.cmd_pump), false)  AS pumped,
+               (SELECT count(*) FROM operator_commands c
+                WHERE c.session_id = s.id)           AS operator_commands
+        FROM sessions s
+        LEFT JOIN frames f ON f.session_id = s.id
+        GROUP BY s.id
+        ORDER BY s.started_at DESC
         LIMIT 100
     """
     async with _pool.acquire() as conn:
@@ -65,16 +89,25 @@ async def list_runs() -> list[dict[str, Any]]:
 
 @app.get("/api/runs/{run_id}")
 async def run_detail(run_id: str) -> dict[str, Any]:
-    # TODO: match to the actual `frames` table your sink writes.
     query = """
-        SELECT t, temp_c, battery_v
+        SELECT seq, t, x, y, theta, speed, tank, sensors, thermal,
+               est_x, est_y, est_sigma, mode, cmd_v, cmd_w, cmd_pump, compute_ms
         FROM frames
-        WHERE run_id = $1
-        ORDER BY t ASC
+        WHERE session_id = $1
+        ORDER BY seq ASC
     """
     async with _pool.acquire() as conn:
         rows = await conn.fetch(query, run_id)
-    return {"id": run_id, "points": [dict(r) for r in rows]}
+
+    points = []
+    for r in rows:
+        d = dict(r)
+        sensors = d.pop("sensors")
+        d["sensors"] = json.loads(sensors) if isinstance(sensors, str) else sensors
+        d["thermal"] = _reshape_thermal(d["thermal"])
+        points.append(d)
+
+    return {"id": run_id, "points": points}
 
 
 # ---- REST: command forwarding to the brain ----
@@ -98,32 +131,45 @@ async def post_command(cmd: Command) -> dict[str, Any]:
 
 @app.post("/api/command/estop")
 async def post_estop() -> dict[str, Any]:
-    # TODO: call the same fast-path STOP the voice backstop uses.
-    print("[estop] triggered from console")
+    # TODO: forward an immediate stop to the brain.
+    print("[command] ESTOP")
     return {"ok": True}
 
 
-# ---- WebSocket: live telemetry, bridged from the brain's frame stream ----
+# ---- WebSocket: live telemetry, polling the active session's latest frame ----
 
 @app.websocket("/ws/telemetry")
-async def telemetry_ws(websocket: WebSocket) -> None:
-    await websocket.accept()
+async def ws_telemetry(ws: WebSocket) -> None:
+    await ws.accept()
+    last_seq: int | None = None
     try:
         while True:
-            # TODO: replace with a subscription to the brain's real frame
-            # stream (e.g. an asyncio.Queue fed by the link server) instead
-            # of this placeholder heartbeat.
-            frame = {
-                "t": int(datetime.now(timezone.utc).timestamp()),
-                "mode": "auto",
-                "battery_v": 12.4,
-                "temp_c": 26.5,
-                "gas_ppm": 6.0,
-                "pos": {"x": 0.0, "y": 0.0},
-                "link_ok": True,
-                "last_ack_ms": 30,
-            }
-            await websocket.send_text(json.dumps(frame))
-            await asyncio.sleep(0.8)
+            async with _pool.acquire() as conn:
+                session = await conn.fetchrow(
+                    "SELECT id FROM sessions WHERE ended_at IS NULL "
+                    "ORDER BY started_at DESC LIMIT 1"
+                )
+                if session is None:
+                    await asyncio.sleep(0.4)
+                    continue
+
+                row = await conn.fetchrow(
+                    "SELECT seq, t, x, y, theta, speed, tank, sensors, thermal, "
+                    "est_x, est_y, est_sigma, mode, cmd_v, cmd_w, cmd_pump, compute_ms "
+                    "FROM frames WHERE session_id = $1 "
+                    "ORDER BY seq DESC LIMIT 1",
+                    session["id"],
+                )
+
+            if row is not None and row["seq"] != last_seq:
+                last_seq = row["seq"]
+                d = dict(row)
+                sensors = d.pop("sensors")
+                d["sensors"] = json.loads(sensors) if isinstance(sensors, str) else sensors
+                d["thermal"] = _reshape_thermal(d["thermal"])
+                d["session_id"] = str(session["id"])
+                await ws.send_text(json.dumps(d, default=str))
+
+            await asyncio.sleep(0.4)
     except WebSocketDisconnect:
         pass

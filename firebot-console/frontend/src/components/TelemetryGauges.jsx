@@ -1,37 +1,48 @@
 import React from "react";
 
+// Peak temperature (°C) found in a 24x32 thermal grid, or null if no grid.
+function thermalPeak(thermal) {
+  if (!thermal) return null;
+  let peak = -Infinity;
+  for (const row of thermal) for (const v of row) if (v > peak) peak = v;
+  return Number.isFinite(peak) ? peak : null;
+}
+
 export default function TelemetryGauges({ frame }) {
   if (!frame) return <PanelSkeleton />;
 
-  const battPct = Math.max(0, Math.min(100, ((frame.battery_v - 10.5) / (12.6 - 10.5)) * 100));
-  const tempAlarm = frame.temp_c > 55;
-  const gasAlarm = frame.gas_ppm > 25;
+  const tankPct = Math.max(0, Math.min(100, frame.tank * 100));
+  const peak = thermalPeak(frame.thermal);
+  const tempAlarm = peak != null && peak > 55;
+  const gasLevel = Math.max(frame.sensors?.mq2_front ?? 0, frame.sensors?.mq2_rear ?? 0);
+  const gasPct = Math.max(0, Math.min(100, gasLevel * 100));
+  const gasAlarm = gasPct > 25;
 
   return (
     <div className="panel">
       <PanelHeader label="Telemetry" />
       <div className="grid grid-cols-2 divide-x divide-line border-t border-line">
-        <Metric label="Battery" value={frame.battery_v.toFixed(2)} unit="V" bar={battPct} />
+        <Metric label="Tank" value={tankPct.toFixed(0)} unit="%" bar={tankPct} />
         <Metric
-          label="Core Temp"
-          value={frame.temp_c.toFixed(1)}
+          label="Peak Thermal"
+          value={peak != null ? peak.toFixed(1) : "—"}
           unit="°C"
           alarm={tempAlarm}
         />
       </div>
       <div className="grid grid-cols-2 divide-x divide-line border-t border-line">
-        <Metric label="Gas" value={frame.gas_ppm.toFixed(1)} unit="ppm" alarm={gasAlarm} />
+        <Metric label="Gas" value={gasPct.toFixed(1)} unit="%" alarm={gasAlarm} />
         <Metric
-          label="Link Latency"
-          value={frame.last_ack_ms}
+          label="Compute"
+          value={frame.compute_ms != null ? frame.compute_ms.toFixed(1) : "—"}
           unit="ms"
-          alarm={frame.last_ack_ms > 200}
+          alarm={frame.compute_ms > 200}
         />
       </div>
       <div className="border-t border-line px-4 py-3 flex items-center justify-between">
         <span className="text-[12px] text-muted">Position</span>
         <span className="data text-[13px] text-ink">
-          x {frame.pos.x.toFixed(2)}&nbsp;&nbsp;y {frame.pos.y.toFixed(2)}
+          x {frame.x.toFixed(2)}&nbsp;&nbsp;y {frame.y.toFixed(2)}
         </span>
       </div>
     </div>

@@ -2,12 +2,13 @@ import React, { useMemo, useState } from "react";
 
 const COLUMNS = [
   { key: "id", label: "Run" },
+  { key: "robot", label: "Robot" },
   { key: "started_at", label: "Started" },
   { key: "duration_s", label: "Duration" },
-  { key: "mode", label: "Mode" },
-  { key: "max_temp_c", label: "Max Temp" },
-  { key: "commands", label: "Commands" },
-  { key: "extinguished", label: "Result" },
+  { key: "frames", label: "Frames" },
+  { key: "min_tank", label: "Min Tank" },
+  { key: "operator_commands", label: "Operator Cmds" },
+  { key: "pumped", label: "Result" },
 ];
 
 export default function RunHistoryTable({ runs, selectedId, onSelect }) {
@@ -67,6 +68,7 @@ export default function RunHistoryTable({ runs, selectedId, onSelect }) {
               }`}
             >
               <td className="px-4 py-2.5 text-ink">{run.id}</td>
+              <td className="px-4 py-2.5 text-muted whitespace-nowrap">{run.robot}</td>
               <td className="px-4 py-2.5 text-muted whitespace-nowrap">
                 {new Date(run.started_at).toLocaleString(undefined, {
                   month: "short",
@@ -78,11 +80,13 @@ export default function RunHistoryTable({ runs, selectedId, onSelect }) {
               <td className="px-4 py-2.5 text-muted">
                 {formatDuration(run.duration_s)}
               </td>
-              <td className="px-4 py-2.5 text-muted uppercase">{run.mode}</td>
-              <td className="px-4 py-2.5 text-muted">{run.max_temp_c}°C</td>
-              <td className="px-4 py-2.5 text-muted">{run.commands}</td>
+              <td className="px-4 py-2.5 text-muted">{run.frames}</td>
+              <td className="px-4 py-2.5 text-muted">
+                {run.min_tank != null ? `${(run.min_tank * 100).toFixed(0)}%` : "—"}
+              </td>
+              <td className="px-4 py-2.5 text-muted">{run.operator_commands}</td>
               <td className="px-4 py-2.5">
-                <ResultBadge extinguished={run.extinguished} />
+                <ResultBadge pumped={run.pumped} />
               </td>
             </tr>
           ))}
@@ -92,16 +96,16 @@ export default function RunHistoryTable({ runs, selectedId, onSelect }) {
   );
 }
 
-function ResultBadge({ extinguished }) {
+function ResultBadge({ pumped }) {
   return (
     <span
       className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] border ${
-        extinguished
+        pumped
           ? "border-ok/40 text-ok"
-          : "border-warn/40 text-warn"
+          : "border-line text-faint"
       }`}
     >
-      {extinguished ? "EXTINGUISHED" : "INCOMPLETE"}
+      {pumped ? "PUMPED" : "NO PUMP"}
     </span>
   );
 }

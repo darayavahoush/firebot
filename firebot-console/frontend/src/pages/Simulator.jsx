@@ -7,6 +7,15 @@ import { US_ANGLES, FLAME_ANGLES } from "../lib/simEngine.js";
 
 const SPEEDS = [0.5, 1, 2, 4];
 
+// SpeechRecognition error codes that mean "stop trying" rather than "hiccup, keep listening".
+const FATAL_VOICE_ERRORS = new Set(["not-allowed", "service-not-allowed", "audio-capture", "language-not-supported"]);
+const VOICE_ERROR_MESSAGES = {
+  "not-allowed": "Microphone access was denied \u2014 allow it in your browser's site settings and try again.",
+  "service-not-allowed": "Microphone access was denied \u2014 allow it in your browser's site settings and try again.",
+  "audio-capture": "No microphone found. Check your device and try again.",
+  "language-not-supported": "This browser doesn't support the en-US recognition language.",
+};
+
 export default function Simulator() {
   const engineRef = useRef(null);
   if (!engineRef.current) engineRef.current = new SimController();
@@ -20,6 +29,7 @@ export default function Simulator() {
   const [textCmd, setTextCmd] = useState("");
   const [listening, setListening] = useState(false);
   const [transcript, setTranscript] = useState("");
+  const [voiceError, setVoiceError] = useState("");
   const recogRef = useRef(null);
   const rafRef = useRef(null);
   const lastRef = useRef(performance.now());
@@ -58,6 +68,7 @@ export default function Simulator() {
   const toggleListening = useCallback(() => {
     if (!speechSupported) return;
     if (listening) { const r = recogRef.current; recogRef.current = null; r?.stop(); setListening(false); return; }
+    setVoiceError("");
     const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     const r = new Recognition();
     r.continuous = true; r.interimResults = true; r.lang = "en-US";
@@ -69,7 +80,16 @@ export default function Simulator() {
       }
       if (final) { sendCommand(final); setTranscript(""); } else setTranscript(interim);
     };
-    r.onerror = () => setListening(false);
+    r.onerror = (e) => {
+      // Fatal: the browser has given up on this recognizer for good \u2014 restarting it in
+      // onend would just loop the same error forever. Transient (no-speech, aborted,
+      // occasional network blips) are normal mid-session noise; let onend restart quietly.
+      if (FATAL_VOICE_ERRORS.has(e.error)) {
+        recogRef.current = null; // stops onend from restarting it
+        setListening(false);
+        setVoiceError(VOICE_ERROR_MESSAGES[e.error] || `Speech recognition stopped (${e.error}).`);
+      }
+    };
     r.onend = () => { if (recogRef.current === r) r.start(); }; // keep listening until the user toggles off
     recogRef.current = r;
     r.start();
@@ -152,6 +172,7 @@ export default function Simulator() {
                 listening={listening}
                 toggleListening={toggleListening}
                 transcript={transcript}
+                voiceError={voiceError}
                 textCmd={textCmd}
                 setTextCmd={setTextCmd}
                 sendCommand={sendCommand}
@@ -302,7 +323,7 @@ function PlannerTab({ t }) {
   );
 }
 
-function VoiceTab({ t, speechSupported, listening, toggleListening, transcript, textCmd, setTextCmd, sendCommand }) {
+function VoiceTab({ t, speechSupported, listening, toggleListening, transcript, voiceError, textCmd, setTextCmd, sendCommand }) {
   return (
     <div>
       <PanelHeader label="Voice Command" />
@@ -319,6 +340,7 @@ function VoiceTab({ t, speechSupported, listening, toggleListening, transcript, 
           {listening ? "LIVE" : "MIC"}
         </button>
         {!speechSupported && <div className="text-[11px] text-faint text-center">Speech recognition isn\u2019t supported in this browser \u2014 use the text field below.</div>}
+        {speechSupported && voiceError && <div className="text-[11px] text-warn text-center">{voiceError}</div>}
         {transcript && <div className="text-[12px] text-muted font-mono italic">\u201c{transcript}\u2026\u201d</div>}
       </div>
       <div className="border-t border-line px-4 py-3 flex gap-2">
