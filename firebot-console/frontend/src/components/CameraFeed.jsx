@@ -1,12 +1,16 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { PanelHeader } from "./TelemetryGauges.jsx";
 
-// Real camera render, driven by live telemetry. When a real 24x32 thermal
-// grid is available (frames.thermal, sent every Nth frame — see
-// src/firebot/link/pg.py) it's drawn as a color-mapped heatmap overlay on
-// top of the synthetic corridor scene. Until the first real thermal frame
-// arrives, a lightweight ambient heat blob fills in so the feed doesn't sit
-// blank — it's cosmetic only and never reads real sensor data.
+// Real camera render, driven by live telemetry. There's no actual forward-facing camera wired
+// into the robot yet (no capture/encode/transport anywhere in this stack) -- what plays here is
+// placeholder footage downloaded from a public sample-video bucket, standing in for a real feed
+// until one exists. Swap FOOTAGE_URL for the real stream's URL (or drop the <video> entirely and
+// go back to drawCorridor()) once the robot actually has a camera. The thermal heatmap overlay
+// on top IS real: when a 24x32 grid is available (frames.thermal, sent every Nth frame — see
+// src/firebot/link/pg.py) it's drawn as a color-mapped layer over whatever's playing beneath it.
+const FOOTAGE_URL =
+  "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4";
+
 const THERM_ROWS = 24;
 const THERM_COLS = 32;
 
@@ -19,12 +23,16 @@ function thermalPeak(thermal) {
 
 export default function CameraFeed({ frame }) {
   const canvasRef = useRef(null);
+  const videoRef = useRef(null);
   const rafRef = useRef(null);
   const frameRef = useRef(frame);
   const thermalRef = useRef(null); // last known real thermal grid, persists between polls
+  const [footageOk, setFootageOk] = useState(true); // false if the placeholder clip fails to load
   // Driving response state: `phase` is how far the floor seams have "traveled" (drives the
   // forward-rush illusion), `pan` is a smoothed vanishing-point offset that follows cmd_w so a
   // turn command visibly swings the view. Both are integrated from real cmd_v/cmd_w, not time.
+  // Only used for the drawCorridor() fallback -- with real footage playing there's no synthetic
+  // scene to pan/rush, so the video itself is the picture.
   const motionRef = useRef({ phase: 0, pan: 0, lastNow: null });
   frameRef.current = frame;
   if (frame?.thermal) thermalRef.current = frame.thermal;
@@ -54,11 +62,19 @@ export default function CameraFeed({ frame }) {
       m.phase += v * dt * 5.5;                       // seam flow speed scales with real v
       m.pan += (w * 26 - m.pan) * Math.min(1, dt * 6); // smoothed pan toward turn command
 
-      drawCorridor(ctx, cssW, cssH, cx, cy, f, t, m.phase, m.pan);
-      if (v > 0.03) drawSpeedLines(ctx, cssW, cssH, cx, cy, v);
+      if (footageOk) {
+        // Real footage is playing underneath (an actual <video> element, not this canvas) --
+        // just clear so it shows through, then layer the real/synthetic sensor overlays on top.
+        ctx.clearRect(0, 0, cssW, cssH);
+      } else {
+        // Placeholder clip failed to load (offline, blocked, etc.) -- fall back to the old
+        // fully-synthetic corridor render so the panel never sits truly blank.
+        drawCorridor(ctx, cssW, cssH, cx, cy, f, t, m.phase, m.pan);
+        if (v > 0.03) drawSpeedLines(ctx, cssW, cssH, cx, cy, v);
+      }
       if (thermalRef.current) {
         drawThermalOverlay(ctx, cssW, cssH, thermalRef.current);
-      } else {
+      } else if (!footageOk) {
         drawHeatSource(ctx, cssW, cssH, cx, cy, f, t);
       }
       drawGrain(ctx, cssW, cssH, t);
@@ -66,7 +82,7 @@ export default function CameraFeed({ frame }) {
     }
     rafRef.current = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(rafRef.current);
-  }, []);
+  }, [footageOk]);
 
   const peak = thermalPeak(thermalRef.current);
   const driving = frame && (Math.abs(frame.cmd_v ?? 0) > 0.03 || Math.abs(frame.cmd_w ?? 0) > 0.03);
@@ -82,6 +98,19 @@ export default function CameraFeed({ frame }) {
         }
       />
       <div className="border-t border-line flex-1 relative bg-scope min-h-[280px] overflow-hidden">
+        {footageOk && (
+          <video
+            ref={videoRef}
+            className="absolute inset-0 w-full h-full object-cover"
+            style={{ filter: "saturate(0.55) brightness(0.6) contrast(1.15) hue-rotate(65deg)" }}
+            src={FOOTAGE_URL}
+            autoPlay
+            loop
+            muted
+            playsInline
+            onError={() => setFootageOk(false)}
+          />
+        )}
         <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
 
         <CrosshairOverlay />
