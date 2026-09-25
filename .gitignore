@@ -14,3 +14,4 @@ dist/
 firebot-console/frontend/node_modules/
 firebot-console/frontend/dist/
 firebot-console/backend/.venv/
+.venv-ompl/
