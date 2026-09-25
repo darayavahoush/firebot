@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback, useRef } from "react";
 import Sidebar from "./components/Sidebar.jsx";
 import TopBar from "./components/TopBar.jsx";
 import LiveOps from "./pages/LiveOps.jsx";
+import Simulator from "./pages/Simulator.jsx";
 import History from "./pages/History.jsx";
 import { connectTelemetry, sendCommand, sendEstop } from "./api/client.js";
 
@@ -111,6 +112,8 @@ export default function App() {
             onPump={onPump}
             onNozzle={onNozzle}
           />
+        ) : page === "sim" ? (
+          <Simulator />
         ) : (
           <History />
         )}

@@ -12,12 +12,28 @@ _OFFS = np.array([[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1], [.7, .7], [-.7, .7],
 
 
 class World:
-    def __init__(self, walls=None) -> None:
+    def __init__(self, walls=None, width: float = W, height: float = H) -> None:
+        """`width`/`height` default to the module constants (the fixed single-room map every
+        other test and the command schema assume). Passing larger values -- see
+        `World.random()` -- builds a bigger instance without touching that default."""
         self.walls = list(walls if walls is not None else DEFAULT_WALLS)
-        self.grid = np.zeros((int(H / RES), int(W / RES)), dtype=bool)
+        self.width, self.height = float(width), float(height)
+        self.grid = np.zeros((int(self.height / RES), int(self.width / RES)), dtype=bool)
         for x, y, w, h in self.walls:
             self.grid[int(y / RES):int(np.ceil((y + h) / RES)),
                       int(x / RES):int(np.ceil((x + w) / RES))] = True
+
+    @classmethod
+    def random(cls, rng: np.random.Generator | None = None, seed: int | None = None) -> World:
+        """A bigger, procedurally-generated multi-room building, different every call.
+
+        Uses `firebot.sim.mapgen.generate_building` (BSP room partition + doorways) so training
+        and demo runs aren't stuck fighting the same single pillar every episode.
+        """
+        from .mapgen import generate_building
+        rng = rng if rng is not None else np.random.default_rng(seed)
+        width, height, walls = generate_building(rng)
+        return cls(walls=walls, width=width, height=height)
 
     def occupied(self, x, y):
         """Vectorised occupancy test; out-of-bounds counts as occupied."""
@@ -44,7 +60,7 @@ class World:
 
     def random_free_point(self, rng: np.random.Generator, margin=0.5, avoid=None, min_dist=0.0):
         while True:
-            x, y = rng.uniform(1, W - 1), rng.uniform(1, H - 1)
+            x, y = rng.uniform(1, self.width - 1), rng.uniform(1, self.height - 1)
             if not self.is_free(x, y, margin):
                 continue
             if avoid is not None and np.hypot(x - avoid[0], y - avoid[1]) < min_dist:

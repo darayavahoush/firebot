@@ -11,7 +11,7 @@ from typing import Protocol
 
 import numpy as np
 
-from firebot.sim.world import RES, H, W, World
+from firebot.sim.world import RES, World
 
 ROBOT_RADIUS = 0.22  # matches FireEnv's collision radius
 
@@ -92,7 +92,8 @@ class RRTStar:
         cost = np.zeros(self.max_iter + 1)
         pts[0], n, best, best_cost = s, 1, -1, np.inf
         for _ in range(self.max_iter):
-            q = g if self.rng.random() < self.goal_bias else self.rng.uniform([0, 0], [W, H])
+            q = (g if self.rng.random() < self.goal_bias
+                 else self.rng.uniform([0, 0], [self.world.width, self.world.height]))
             d = np.hypot(*(pts[:n] - q).T)
             i = int(np.argmin(d))
             direction = (q - pts[i]) / max(d[i], 1e-9)

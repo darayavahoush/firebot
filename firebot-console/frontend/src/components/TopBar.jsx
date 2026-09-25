@@ -2,6 +2,7 @@ import React from "react";
 
 const TITLES = {
   live: { title: "Live Operations", sub: "Real-time telemetry and manual control" },
+  sim: { title: "Simulator", sub: "Procedural map, mock sensors, planner, voice control" },
   history: { title: "Run History", sub: "Logged runs from Postgres" },
 };
 

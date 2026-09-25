@@ -71,10 +71,13 @@ def standoff_point(world: World, cmap: CostMap, fire: np.ndarray, robot: np.ndar
 
 
 class PlanningController:
-    def __init__(self, world: World, seed: int | None = 0) -> None:
+    def __init__(self, world: World, seed: int | None = 0, planner_cls=RRTStar) -> None:
+        """`planner_cls` is anything satisfying the `Planner` protocol and constructible as
+        `planner_cls(world, seed=seed)` -- pass `firebot.planning.OMPLPlanner` to route through
+        real OMPL instead of the built-in numpy RRT*; everything else here is unaffected."""
         self.world = world
         self.rule = RuleController()
-        self.planner = RRTStar(world, seed=seed)
+        self.planner = planner_cls(world, seed=seed)
         self.path: np.ndarray | None = None
         self.goal: np.ndarray | None = None
         self.since_plan = np.inf
