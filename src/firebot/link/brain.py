@@ -6,7 +6,10 @@ the network. Safety properties:
   * an operator STOP is spotted the moment it is submitted (before it is queued) and overrides
     the next outgoing command even if a slow planning step is in flight;
   * commands from a malformed frame are never produced: bad frames are dropped, and the Pi's
-    watchdog covers the gap.
+    watchdog covers the gap;
+  * manual joystick samples (`submit_manual`) coalesce to the latest value between frames and
+    carry their own dead-man timeout in `CommandController` -- silence stops the robot even if
+    the operator's console never sends another sample.
 """
 from __future__ import annotations
 
@@ -42,6 +45,8 @@ class Brain:
         self.robot, self.auto, self.seed = robot, auto, seed
         self.sid = self.sink.start_session(robot, "brain session", {"seed": seed, "auto": auto})
         self._texts: queue.Queue[tuple[str, str]] = queue.Queue()
+        self._manual_lock = threading.Lock()
+        self._manual_sample: tuple[float, float, bool, float] | None = None
         self.estop = threading.Event()
         self.pending: Intent | None = None
         self.last_t: float | None = None
@@ -58,6 +63,15 @@ class Brain:
             self.estop.set()
         self._texts.put((text, channel))
 
+    def submit_manual(self, v: float, w: float, pump: bool = False, nozzle: float = 0.0) -> None:
+        """Latest joystick/HTTP-bridge sample (callable from any thread).
+
+        Only the newest sample matters -- this overwrites, it does not queue -- so a burst of
+        UI ticks between frames never backs up.
+        """
+        with self._manual_lock:
+            self._manual_sample = (float(v), float(w), bool(pump), float(nozzle))
+
     def _drain_texts(self) -> None:
         while True:
             try:
@@ -65,6 +79,12 @@ class Brain:
             except queue.Empty:
                 return
             self._handle_text(text, channel)
+
+    def _drain_manual(self) -> None:
+        with self._manual_lock:
+            sample, self._manual_sample = self._manual_sample, None
+        if sample is not None:
+            self.ctrl.update_manual(*sample)
 
     def _handle_text(self, text: str, channel: str) -> None:
         if self.pending is not None:
@@ -95,6 +115,7 @@ class Brain:
             if self.auto:
                 self.submit_text("put out the fire")
         self._drain_texts()
+        self._drain_manual()
         dt = 0.1 if self.last_t is None else float(np.clip(frame.t - self.last_t, 0.02, 0.5))
         self.last_t = frame.t
         s = {**frame.sensors, "thermal": np.asarray(frame.thermal, dtype=np.float32)}

@@ -1,8 +1,15 @@
 """Turns validated intents into robot behaviour. Sits between the interpreter and the sim/ESP.
 
 Modes: IDLE (stopped, waiting), AUTO (search -> approach -> suppress via PlanningController),
-GOTO (drive a planned path; pump never on). STOP always wins and latches until the next motion
-command. The pump is only ever driven by AUTO's suppression logic -- there is no "pump on" intent.
+GOTO (drive a planned path; pump never on), MANUAL (console joystick/cmdhttp bridge; operator
+drives and pumps directly). STOP always wins and latches until the next motion command.
+
+MANUAL is entered via `update_manual()`, a fast path for continuous joystick-style samples that
+bypasses `handle()`'s validation/logging so a full joystick tick rate doesn't spam the operator
+log. It carries its own 0.5s dead-man timeout (`MANUAL_TIMEOUT`): if no fresh sample arrives
+within that window, `act()` drops back to IDLE on its own, even with no operator STOP. Nozzle
+angle is tracked here for completeness but has no backing actuator anywhere in the physics
+model or wire protocol -- it never reaches the returned action.
 """
 from __future__ import annotations
 
@@ -18,6 +25,7 @@ from .parser import HOME
 
 STUCK_AFTER = 2.0   # s commanded forward without moving -> replan
 BLOCKED_FRONT = 0.3  # m
+MANUAL_TIMEOUT = 0.5  # s without a fresh update_manual() sample -> auto-IDLE
 
 
 @dataclass
@@ -38,6 +46,8 @@ class CommandController:
         self.pose = np.zeros(3)
         self.stuck = 0.0
         self.arrived = False
+        self.manual_state = {"v": 0.0, "w": 0.0, "pump": False, "nozzle": 0.0}
+        self.manual_idle = 0.0
 
     # ---- command side -------------------------------------------------------------------
     def handle(self, intent: Intent, confirmed: bool = False) -> Result:
@@ -59,6 +69,10 @@ class CommandController:
         if n in ("GOTO", "RETURN_HOME"):
             xy = HOME if n == "RETURN_HOME" else (intent.params["x"], intent.params["y"])
             return self._goto(xy, "home" if n == "RETURN_HOME" else f"({xy[0]:.1f}, {xy[1]:.1f})")
+        if n == "MANUAL":
+            p = intent.params
+            self.update_manual(p["v"], p["w"], p["pump"], p["nozzle"])
+            return Result(True, "Manual control engaged.")
         return Result(False, "Sorry, I didn't understand that. Try: extinguish, go to <place>, "
                              "return home, status, stop.")
 
@@ -75,6 +89,21 @@ class CommandController:
             return Result(False, f"No safe route to {label}.")
         self.mode, self.path, self.goal, self.arrived = "GOTO", path, xy, False
         return Result(True, f"Heading to {label}.")
+
+    def update_manual(self, v: float, w: float, pump: bool = False, nozzle: float = 0.0) -> None:
+        """Fast path for a continuous joystick-style sample: no validation, no operator log.
+
+        Enters/refreshes MANUAL mode and resets the dead-man clock. Values are clamped
+        defensively even though callers are expected to have already validated them.
+        """
+        self.mode, self.path = "MANUAL", None
+        self.manual_state = {
+            "v": float(np.clip(v, 0.0, 1.0)),
+            "w": float(np.clip(w, -1.0, 1.0)),
+            "pump": bool(pump),
+            "nozzle": float(np.clip(nozzle, -45.0, 45.0)),
+        }
+        self.manual_idle = 0.0
 
     def status(self) -> str:
         if self.obs is None:
@@ -93,6 +122,13 @@ class CommandController:
         idle = np.zeros(3, dtype=np.float32)
         if self.mode == "AUTO":
             return self.auto.act(obs, self.pose, dt)
+        if self.mode == "MANUAL":
+            self.manual_idle += dt
+            if self.manual_idle > MANUAL_TIMEOUT:
+                self.mode = "IDLE"
+                return idle
+            m = self.manual_state
+            return np.array([m["v"], m["w"], 1.0 if m["pump"] else 0.0], dtype=np.float32)
         if self.mode != "GOTO" or self.path is None:
             return idle
         front = min(obs[0], obs[1]) * 4

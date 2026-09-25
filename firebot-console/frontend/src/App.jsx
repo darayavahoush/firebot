@@ -9,12 +9,27 @@ import { connectTelemetry, sendCommand, sendEstop } from "./api/client.js";
 export default function App() {
   const [page, setPage] = useState("live");
   const [frame, setFrame] = useState(null);
+  const [linkOk, setLinkOk] = useState(true);
   const [mode, setModeState] = useState("auto");
   const [log, setLog] = useState([]);
   const logRef = useRef(null);
+  const lastFrameAtRef = useRef(0);
+
+  // `frame.link_ok` doesn't exist on the wire (the frames table has no such column), so this
+  // used to read undefined and show "LINK LOST" permanently. Derive it instead from whether
+  // telemetry is actually still arriving -- 2s is a few missed polls' worth of slack over the
+  // console's 0.4s Postgres poll interval, well above normal jitter but still catches a stall.
+  useEffect(() => {
+    const id = setInterval(() => {
+      setLinkOk(lastFrameAtRef.current !== 0 && Date.now() - lastFrameAtRef.current < 2000);
+    }, 500);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     const disconnect = connectTelemetry((f) => {
+      lastFrameAtRef.current = Date.now();
+      setLinkOk(true);
       setFrame(f);
       if (f.mode) setModeState(f.mode);
     });
@@ -97,7 +112,7 @@ export default function App() {
 
   return (
     <div className="min-h-full flex">
-      <Sidebar page={page} setPage={setPage} linkOk={frame ? frame.link_ok : true} />
+      <Sidebar page={page} setPage={setPage} linkOk={frame ? linkOk : true} />
 
       <div className="flex-1 flex flex-col min-w-0">
         <TopBar page={page} mode={mode} onEstop={onEstop} />
