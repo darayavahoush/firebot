@@ -38,6 +38,9 @@ def brain_main() -> None:
     p.add_argument("--port", type=int, default=8765)
     p.add_argument("--token", default=os.environ.get("FIREBOT_TOKEN", ""),
                    help="shared secret the robot must present (or env FIREBOT_TOKEN)")
+    p.add_argument("--cmd-port", type=int, default=8766,
+                   help="loopback HTTP port for manual-control commands from the console "
+                        "backend (see firebot.link.cmdhttp); needs --token; 0 disables it")
     p.add_argument("--db", default=os.environ.get("FIREBOT_DB"),
                    help="PostgreSQL DSN (or env FIREBOT_DB); omit to run without logging")
     p.add_argument("--thermal-every", type=int, default=10,
@@ -70,6 +73,17 @@ def brain_main() -> None:
 
     server = BrainServer(make_brain, a.host, a.port, a.token)
     holder["server"] = server
+
+    bridge = None
+    if a.cmd_port and a.token:
+        from .cmdhttp import CommandBridge
+        bridge = CommandBridge(server, token=a.token, port=a.cmd_port)
+        bridge.start_in_thread()
+        log.info("manual-control command bridge on 127.0.0.1:%d", bridge.server_address[1])
+    elif a.cmd_port:
+        log.warning("no --token: manual-control command bridge disabled "
+                    "(console backend's drive/pump/estop calls will fail)")
+    holder["bridge"] = bridge
     loop = asyncio.new_event_loop()
 
     def operator_input() -> None:
@@ -103,6 +117,8 @@ def brain_main() -> None:
         pass
     finally:
         loop.run_until_complete(server.stop())
+        if bridge is not None:
+            bridge.shutdown()
         if hasattr(sink, "close"):
             sink.close()
 

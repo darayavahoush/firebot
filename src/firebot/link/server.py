@@ -57,6 +57,14 @@ class BrainServer:
 
     say_to_operator = submit_command  # older name
 
+    def submit_manual(self, v: float, w: float, pump: bool = False, nozzle: float = 0.0) -> bool:
+        """Manual joystick/HTTP-bridge sample for the connected robot. False if none."""
+        brain = self.brain
+        if brain is None:
+            return False
+        brain.submit_manual(v, w, pump, nozzle)
+        return True
+
     def emergency_stop(self, heard: str = "stop") -> bool:
         """STOP backstop: called the instant a stop word is heard, mid-utterance."""
         return self.submit_command("stop", "backstop")

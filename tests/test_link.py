@@ -406,6 +406,113 @@ def test_estop_overrides_inflight_command():
     assert hw.applied and all(c.v == 0 and not c.pump for c in hw.applied)
 
 
+# ---- manual control (console joystick / cmdhttp bridge) -------------------------------------
+def test_manual_drive_via_server_reaches_hardware():
+    box = {}
+    hooks = {5: lambda: box["srv"].submit_manual(0.7, 0.0, pump=True, nozzle=15.0)}
+    hw = Probe(seed=4, max_steps=60, hooks=hooks)
+
+    async def go():
+        sink = BufferedSink(MemoryBackend())
+        srv = BrainServer(lambda: Brain(sink=sink, seed=4), token="t")
+        box["srv"] = srv
+        await srv.start()
+        ag = PiAgent(hw, "127.0.0.1", srv.bound_port, "t", lockstep=True, watchdog=1.0)
+        await asyncio.wait_for(ag.run(), 30)
+        await srv.stop()
+    asyncio.run(go())
+    driving = [c for c in hw.applied if c.v > 0]
+    assert driving and driving[0].v == pytest.approx(0.7) and driving[0].pump
+
+
+def test_manual_dead_man_timeout_over_link():
+    """No fresh submit_manual() call -> the executor's own timeout stops the robot, even
+
+    though the operator never sent STOP."""
+    box = {}
+    hooks = {5: lambda: box["srv"].submit_manual(1.0, 0.0)}  # one sample, then silence
+    hw = Probe(seed=4, max_steps=200, hooks=hooks)
+
+    async def go():
+        sink = BufferedSink(MemoryBackend())
+        srv = BrainServer(lambda: Brain(sink=sink, seed=4), token="t")
+        box["srv"] = srv
+        await srv.start()
+        ag = PiAgent(hw, "127.0.0.1", srv.bound_port, "t", lockstep=True, watchdog=1.0)
+        await asyncio.wait_for(ag.run(), 60)
+        await srv.stop()
+    asyncio.run(go())
+    moved = [i for i, c in enumerate(hw.applied) if c.v > 0]
+    stopped_again = [i for i, c in enumerate(hw.applied) if c.v == 0 and i > moved[-1]]
+    assert moved and stopped_again                 # drove briefly, then the dead-man kicked in
+    assert all(c.v == 0 and not c.pump for c in hw.applied[stopped_again[0]:])
+
+
+def test_manual_submit_when_disconnected_is_a_noop():
+    srv = BrainServer(lambda: Brain(sink=BufferedSink(MemoryBackend())), token="t")
+    assert srv.submit_manual(0.5, 0.0) is False   # no robot connected: nothing to crash into
+
+
+# ---- cmdhttp: loopback bridge the console backend calls -------------------------------------
+def _http_post(port, path, body, token="t"):
+    import urllib.error
+    import urllib.request
+    req = urllib.request.Request(
+        f"http://127.0.0.1:{port}{path}", data=json.dumps(body).encode(),
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"},
+        method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=2) as r:
+            return r.status, json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        return e.code, json.loads(e.read())
+
+
+def test_cmdhttp_bridge_requires_a_token():
+    from firebot.link.cmdhttp import CommandBridge
+    srv = BrainServer(lambda: Brain(sink=BufferedSink(MemoryBackend())), token="t")
+    with pytest.raises(ValueError):
+        CommandBridge(srv, token="", port=0)
+
+
+def test_cmdhttp_bridge_forwards_manual_and_estop_and_checks_token():
+    from firebot.link.cmdhttp import CommandBridge
+
+    box = {}
+
+    def send_wrong_token():
+        box["wrong"] = _http_post(box["port"], "/manual", {"v": 0.5, "w": 0.0}, token="nope")
+
+    def send_manual():
+        box["manual"] = _http_post(box["port"], "/manual", {"v": 0.5, "w": 0.0}, token="tok")
+
+    def send_estop():
+        box["estop"] = _http_post(box["port"], "/estop", {}, token="tok")
+
+    hooks = {5: send_wrong_token, 8: send_manual, 40: send_estop}
+    hw = Probe(seed=4, max_steps=80, hooks=hooks)
+
+    async def go():
+        sink = BufferedSink(MemoryBackend())
+        srv = BrainServer(lambda: Brain(sink=sink, seed=4), token="tok")
+        await srv.start()
+        bridge = CommandBridge(srv, token="tok", port=0)
+        box["port"] = bridge.server_address[1]
+        bridge.start_in_thread()
+        ag = PiAgent(hw, "127.0.0.1", srv.bound_port, "tok", lockstep=True, watchdog=1.0)
+        await asyncio.wait_for(ag.run(), 30)
+        bridge.shutdown()
+        await srv.stop()
+    asyncio.run(go())
+
+    assert box["wrong"][0] == 401 and not box["wrong"][1]["ok"]
+    assert box["manual"] == (200, {"ok": True})
+    assert box["estop"] == (200, {"ok": True})
+    driving = [c for c in hw.applied if c.v > 0]
+    assert driving                                   # the HTTP /manual call reached the robot
+    assert all(c.v == 0 and not c.pump for c in hw.applied[-5:])  # then /estop stopped it
+
+
 # ---- telemetry sink ------------------------------------------------------------------------
 def _row_frame(i):
     return P.Frame(i, i * 0.1, (0.0, 0.0, 0.0), 0.0, 1.0, {k: 0.0 for k in P.SCALARS}, [])

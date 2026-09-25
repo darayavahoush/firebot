@@ -21,9 +21,12 @@ SCHEMA: dict[str, dict[str, tuple[type, float | None, float | None]]] = {
     "GOTO": {"x": (float, MARGIN, W - MARGIN), "y": (float, MARGIN, H - MARGIN)},
     "RETURN_HOME": {},
     "STATUS": {},
+    # console joystick / cmdhttp bridge only -- never produced by the text/voice parsers.
+    "MANUAL": {"v": (float, 0.0, 1.0), "w": (float, -1.0, 1.0),
+               "pump": (bool, None, None), "nozzle": (float, -45.0, 45.0)},
     "UNKNOWN": {},                    # parser understood nothing
 }
-SAFE_WITHOUT_CONFIRMATION = {"STOP", "STATUS", "UNKNOWN"}
+SAFE_WITHOUT_CONFIRMATION = {"STOP", "STATUS", "UNKNOWN", "MANUAL"}
 
 
 @dataclass
