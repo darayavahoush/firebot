@@ -6,9 +6,9 @@ export default function StatusStrip({ frame, mode, logCount }) {
       <Stat label="System" value={frame ? "OPERATIONAL" : "CONNECTING"} tone={frame ? "ok" : "muted"} />
       <Stat label="Mode" value={mode.toUpperCase()} tone="ink" />
       <Stat
-        label="Link Latency"
-        value={frame ? `${frame.last_ack_ms} ms` : "—"}
-        tone={frame && frame.last_ack_ms > 200 ? "warn" : "ink"}
+        label="Compute Time"
+        value={frame && frame.compute_ms != null ? `${frame.compute_ms.toFixed(1)} ms` : "—"}
+        tone={frame && frame.compute_ms > 200 ? "warn" : "ink"}
       />
       <Stat label="Commands Sent" value={logCount} tone="ink" />
     </div>
