@@ -1,5 +1,4 @@
 import React from "react";
-import StatusStrip from "../components/StatusStrip.jsx";
 import TelemetryGauges from "../components/TelemetryGauges.jsx";
 import CameraFeed from "../components/CameraFeed.jsx";
 import ControlPanel from "../components/ControlPanel.jsx";
@@ -16,8 +15,6 @@ export default function LiveOps({
   onNozzle,
 }) {
   return (
-    <>
-    <StatusStrip frame={frame} mode={mode} logCount={log.length} />
     <div className="grid grid-cols-12 gap-4 p-6">
       <div className="col-span-8 flex flex-col gap-4">
         <CameraFeed frame={frame} />
@@ -35,6 +32,5 @@ export default function LiveOps({
         <CommandLog entries={log} />
       </div>
     </div>
-    </>
   );
 }

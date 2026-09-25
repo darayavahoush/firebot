@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>FireBot Sim</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);--bg:#f4f5f7;--fg:#14181f;--card:#fff;--mut:#667085;--line:#d9dde4;--acc:#2563eb;--fire:#e8590c;--ok:#16a34a;--wall:#3b4252;--floor:#eef0f3}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0d1117;--fg:#e6edf3;--card:#161b22;--mut:#8b949e;--line:#2b323c;--acc:#58a6ff;--fire:#ff7b3a;--ok:#3fb950;--wall:#6b7686;--floor:#10151c}}
+:root[data-theme="dark"]{--bg:#0d1117;--fg:#e6edf3;--card:#161b22;--mut:#8b949e;--line:#2b323c;--acc:#58a6ff;--fire:#ff7b3a;--ok:#3fb950;--wall:#6b7686;--floor:#10151c}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.4 -apple-system,"Segoe UI",Inter,Roboto,sans-serif}
+header{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line)}
+h1{font-size:16px;margin:0;flex:1;min-width:140px}
+h1 small{color:var(--mut);font-weight:400}
+button{background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:7px 12px;cursor:pointer;font:inherit}
+button.p{background:var(--acc);border-color:var(--acc);color:#fff}
+label{color:var(--mut);display:flex;align-items:center;gap:6px}
+.chip{padding:3px 10px;border-radius:99px;background:var(--acc);color:#fff;font-weight:600;font-size:12px;letter-spacing:.04em}
+main{display:grid;grid-template-columns:minmax(0,2fr) minmax(280px,1fr);gap:14px;padding:14px 16px;max-width:1300px;margin:auto}
+@media(max-width:860px){main{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px}
+h2{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--mut);margin:0 0 8px}
+canvas{width:100%;display:block;border-radius:8px}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.m{background:var(--bg);border-radius:8px;padding:8px}.m b{display:block;font-size:18px}.m span{color:var(--mut);font-size:11px}
+.bar{display:flex;align-items:center;gap:8px;margin:3px 0;font-size:12px}.bar i{flex:1;height:6px;background:var(--bg);border-radius:4px;overflow:hidden}.bar u{display:block;height:100%;background:var(--acc);width:0}
+.bar.f u{background:var(--fire)}.bar em{width:64px;font-style:normal;color:var(--mut)}
+.col{display:flex;flex-direction:column;gap:14px}
+.wrap{overflow-x:auto}table{width:100%;border-collapse:collapse;font-size:12px}td,th{padding:4px 6px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap}th{color:var(--mut);font-weight:500}
+</style></head><body>
+<header><h1>FireBot Sim <small>· EIF fire-source fusion · rule-based confrontation</small></h1>
+<span class="chip" id="st">EXPLORE</span>
+<button class="p" id="pp">Pause</button><button id="rs">New scenario</button>
+<label>Speed <input type="range" id="sp" min="1" max="8" value="2"></label>
+<label><input type="checkbox" id="gt"> Ground truth</label></header>
+<main>
+<div class="col"><div class="card"><canvas id="c" width="720" height="480"></canvas>
+<div style="color:var(--mut);font-size:12px;margin-top:6px">Click the map to relocate the fire. Orange ring = EIF estimate (uncertainty ellipse). Wedge = thermal FOV, thin lines = ultrasonics.</div></div>
+<div class="card"><h2>Estimation error (m) vs time</h2><canvas id="ch" width="720" height="110"></canvas></div></div>
+<div class="col">
+<div class="card"><h2>Fusion</h2><div class="grid">
+<div class="m"><b id="e1">–</b><span>Est. error</span></div><div class="m"><b id="e2">–</b><span>Uncertainty σ</span></div><div class="m"><b id="e3">–</b><span>Range to est.</span></div>
+<div class="m"><b id="e4">–</b><span>Thermal peak °C</span></div><div class="m"><b id="e5">–</b><span>Gas (MQ-2)</span></div><div class="m"><b id="e6">100%</b><span>Water tank</span></div></div></div>
+<div class="card"><h2>Sensors</h2><div id="sb"></div></div>
+<div class="card"><h2>Fire event log (DB)</h2><div class="wrap"><table><thead><tr><th>t</th><th>event</th><th>est x,y</th><th>conf</th></tr></thead><tbody id="lg"></tbody></table></div></div>
+</div></main>
+<script>
+const $=i=>document.getElementById(i),cv=$('c'),g=cv.getContext('2d'),ch=$('ch').getContext('2d'),S=60;
+const walls=[[0,0,12,.1],[0,7.9,12,.1],[0,0,.1,8],[11.9,0,.1,8],[3,1.5,.3,3.5],[6.5,3.5,3,.3],[7.5,6,.3,1.9]];
+const hit=(x,y)=>walls.some(w=>x>w[0]&&x<w[0]+w[2]&&y>w[1]&&y<w[1]+w[3]);
+const ray=(x,y,a,m)=>{for(let d=0;d<m;d+=.04)if(hit(x+Math.cos(a)*d,y+Math.sin(a)*d))return d;return m};
+const rn=()=>Math.sqrt(-2*Math.log(1-Math.random()))*Math.cos(6.283185*Math.random());
+const wrap=a=>Math.atan2(Math.sin(a),Math.cos(a)),cl=(v,a,b)=>Math.max(a,Math.min(b,v));
+const free=(x,y,r)=>![[0,0],[r,0],[-r,0],[0,r],[0,-r]].some(o=>hit(x+o[0],y+o[1]));
+const USA=[.44,-.44,1.57,-1.57],FLA=[-.52,0,.52];
+let R,F,Y,yv,st,T,run=true,tank,errs,logs,lost,fixed,sprayT,S_,acc;
+function reset(){R={x:1.2,y:1,th:.6};do{F={x:2+Math.random()*9.5,y:.8+Math.random()*6.4,p:1}}while(!free(F.x,F.y,.5)||Math.hypot(F.x-R.x,F.y-R.y)<4);relocLater=0;init()}
+let relocLater=0;
+function init(){Y=[[.01,0],[0,.01]];yv=[.06,.04];st='EXPLORE';T=0;tank=1;errs=[];logs=[];lost=0;fixed=false;sprayT=0;acc=0;S_={us:[4,4,4,4],fl:[0,0,0],gas:0,temp:25,seen:false,zt:0,pump:false};$('lg').innerHTML=''}
+function xh(){const[a,b]=Y[0],[c,d]=Y[1],dt=a*d-b*c,P=[[d/dt,-b/dt],[-c/dt,a/dt]];return{x:P[0][0]*yv[0]+P[0][1]*yv[1],y:P[1][0]*yv[0]+P[1][1]*yv[1],P}}
+function upd(z,sg){const e=xh(),dx=e.x-R.x,dy=e.y-R.y,r2=dx*dx+dy*dy+1e-6,H=[-dy/r2,dx/r2],ri=1/(sg*sg),c=wrap(z-(Math.atan2(dy,dx)-R.th))+H[0]*e.x+H[1]*e.y;
+for(let i=0;i<2;i++){yv[i]+=H[i]*ri*c;for(let j=0;j<2;j++)Y[i][j]+=H[i]*H[j]*ri}}
+function ev(m){const e=xh(),s=Math.sqrt(Math.max(e.P[0][0],e.P[1][1]));logs.unshift([T.toFixed(1)+'s',m,e.x.toFixed(1)+', '+e.y.toFixed(1),(cl(1-s/4,0,1)*100|0)+'%']);
+$('lg').innerHTML=logs.slice(0,7).map(r=>'<tr>'+r.map(c=>'<td>'+c+'</td>').join('')+'</tr>').join('')}
+function setSt(s,m){if(st!==s){st=s;$('st').textContent=s;if(m)ev(m)}}
+function sense(){const dx=F.x-R.x,dy=F.y-R.y,d=Math.hypot(dx,dy),ba=Math.atan2(dy,dx);
+const vis=d<8&&ray(R.x,R.y,ba,d)>d-.2&&F.p>0;
+S_.us=USA.map(a=>cl(ray(R.x,R.y,R.th+a,4)+rn()*.02,.02,4));
+S_.fl=FLA.map(a=>{const b=wrap(ba-R.th-a);return vis&&Math.abs(b)<.6?cl(F.p*(1-Math.abs(b)/.6)*Math.min(1,3/d)+rn()*.02,0,1):Math.max(0,rn()*.01)});
+const b0=wrap(ba-R.th);S_.seen=vis&&Math.abs(b0)<.48;S_.zt=b0+rn()*.03;
+S_.temp=25+(S_.seen?F.p*320/(1+d*d*.3):0)+rn()*.5;S_.gas=cl(F.p*Math.exp(-d/4)+rn()*.02,0,1);S_.d=d;
+if(S_.seen)upd(S_.zt,.04);
+const fs=S_.fl.reduce((a,b)=>a+b,0);if(fs>.15&&!S_.seen)upd(FLA.reduce((a,v,i)=>a+v*S_.fl[i],0)/fs,.3)}
+function step(dt){T+=dt;acc+=dt;sense();const e=xh(),sg=Math.sqrt(Math.max(e.P[0][0],e.P[1][1])),eb=wrap(Math.atan2(e.y-R.y,e.x-R.x)-R.th),er=Math.hypot(e.x-F.x,e.y-F.y);
+if(acc>=.25){acc=0;errs.push(er)}
+const fl=Math.max(...S_.fl),det=S_.seen||fl>.12;let v=0,w=0;S_.pump=false;
+if(st==='SAFE'){return}
+if(st==='EXPLORE'){v=.7;w=.5*Math.sin(T*.6);if(det){setSt('TRACK','Fire detected (flame/thermal)')}else if(S_.gas>.3){v=.1;w=.9}}
+if(st==='TRACK'){lost=det?0:lost+dt;if(!fixed&&sg<.5){fixed=true;ev('Source localised')}
+const tgt=S_.seen&&sg>1.2?S_.zt:eb;const rng=Math.hypot(e.x-R.x,e.y-R.y);
+if(det||sg<1.5){w=cl(tgt*2.2,-1.6,1.6);v=Math.abs(tgt)>.7?.1:.7}else{v=.1;w=.9}
+if(sg<1.5&&rng<1.7&&S_.seen){setSt('SPRAY','Pump ON, suppressing')}
+if(lost>3){setSt('EXPLORE','Target lost, resuming search')}}
+if(st==='SPRAY'){v=0;w=cl(S_.zt*3,-1,1);if(Math.abs(S_.zt)<.2&&tank>0){S_.pump=true;F.p-=.2*dt;tank-=.03*dt;
+if(F.p<=0){F.p=0;setSt('SAFE','Fire out, verified ambient')}}
+if(!S_.seen&&F.p>0){lost+=dt;if(lost>2){setSt('TRACK','Lost aim, re-acquiring');lost=0}}else lost=0}
+const f=Math.min(S_.us[0],S_.us[1]);
+if(st!=='SPRAY'&&f<.6){v=Math.min(v,.1);w=(S_.us[0]>S_.us[1]?1:-1)*1.7}
+else if(st!=='SPRAY'){if(S_.us[2]<.35)w-=.6;if(S_.us[3]<.35)w+=.6}
+R.th+=w*dt;const nx=R.x+Math.cos(R.th)*v*dt,ny=R.y+Math.sin(R.th)*v*dt;if(free(nx,ny,.22)){R.x=nx;R.y=ny}}
+function C(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim()}
+function draw(){const c={fg:C('--fg'),acc:C('--acc'),fire:C('--fire'),wall:C('--wall'),floor:C('--floor'),mut:C('--mut'),ok:C('--ok')};
+g.fillStyle=c.floor;g.fillRect(0,0,720,480);g.fillStyle=c.wall;walls.forEach(w=>g.fillRect(w[0]*S,w[1]*S,w[2]*S,w[3]*S));
+const px=R.x*S,py=R.y*S;
+g.fillStyle=c.acc+'22';g.beginPath();g.moveTo(px,py);g.arc(px,py,8*S*.6,R.th-.48,R.th+.48);g.closePath();g.fill();
+g.strokeStyle=c.mut;g.lineWidth=1;USA.forEach((a,i)=>{g.beginPath();g.moveTo(px,py);g.lineTo(px+Math.cos(R.th+a)*S_.us[i]*S,py+Math.sin(R.th+a)*S_.us[i]*S);g.stroke()});
+const e=xh();if(F.p>0&&$('gt').checked){g.strokeStyle=c.fire;g.setLineDash([4,4]);g.beginPath();g.arc(F.x*S,F.y*S,14,0,7);g.stroke();g.setLineDash([])}
+if(F.p>0&&(S_.seen||$('gt').checked||st==='SPRAY')){const r=10+F.p*12;g.fillStyle=c.fire+'aa';g.beginPath();g.arc(F.x*S,F.y*S,r,0,7);g.fill()}
+const tr=e.P[0][0]+e.P[1][1],dd=Math.sqrt(Math.max(1e-6,(e.P[0][0]-e.P[1][1])**2/4+e.P[0][1]**2)),l1=tr/2+dd,l2=Math.max(1e-6,tr/2-dd),ang=.5*Math.atan2(2*e.P[0][1],e.P[0][0]-e.P[1][1]);
+if(tr<40){g.strokeStyle=c.fire;g.lineWidth=2;g.beginPath();g.ellipse(e.x*S,e.y*S,Math.min(200,Math.sqrt(l1)*S),Math.min(200,Math.sqrt(l2)*S),ang,0,7);g.stroke()}
+if(S_.pump){g.strokeStyle='#4dabf7';g.lineWidth=4;g.beginPath();g.moveTo(px,py);g.lineTo(px+Math.cos(R.th)*S_.d*S,py+Math.sin(R.th)*S_.d*S);g.stroke()}
+g.save();g.translate(px,py);g.rotate(R.th);g.fillStyle=c.acc;g.beginPath();g.moveTo(14,0);g.lineTo(-10,-9);g.lineTo(-10,9);g.closePath();g.fill();g.restore();
+ch.clearRect(0,0,720,110);ch.strokeStyle=c.mut+'55';ch.lineWidth=1;for(let i=0;i<4;i++){ch.beginPath();ch.moveTo(0,i*27+.5);ch.lineTo(720,i*27+.5);ch.stroke()}
+ch.strokeStyle=c.acc;ch.lineWidth=2;ch.beginPath();errs.forEach((v,i)=>{const x=i/Math.max(120,errs.length)*720,y=108-cl(v,0,6)/6*106;i?ch.lineTo(x,y):ch.moveTo(x,y)});ch.stroke();
+const s=Math.sqrt(Math.max(e.P[0][0],e.P[1][1])),er=Math.hypot(e.x-F.x,e.y-F.y);
+$('e1').textContent=tr<40?er.toFixed(2)+' m':'–';$('e2').textContent=s<20?s.toFixed(2)+' m':'–';$('e3').textContent=tr<40?Math.hypot(e.x-R.x,e.y-R.y).toFixed(1)+' m':'–';
+$('e4').textContent=S_.temp.toFixed(0);$('e5').textContent=S_.gas.toFixed(2);$('e6').textContent=(tank*100|0)+'%';
+const rows=[...USA.map((_,i)=>['US'+(i+1),S_.us[i]/4,'']),...FLA.map((_,i)=>['Flame '+'LCR'[i],S_.fl[i],'f'])];
+$('sb').innerHTML=rows.map(r=>'<div class="bar '+r[2]+'"><em>'+r[0]+'</em><i><u style="width:'+(cl(r[1],0,1)*100)+'%"></u></i></div>').join('')}
+let last=performance.now();
+function loop(t){const dt=Math.min(.1,(t-last)/1000);last=t;if(run){const n=+$('sp').value;for(let i=0;i<n*2;i++)step(dt/2)}draw();requestAnimationFrame(loop)}
+$('pp').onclick=()=>{run=!run;$('pp').textContent=run?'Pause':'Resume'};$('rs').onclick=reset;
+cv.onclick=ev_=>{const r=cv.getBoundingClientRect(),x=(ev_.clientX-r.left)/r.width*12,y=(ev_.clientY-r.top)/r.height*8;if(free(x,y,.4)){F.x=x;F.y=y;F.p=1;if(st==='SAFE')init()}};
+reset();requestAnimationFrame(loop);
+</script></body></html>

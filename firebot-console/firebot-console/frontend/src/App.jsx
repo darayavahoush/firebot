@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
-import Sidebar from "./components/Sidebar.jsx";
 import TopBar from "./components/TopBar.jsx";
 import LiveOps from "./pages/LiveOps.jsx";
 import History from "./pages/History.jsx";
+import Simulator from "./pages/Simulator.jsx";
 import { connectTelemetry, sendCommand, sendEstop } from "./api/client.js";
 
 export default function App() {
@@ -95,26 +95,30 @@ export default function App() {
   }, [page, mode, onDrive]);
 
   return (
-    <div className="min-h-full flex">
-      <Sidebar page={page} setPage={setPage} linkOk={frame ? frame.link_ok : true} />
+    <div className="min-h-full flex flex-col">
+      <TopBar
+        page={page}
+        setPage={setPage}
+        linkOk={frame ? frame.link_ok : true}
+        mode={mode}
+        onEstop={onEstop}
+      />
 
-      <div className="flex-1 flex flex-col min-w-0">
-        <TopBar page={page} mode={mode} onEstop={onEstop} />
-
-        {page === "live" ? (
-          <LiveOps
-            frame={frame}
-            mode={mode}
-            setMode={setMode}
-            log={log}
-            onDrive={onDrive}
-            onPump={onPump}
-            onNozzle={onNozzle}
-          />
-        ) : (
-          <History />
-        )}
-      </div>
+      {page === "live" ? (
+        <LiveOps
+          frame={frame}
+          mode={mode}
+          setMode={setMode}
+          log={log}
+          onDrive={onDrive}
+          onPump={onPump}
+          onNozzle={onNozzle}
+        />
+      ) : page === "sim" ? (
+        <Simulator />
+      ) : (
+        <History />
+      )}
     </div>
   );
 }
