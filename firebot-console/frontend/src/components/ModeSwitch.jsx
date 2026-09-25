@@ -53,13 +53,13 @@ export default function ModeSwitch({ mode, onChange }) {
           <div className="flex gap-2">
             <button
               onClick={() => setPending(null)}
-              className="text-[11px] font-mono text-muted hover:text-ink px-3 py-1 border border-line"
+              className="text-[11px] font-mono text-muted hover:text-ink px-3 py-1 rounded-lg border border-line"
             >
               CANCEL
             </button>
             <button
               onClick={confirm}
-              className="text-[11px] font-mono text-base bg-telemetry px-3 py-1 hover:brightness-110"
+              className="text-[11px] font-mono text-[#0A1A1C] bg-telemetry px-3 py-1 rounded-lg hover:brightness-110"
             >
               CONFIRM
             </button>

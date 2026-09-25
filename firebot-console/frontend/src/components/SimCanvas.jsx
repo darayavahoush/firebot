@@ -1,21 +1,29 @@
 import React, { useEffect, useRef } from "react";
 
+// Palette pulled from tailwind.config.js — the canvas is a deliberately dark
+// "instrument screen" (matches the camera/thermal viewport's `scope` color)
+// sitting inside the light industrial-HMI shell, not a leftover dark theme.
 const COLORS = {
-  bg: "#0F1417",
-  floor: "#141A1F",
-  wall: "#39434C",
-  prop: "#2A323A",
-  grid: "rgba(255,255,255,0.025)",
+  bg: "#12110D",
+  floor: "#1C1A14",
+  wall: "#4A473C",
+  wallEdgeLight: "rgba(247,243,232,0.16)",
+  wallEdgeDark: "rgba(0,0,0,0.35)",
+  prop: "#312F27",
+  propHatch: "rgba(247,243,232,0.06)",
+  grid: "rgba(247,243,232,0.035)",
+  gridMajor: "rgba(247,243,232,0.09)",
+  axis: "rgba(247,243,232,0.45)",
   robot: "#3FA7D6",
-  robotHeading: "#E7EDF2",
-  fireTrue: "#E8432F",
-  fireEst: "#F5A623",
-  ellipse: "rgba(245,166,35,0.35)",
+  robotHeading: "#EAE7E0",
+  fireTrue: "#E14A3A",
+  fireEst: "#D69A3C",
+  ellipse: "rgba(214,154,60,0.25)",
   path: "#4CAF6D",
-  tree: "rgba(63,167,214,0.18)",
-  visited: "rgba(255,255,255,0.05)",
+  tree: "rgba(63,167,214,0.22)",
+  visited: "rgba(247,243,232,0.045)",
   spray: "#3FA7D6",
-  cone: "rgba(63,167,214,0.08)",
+  cone: "rgba(63,167,214,0.09)",
 };
 
 export default function SimCanvas({ engineRef, showTree, showSensors, height = 560 }) {
@@ -41,7 +49,7 @@ export default function SimCanvas({ engineRef, showTree, showSensors, height = 5
       ctx.fillRect(0, 0, cssW, cssH);
 
       const world = controller.world;
-      const pad = 18;
+      const pad = 30;
       const scale = Math.min((cssW - pad * 2) / world.width, (cssH - pad * 2) / world.height);
       const ox = (cssW - world.width * scale) / 2, oy = (cssH - world.height * scale) / 2;
       const X = (x) => ox + x * scale, Y = (y) => oy + y * scale;
@@ -49,17 +57,51 @@ export default function SimCanvas({ engineRef, showTree, showSensors, height = 5
       // floor
       ctx.fillStyle = COLORS.floor;
       ctx.fillRect(X(0), Y(0), world.width * scale, world.height * scale);
-      // faint 1m grid
-      ctx.strokeStyle = COLORS.grid; ctx.lineWidth = 1;
+
+      // grid: minor every 1m, major every 5m, with axis tick labels in meters
+      ctx.lineWidth = 1;
       ctx.beginPath();
-      for (let gx = 0; gx <= world.width; gx++) { ctx.moveTo(X(gx), Y(0)); ctx.lineTo(X(gx), Y(world.height)); }
-      for (let gy = 0; gy <= world.height; gy++) { ctx.moveTo(X(0), Y(gy)); ctx.lineTo(X(world.width), Y(gy)); }
+      ctx.strokeStyle = COLORS.grid;
+      for (let gx = 0; gx <= world.width; gx++) {
+        if (gx % 5 === 0) continue;
+        ctx.moveTo(X(gx), Y(0)); ctx.lineTo(X(gx), Y(world.height));
+      }
+      for (let gy = 0; gy <= world.height; gy++) {
+        if (gy % 5 === 0) continue;
+        ctx.moveTo(X(0), Y(gy)); ctx.lineTo(X(world.width), Y(gy));
+      }
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.strokeStyle = COLORS.gridMajor;
+      for (let gx = 0; gx <= world.width; gx += 5) { ctx.moveTo(X(gx), Y(0)); ctx.lineTo(X(gx), Y(world.height)); }
+      for (let gy = 0; gy <= world.height; gy += 5) { ctx.moveTo(X(0), Y(gy)); ctx.lineTo(X(world.width), Y(gy)); }
       ctx.stroke();
 
-      // walls / props
+      ctx.fillStyle = COLORS.axis;
+      ctx.font = "9px 'JetBrains Mono', monospace";
+      ctx.textAlign = "center"; ctx.textBaseline = "top";
+      for (let gx = 0; gx <= world.width; gx += 5) ctx.fillText(`${gx}m`, X(gx), Y(world.height) + 4);
+      ctx.textAlign = "right"; ctx.textBaseline = "middle";
+      for (let gy = 0; gy <= world.height; gy += 5) ctx.fillText(`${gy}m`, X(0) - 5, Y(gy));
+
+      // walls / props — beveled edges + hatch on props so they read as distinct
       for (const w of world.walls) {
+        const px = X(w.x), py = Y(w.y), pw = w.w * scale, ph = w.h * scale;
         ctx.fillStyle = w.prop ? COLORS.prop : COLORS.wall;
-        ctx.fillRect(X(w.x), Y(w.y), w.w * scale, w.h * scale);
+        ctx.fillRect(px, py, pw, ph);
+        ctx.strokeStyle = COLORS.wallEdgeLight; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(px, py + ph); ctx.lineTo(px, py); ctx.lineTo(px + pw, py); ctx.stroke();
+        ctx.strokeStyle = COLORS.wallEdgeDark;
+        ctx.beginPath(); ctx.moveTo(px + pw, py); ctx.lineTo(px + pw, py + ph); ctx.lineTo(px, py + ph); ctx.stroke();
+        if (w.prop) {
+          ctx.save();
+          ctx.beginPath(); ctx.rect(px, py, pw, ph); ctx.clip();
+          ctx.strokeStyle = COLORS.propHatch; ctx.lineWidth = 1;
+          ctx.beginPath();
+          for (let d = -ph; d < pw; d += 6) { ctx.moveTo(px + d, py + ph); ctx.lineTo(px + d + ph, py); }
+          ctx.stroke();
+          ctx.restore();
+        }
       }
 
       // visited trail (exploration coverage)
@@ -104,12 +146,12 @@ export default function SimCanvas({ engineRef, showTree, showSensors, height = 5
         ctx.moveTo(X(est.x), Y(est.y) - 6); ctx.lineTo(X(est.x), Y(est.y) + 6); ctx.stroke();
       }
 
-      // true fire (ground truth -- shown for the demo; the robot only ever acts on the estimate)
+      // true fire
       const fire = controller.fire;
       if (fire.p > 0) {
         const r = 5 + 4 * fire.p;
         const grad = ctx.createRadialGradient(X(fire.x), Y(fire.y), 0, X(fire.x), Y(fire.y), r * 3);
-        grad.addColorStop(0, "rgba(232,67,47,0.5)"); grad.addColorStop(1, "rgba(232,67,47,0)");
+        grad.addColorStop(0, "rgba(225,74,58,0.5)"); grad.addColorStop(1, "rgba(225,74,58,0)");
         ctx.fillStyle = grad;
         ctx.beginPath(); ctx.arc(X(fire.x), Y(fire.y), r * 3, 0, 7); ctx.fill();
         ctx.fillStyle = COLORS.fireTrue;
@@ -127,7 +169,7 @@ export default function SimCanvas({ engineRef, showTree, showSensors, height = 5
       ctx.save();
       ctx.translate(X(rx0), Y(ry0)); ctx.rotate(th);
       const rr = Math.max(6, 0.22 * scale);
-      ctx.fillStyle = controller.mode === "STOPPED" ? "#E8432F" : COLORS.robot;
+      ctx.fillStyle = controller.mode === "STOPPED" ? COLORS.fireTrue : COLORS.robot;
       ctx.beginPath(); ctx.arc(0, 0, rr, 0, 7); ctx.fill();
       ctx.fillStyle = COLORS.robotHeading;
       ctx.beginPath(); ctx.moveTo(rr * 1.5, 0); ctx.lineTo(-rr * 0.3, rr * 0.8); ctx.lineTo(-rr * 0.3, -rr * 0.8); ctx.closePath(); ctx.fill();
@@ -136,6 +178,17 @@ export default function SimCanvas({ engineRef, showTree, showSensors, height = 5
         ctx.beginPath(); ctx.moveTo(rr, 0); ctx.lineTo(rr + 14, 0); ctx.stroke();
       }
       ctx.restore();
+
+      // scale bar, bottom-right
+      const barM = world.width > 20 ? 5 : 1;
+      const barPx = barM * scale, bx = cssW - pad - barPx, by = cssH - 14;
+      ctx.strokeStyle = COLORS.axis; ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(bx, by - 4); ctx.lineTo(bx, by); ctx.lineTo(bx + barPx, by); ctx.lineTo(bx + barPx, by - 4);
+      ctx.stroke();
+      ctx.fillStyle = COLORS.axis; ctx.font = "9px 'JetBrains Mono', monospace";
+      ctx.textAlign = "center"; ctx.textBaseline = "bottom";
+      ctx.fillText(`${barM} m`, bx + barPx / 2, by - 6);
     }
     rafRef.current = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(rafRef.current);

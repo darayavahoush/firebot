@@ -1,0 +1,514 @@
+diff --git a/firebot-console/frontend/index.html b/firebot-console/frontend/index.html
+index 4ae3e12..27f343b 100644
+--- a/firebot-console/frontend/index.html
++++ b/firebot-console/frontend/index.html
+@@ -6,7 +6,7 @@
+     <link rel="preconnect" href="https://fonts.googleapis.com" />
+     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+     <link
+-      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
++      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Sora:wght@400;500;600;700&family=Baloo+2:wght@600;700;800&display=swap"
+       rel="stylesheet"
+     />
+     <title>firebot / console</title>
+diff --git a/firebot-console/frontend/src/components/CameraFeed.jsx b/firebot-console/frontend/src/components/CameraFeed.jsx
+index cc0f085..f93f3c9 100644
+--- a/firebot-console/frontend/src/components/CameraFeed.jsx
++++ b/firebot-console/frontend/src/components/CameraFeed.jsx
+@@ -12,7 +12,7 @@ export default function CameraFeed({ frame }) {
+           </span>
+         }
+       />
+-      <div className="border-t border-line flex-1 relative bg-[#12110D] min-h-[280px] overflow-hidden">
++      <div className="border-t border-line flex-1 relative bg-scope min-h-[280px] overflow-hidden">
+         {/* Wire this <img>/<video> to your MJPEG or WebRTC stream endpoint
+             once camera hardware is on the Pi. */}
+         <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+diff --git a/firebot-console/frontend/src/components/ControlPanel.jsx b/firebot-console/frontend/src/components/ControlPanel.jsx
+index d4aeb14..109f387 100644
+--- a/firebot-console/frontend/src/components/ControlPanel.jsx
++++ b/firebot-console/frontend/src/components/ControlPanel.jsx
+@@ -59,9 +59,9 @@ export default function ControlPanel({ enabled, onDrive, onPump, onNozzle }) {
+                   <button
+                     key={d.id}
+                     onClick={() => drive(d.id)}
+-                    className={`h-10 w-10 flex items-center justify-center text-[13px] border transition-colors ${
++                    className={`h-10 w-10 rounded-lg flex items-center justify-center text-[13px] border transition-colors ${
+                       activeDir === d.id
+-                        ? "bg-telemetry text-base border-telemetry"
++                        ? "bg-telemetry text-[#0A1A1C] border-telemetry"
+                         : isStop
+                         ? "border-alarm/50 text-alarm hover:bg-alarm/10"
+                         : "border-line text-muted hover:text-ink hover:border-faint"
+@@ -96,7 +96,7 @@ export default function ControlPanel({ enabled, onDrive, onPump, onNozzle }) {
+             <span className="text-[11px] text-muted">Pump</span>
+             <button
+               onClick={togglePump}
+-              className={`font-mono text-[11px] px-3 py-1.5 border transition-colors ${
++              className={`font-mono text-[11px] px-3 py-1.5 rounded-lg border transition-colors ${
+                 pumpOn
+                   ? "border-warn text-warn bg-warn/10"
+                   : "border-line text-muted hover:text-ink"
+diff --git a/firebot-console/frontend/src/components/ModeSwitch.jsx b/firebot-console/frontend/src/components/ModeSwitch.jsx
+index 30a4502..4bfe5bb 100644
+--- a/firebot-console/frontend/src/components/ModeSwitch.jsx
++++ b/firebot-console/frontend/src/components/ModeSwitch.jsx
+@@ -53,13 +53,13 @@ export default function ModeSwitch({ mode, onChange }) {
+           <div className="flex gap-2">
+             <button
+               onClick={() => setPending(null)}
+-              className="text-[11px] font-mono text-muted hover:text-ink px-3 py-1 border border-line"
++              className="text-[11px] font-mono text-muted hover:text-ink px-3 py-1 rounded-lg border border-line"
+             >
+               CANCEL
+             </button>
+             <button
+               onClick={confirm}
+-              className="text-[11px] font-mono text-base bg-telemetry px-3 py-1 hover:brightness-110"
++              className="text-[11px] font-mono text-[#0A1A1C] bg-telemetry px-3 py-1 rounded-lg hover:brightness-110"
+             >
+               CONFIRM
+             </button>
+diff --git a/firebot-console/frontend/src/components/RunChart.jsx b/firebot-console/frontend/src/components/RunChart.jsx
+index a77d955..ba9d4b5 100644
+--- a/firebot-console/frontend/src/components/RunChart.jsx
++++ b/firebot-console/frontend/src/components/RunChart.jsx
+@@ -35,33 +35,33 @@ export default function RunChart({ runId, detail }) {
+       <div className="border-t border-line p-4 flex-1 min-h-[240px]">
+         <ResponsiveContainer width="100%" height="100%">
+           <LineChart data={detail.points} margin={{ top: 4, right: 12, bottom: 0, left: 0 }}>
+-            <CartesianGrid stroke="#D2CDC1" vertical={false} />
++            <CartesianGrid stroke="rgba(247,243,232,0.14)" vertical={false} />
+             <XAxis
+               dataKey="t"
+-              tick={{ fill: "#95917F", fontSize: 10, fontFamily: "IBM Plex Mono" }}
+-              axisLine={{ stroke: "#D2CDC1" }}
++              tick={{ fill: "rgba(247,243,232,0.4)", fontSize: 10, fontFamily: "JetBrains Mono" }}
++              axisLine={{ stroke: "rgba(247,243,232,0.14)" }}
+               tickLine={false}
+             />
+             <YAxis
+-              tick={{ fill: "#95917F", fontSize: 10, fontFamily: "IBM Plex Mono" }}
+-              axisLine={{ stroke: "#D2CDC1" }}
++              tick={{ fill: "rgba(247,243,232,0.4)", fontSize: 10, fontFamily: "JetBrains Mono" }}
++              axisLine={{ stroke: "rgba(247,243,232,0.14)" }}
+               tickLine={false}
+               width={32}
+             />
+             <Tooltip
+               contentStyle={{
+-                background: "#EFEDE6",
+-                border: "1px solid #D2CDC1",
+-                fontFamily: "IBM Plex Mono",
++                background: "#143036",
++                border: "1px solid rgba(247,243,232,0.14)",
++                fontFamily: "JetBrains Mono",
+                 fontSize: 11,
+-                color: "#1C1B17",
++                color: "#F7F3E8",
+               }}
+-              labelStyle={{ color: "#5F5C53" }}
++              labelStyle={{ color: "rgba(247,243,232,0.6)" }}
+             />
+             <Line
+               type="monotone"
+               dataKey="temp_c"
+-              stroke="#B4700A"
++              stroke="#F4B942"
+               strokeWidth={1.5}
+               dot={false}
+               name="Temp °C"
+@@ -69,7 +69,7 @@ export default function RunChart({ runId, detail }) {
+             <Line
+               type="monotone"
+               dataKey="battery_v"
+-              stroke="#155F82"
++              stroke="#2FB8A6"
+               strokeWidth={1.5}
+               dot={false}
+               name="Battery V"
+@@ -78,8 +78,8 @@ export default function RunChart({ runId, detail }) {
+         </ResponsiveContainer>
+       </div>
+       <div className="border-t border-line px-4 py-2 flex gap-4 font-mono text-[10px] text-muted">
+-        <Legend color="#B4700A" label="Temp °C" />
+-        <Legend color="#155F82" label="Battery V" />
++        <Legend color="#F4B942" label="Temp °C" />
++        <Legend color="#2FB8A6" label="Battery V" />
+       </div>
+     </div>
+   );
+diff --git a/firebot-console/frontend/src/components/RunHistoryTable.jsx b/firebot-console/frontend/src/components/RunHistoryTable.jsx
+index a83b483..9afd526 100644
+--- a/firebot-console/frontend/src/components/RunHistoryTable.jsx
++++ b/firebot-console/frontend/src/components/RunHistoryTable.jsx
+@@ -95,7 +95,7 @@ export default function RunHistoryTable({ runs, selectedId, onSelect }) {
+ function ResultBadge({ extinguished }) {
+   return (
+     <span
+-      className={`inline-block px-2 py-0.5 text-[10px] border ${
++      className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] border ${
+         extinguished
+           ? "border-ok/40 text-ok"
+           : "border-warn/40 text-warn"
+diff --git a/firebot-console/frontend/src/components/Sidebar.jsx b/firebot-console/frontend/src/components/Sidebar.jsx
+index c44db08..8ac9d34 100644
+--- a/firebot-console/frontend/src/components/Sidebar.jsx
++++ b/firebot-console/frontend/src/components/Sidebar.jsx
+@@ -9,15 +9,16 @@ const NAV = [
+ export default function Sidebar({ page, setPage, linkOk }) {
+   return (
+     <aside className="w-[212px] shrink-0 border-r border-line bg-panel flex flex-col">
+-      <div className="h-14 flex items-center gap-2.5 px-5 border-b border-line">
++      <div className="h-14 flex items-center gap-2.5 px-5 border-b border-line relative">
++        <div className="ember-glow w-16 h-16 -left-4 -top-2" />
+         <BrandMark />
+-        <div className="leading-tight">
+-          <div className="font-mono text-[13px] text-ink tracking-tight">firebot</div>
++        <div className="leading-tight relative">
++          <div className="font-display font-bold text-[15px] text-ink tracking-tight">firebot</div>
+           <div className="font-mono text-[9px] text-faint tracking-wide">CONSOLE v0.1</div>
+         </div>
+       </div>
+ 
+-      <nav className="flex-1 py-3">
++      <nav className="flex-1 py-3 px-2.5 space-y-0.5">
+         {NAV.map((item) => {
+           const active = page === item.id;
+           const Icon = item.icon;
+@@ -25,10 +26,10 @@ export default function Sidebar({ page, setPage, linkOk }) {
+             <button
+               key={item.id}
+               onClick={() => setPage(item.id)}
+-              className={`w-full flex items-center gap-3 px-5 py-2.5 text-[13px] border-l-2 transition-colors ${
++              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-[13px] transition-colors ${
+                 active
+-                  ? "border-telemetry text-ink bg-panel2"
+-                  : "border-transparent text-muted hover:text-ink hover:bg-panel2/60"
++                  ? "text-ink bg-panel2"
++                  : "text-muted hover:text-ink hover:bg-panel2/60"
+               }`}
+             >
+               <Icon active={active} />
+@@ -54,11 +55,11 @@ export default function Sidebar({ page, setPage, linkOk }) {
+ 
+ function BrandMark() {
+   return (
+-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+-      <rect x="2" y="2" width="20" height="20" rx="3" stroke="#155F82" strokeWidth="1.4" />
++    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" className="relative">
++      <rect x="2" y="2" width="20" height="20" rx="6" stroke="#2FB8A6" strokeWidth="1.4" />
+       <path
+         d="M12 6.5c1.8 2.1 2.6 3.7 2.6 5.2a2.6 2.6 0 1 1-5.2 0c0-.9.4-1.7 1-2.4-.15.75.05 1.35.6 1.55-.2-1.6.4-3 1-4.35Z"
+-        fill="#B4700A"
++        fill="#F4B942"
+       />
+     </svg>
+   );
+@@ -67,14 +68,14 @@ function BrandMark() {
+ function LiveIcon({ active }) {
+   return (
+     <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
+-      <circle cx="8" cy="8" r="3" fill={active ? "#155F82" : "none"} stroke={active ? "#155F82" : "#5F5C53"} strokeWidth="1.3" />
+-      <circle cx="8" cy="8" r="6.5" stroke={active ? "#155F82" : "#5F5C53"} strokeWidth="1" opacity="0.4" />
++      <circle cx="8" cy="8" r="3" fill={active ? "#2FB8A6" : "none"} stroke={active ? "#2FB8A6" : "rgba(247,243,232,0.6)"} strokeWidth="1.3" />
++      <circle cx="8" cy="8" r="6.5" stroke={active ? "#2FB8A6" : "rgba(247,243,232,0.6)"} strokeWidth="1" opacity="0.4" />
+     </svg>
+   );
+ }
+ 
+ function SimIcon({ active }) {
+-  const c = active ? "#155F82" : "#5F5C53";
++  const c = active ? "#2FB8A6" : "rgba(247,243,232,0.6)";
+   return (
+     <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
+       <rect x="2" y="3" width="12" height="8" rx="1" stroke={c} strokeWidth="1.3" />
+@@ -85,7 +86,7 @@ function SimIcon({ active }) {
+ }
+ 
+ function HistoryIcon({ active }) {
+-  const c = active ? "#155F82" : "#5F5C53";
++  const c = active ? "#2FB8A6" : "rgba(247,243,232,0.6)";
+   return (
+     <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
+       <path d="M2 8a6 6 0 1 1 1.8 4.3" stroke={c} strokeWidth="1.3" strokeLinecap="round" />
+diff --git a/firebot-console/frontend/src/components/SimCanvas.jsx b/firebot-console/frontend/src/components/SimCanvas.jsx
+index f5ae730..b9f8759 100644
+--- a/firebot-console/frontend/src/components/SimCanvas.jsx
++++ b/firebot-console/frontend/src/components/SimCanvas.jsx
+@@ -7,13 +7,13 @@ const COLORS = {
+   bg: "#12110D",
+   floor: "#1C1A14",
+   wall: "#4A473C",
+-  wallEdgeLight: "rgba(234,231,224,0.16)",
++  wallEdgeLight: "rgba(247,243,232,0.16)",
+   wallEdgeDark: "rgba(0,0,0,0.35)",
+   prop: "#312F27",
+-  propHatch: "rgba(234,231,224,0.06)",
+-  grid: "rgba(234,231,224,0.035)",
+-  gridMajor: "rgba(234,231,224,0.09)",
+-  axis: "#8C876F",
++  propHatch: "rgba(247,243,232,0.06)",
++  grid: "rgba(247,243,232,0.035)",
++  gridMajor: "rgba(247,243,232,0.09)",
++  axis: "rgba(247,243,232,0.45)",
+   robot: "#3FA7D6",
+   robotHeading: "#EAE7E0",
+   fireTrue: "#E14A3A",
+@@ -21,7 +21,7 @@ const COLORS = {
+   ellipse: "rgba(214,154,60,0.25)",
+   path: "#4CAF6D",
+   tree: "rgba(63,167,214,0.22)",
+-  visited: "rgba(234,231,224,0.045)",
++  visited: "rgba(247,243,232,0.045)",
+   spray: "#3FA7D6",
+   cone: "rgba(63,167,214,0.09)",
+ };
+@@ -78,7 +78,7 @@ export default function SimCanvas({ engineRef, showTree, showSensors, height = 5
+       ctx.stroke();
+ 
+       ctx.fillStyle = COLORS.axis;
+-      ctx.font = "9px 'IBM Plex Mono', monospace";
++      ctx.font = "9px 'JetBrains Mono', monospace";
+       ctx.textAlign = "center"; ctx.textBaseline = "top";
+       for (let gx = 0; gx <= world.width; gx += 5) ctx.fillText(`${gx}m`, X(gx), Y(world.height) + 4);
+       ctx.textAlign = "right"; ctx.textBaseline = "middle";
+@@ -186,7 +186,7 @@ export default function SimCanvas({ engineRef, showTree, showSensors, height = 5
+       ctx.beginPath();
+       ctx.moveTo(bx, by - 4); ctx.lineTo(bx, by); ctx.lineTo(bx + barPx, by); ctx.lineTo(bx + barPx, by - 4);
+       ctx.stroke();
+-      ctx.fillStyle = COLORS.axis; ctx.font = "9px 'IBM Plex Mono', monospace";
++      ctx.fillStyle = COLORS.axis; ctx.font = "9px 'JetBrains Mono', monospace";
+       ctx.textAlign = "center"; ctx.textBaseline = "bottom";
+       ctx.fillText(`${barM} m`, bx + barPx / 2, by - 6);
+     }
+diff --git a/firebot-console/frontend/src/components/ThermalFrame.jsx b/firebot-console/frontend/src/components/ThermalFrame.jsx
+index a22a0fb..695e85b 100644
+--- a/firebot-console/frontend/src/components/ThermalFrame.jsx
++++ b/firebot-console/frontend/src/components/ThermalFrame.jsx
+@@ -36,7 +36,7 @@ export default function ThermalFrame({ frame, width = 220, height = 165 }) {
+     <canvas
+       ref={ref}
+       style={{ width, height, imageRendering: "pixelated" }}
+-      className="border border-line"
++      className="border border-line rounded-lg"
+     />
+   );
+ }
+diff --git a/firebot-console/frontend/src/components/TopBar.jsx b/firebot-console/frontend/src/components/TopBar.jsx
+index 04ebc91..5653add 100644
+--- a/firebot-console/frontend/src/components/TopBar.jsx
++++ b/firebot-console/frontend/src/components/TopBar.jsx
+@@ -24,7 +24,7 @@ export default function TopBar({ page, mode, onEstop }) {
+ 
+           <button
+             onClick={onEstop}
+-            className="border border-alarm text-alarm font-mono text-[12px] font-medium px-4 py-1.5 hover:bg-alarm hover:text-panel transition-colors"
++            className="bg-alarm text-[#1A0805] font-mono text-[12px] font-semibold tracking-wide px-5 py-2 rounded-full shadow-[0_0_16px_rgba(240,96,74,0.45)] hover:brightness-110 active:scale-95 transition"
+           >
+             E-STOP
+           </button>
+diff --git a/firebot-console/frontend/src/index.css b/firebot-console/frontend/src/index.css
+index e1adab1..14a86ef 100644
+--- a/firebot-console/frontend/src/index.css
++++ b/firebot-console/frontend/src/index.css
+@@ -14,24 +14,34 @@ body,
+ 
+ body {
+   @apply bg-base text-ink font-sans antialiased;
+-  /* Faint blueprint-style grid, not a generic AI-dashboard dot grid —
+-     ties to the schematic/engineering subject matter. */
++  /* Faint blueprint-style grid, kept from the original — now mint on
++     near-black instead of blue on light, so it reads as glow, not print. */
+   background-image:
+-    linear-gradient(rgba(21, 95, 130, 0.05) 1px, transparent 1px),
+-    linear-gradient(90deg, rgba(21, 95, 130, 0.05) 1px, transparent 1px);
++    linear-gradient(rgba(47, 184, 166, 0.06) 1px, transparent 1px),
++    linear-gradient(90deg, rgba(47, 184, 166, 0.06) 1px, transparent 1px);
+   background-size: 32px 32px;
+ }
+ 
+ ::selection {
+-  background: #155f8226;
++  background: #2fb8a640;
+ }
+ 
+ .panel {
+-  @apply bg-panel border border-line;
+-  /* Subtle elevation — a real enclosed instrument, not a flat card */
++  @apply bg-panel border border-line rounded-2xl overflow-hidden;
++  /* Instrument sits proud of the dark enclosure, lit from above */
+   box-shadow:
+-    0 1px 2px rgba(28, 27, 23, 0.06),
+-    inset 0 1px 0 rgba(255, 255, 255, 0.6);
++    0 1px 2px rgba(0, 0, 0, 0.4),
++    inset 0 1px 0 rgba(255, 255, 255, 0.04);
++}
++
++/* Single restrained glow accent, used once behind the sim canvas
++   and the brand mark — not scattered across every card. */
++.ember-glow {
++  position: absolute;
++  border-radius: 9999px;
++  background: radial-gradient(circle, rgba(47, 184, 166, 0.16), transparent 70%);
++  pointer-events: none;
++  filter: blur(2px);
+ }
+ 
+ .data {
+diff --git a/firebot-console/frontend/src/pages/History.jsx b/firebot-console/frontend/src/pages/History.jsx
+index 805054f..958d9ed 100644
+--- a/firebot-console/frontend/src/pages/History.jsx
++++ b/firebot-console/frontend/src/pages/History.jsx
+@@ -24,8 +24,8 @@ export default function History() {
+   return (
+     <div className="p-6 flex flex-col gap-4">
+       <div className="flex items-center justify-between">
+-        <h1 className="text-[13px] font-mono text-muted tracking-wide">
+-          RUN HISTORY
++        <h1 className="font-display font-bold text-[15px] text-ink tracking-wide">
++          Run History
+         </h1>
+         <span className="text-[11px] font-mono text-faint">
+           {loading ? "loading…" : `${runs.length} runs logged`}
+diff --git a/firebot-console/frontend/src/pages/Simulator.jsx b/firebot-console/frontend/src/pages/Simulator.jsx
+index b8bc9c2..c1257e0 100644
+--- a/firebot-console/frontend/src/pages/Simulator.jsx
++++ b/firebot-console/frontend/src/pages/Simulator.jsx
+@@ -83,17 +83,17 @@ export default function Simulator() {
+   return (
+     <main className="flex-1 flex flex-col">
+       <div className="border-b border-line bg-panel px-6 py-2.5 flex items-center gap-4 flex-wrap">
+-        <span className="text-[11px] text-muted tracking-wide">SIMULATOR</span>
+-        <button onClick={newBuilding} className="border border-line px-3 py-1 text-[12px] font-mono text-ink hover:border-telemetry hover:text-telemetry transition-colors">
++        <span className="font-display font-bold text-[13px] text-ink tracking-wide">SIMULATOR</span>
++        <button onClick={newBuilding} className="rounded-lg border border-line px-3 py-1 text-[12px] font-mono text-ink hover:border-telemetry hover:text-telemetry transition-colors">
+           New Building
+         </button>
+-        <button onClick={() => setPaused((p) => !p)} className="border border-line px-3 py-1 text-[12px] font-mono text-ink hover:border-telemetry hover:text-telemetry transition-colors">
++        <button onClick={() => setPaused((p) => !p)} className="rounded-lg border border-line px-3 py-1 text-[12px] font-mono text-ink hover:border-telemetry hover:text-telemetry transition-colors">
+           {paused ? "Resume" : "Pause"}
+         </button>
+         <div className="flex items-center gap-1 font-mono text-[12px] text-muted">
+           Speed
+           {SPEEDS.map((s) => (
+-            <button key={s} onClick={() => setSpeed(s)} className={`px-2 py-1 border ${speed === s ? "border-telemetry text-telemetry" : "border-line text-muted hover:text-ink"}`}>
++            <button key={s} onClick={() => setSpeed(s)} className={`rounded-lg px-2 py-1 border ${speed === s ? "border-telemetry text-telemetry" : "border-line text-muted hover:text-ink"}`}>
+               {s}x
+             </button>
+           ))}
+@@ -113,16 +113,17 @@ export default function Simulator() {
+         </div>
+         <button
+           onClick={() => sendCommand("stop")}
+-          className="border border-alarm text-alarm font-mono text-[12px] font-medium px-4 py-1.5 hover:bg-alarm hover:text-base transition-colors"
++          className="bg-alarm text-[#1A0805] font-mono text-[12px] font-semibold tracking-wide px-4 py-1.5 rounded-full shadow-[0_0_14px_rgba(240,96,74,0.4)] hover:brightness-110 active:scale-95 transition"
+         >
+           STOP
+         </button>
+       </div>
+ 
+-      <div className="flex-1 grid grid-cols-[1fr_360px] gap-px bg-line overflow-hidden">
+-        <div className="bg-base flex flex-col">
++      <div className="flex-1 grid grid-cols-[1fr_360px] gap-3 bg-base overflow-hidden p-3">
++        <div className="panel flex flex-col relative">
++          <div className="ember-glow w-40 h-40 -top-10 -right-10" />
+           <SimCanvas engineRef={engineRef} showTree={showTree} showSensors={showSensors} height={620} />
+-          <div className="border-t border-line bg-panel px-4 py-2 flex items-center gap-4 text-[11px] font-mono text-muted flex-wrap">
++          <div className="border-t border-line bg-panel px-4 py-2 flex items-center gap-4 text-[11px] font-mono text-muted flex-wrap relative">
+             <Legend swatch="#3FA7D6" label="robot" />
+             <Legend swatch="#E14A3A" label="fire (ground truth)" />
+             <Legend swatch="#D69A3C" label="fire estimate + \u03c3" />
+@@ -132,10 +133,10 @@ export default function Simulator() {
+           </div>
+         </div>
+ 
+-        <div className="bg-base flex flex-col overflow-hidden">
+-          <div className="flex border-b border-line bg-panel">
++        <div className="panel flex flex-col overflow-hidden">
++          <div className="flex bg-panel2">
+             {["telemetry", "sensors", "planner", "voice"].map((k) => (
+-              <button key={k} onClick={() => setTab(k)} className={`flex-1 px-2 py-2 text-[11px] font-mono tracking-wide uppercase border-b-2 ${tab === k ? "border-telemetry text-ink" : "border-transparent text-muted hover:text-ink"}`}>
++              <button key={k} onClick={() => setTab(k)} className={`flex-1 px-2 py-2.5 text-[11px] font-mono tracking-wide uppercase transition-colors ${tab === k ? "bg-panel text-telemetry" : "text-muted hover:text-ink"}`}>
+                 {k}
+               </button>
+             ))}
+@@ -309,8 +310,10 @@ function VoiceTab({ t, speechSupported, listening, toggleListening, transcript,
+         <button
+           onClick={toggleListening}
+           disabled={!speechSupported}
+-          className={`w-16 h-16 rounded-full border flex items-center justify-center font-mono text-[11px] transition-colors ${
+-            listening ? "border-alarm text-alarm pulse-dot" : "border-telemetry text-telemetry hover:bg-telemetry hover:text-base"
++          className={`w-16 h-16 rounded-full border flex items-center justify-center font-mono text-[11px] transition-all ${
++            listening
++              ? "border-alarm text-alarm pulse-dot shadow-[0_0_18px_rgba(240,96,74,0.35)]"
++              : "border-telemetry text-telemetry hover:bg-telemetry hover:text-[#0A1A1C] hover:shadow-[0_0_18px_rgba(47,184,166,0.35)]"
+           } ${!speechSupported ? "opacity-30 cursor-not-allowed" : ""}`}
+         >
+           {listening ? "LIVE" : "MIC"}
+@@ -324,11 +327,11 @@ function VoiceTab({ t, speechSupported, listening, toggleListening, transcript,
+           onChange={(e) => setTextCmd(e.target.value)}
+           onKeyDown={(e) => { if (e.key === "Enter") { sendCommand(textCmd); setTextCmd(""); } }}
+           placeholder='"go to the north room", "stop", "status"'
+-          className="flex-1 bg-panel2 border border-line px-2.5 py-1.5 text-[12px] font-mono text-ink outline-none focus:border-telemetry"
++          className="flex-1 rounded-lg bg-panel2 border border-line px-2.5 py-1.5 text-[12px] font-mono text-ink outline-none focus:border-telemetry"
+         />
+         <button
+           onClick={() => { sendCommand(textCmd); setTextCmd(""); }}
+-          className="border border-line px-3 py-1.5 text-[12px] font-mono text-ink hover:border-telemetry hover:text-telemetry"
++          className="rounded-lg border border-line px-3 py-1.5 text-[12px] font-mono text-ink hover:border-telemetry hover:text-telemetry"
+         >
+           Send
+         </button>
+diff --git a/firebot-console/frontend/tailwind.config.js b/firebot-console/frontend/tailwind.config.js
+index 2abb412..016059c 100644
+--- a/firebot-console/frontend/tailwind.config.js
++++ b/firebot-console/frontend/tailwind.config.js
+@@ -4,25 +4,30 @@ export default {
+   theme: {
+     extend: {
+       colors: {
+-        // Grounded in real fire-apparatus pump panels and industrial HMI
+-        // screens (Siemens/ABB style) rather than a dark SaaS dashboard:
+-        // light brushed-enclosure base, ANSI-style safety accents.
+-        base: "#EAE7E0",      // panel enclosure, warm light grey
+-        panel: "#F8F7F3",     // card surface, near-white
+-        panel2: "#EFEDE6",    // hover / secondary surface
+-        line: "#D2CDC1",      // hairline dividers
+-        ink: "#1C1B17",       // primary text, warm near-black
+-        muted: "#5F5C53",     // secondary text
+-        faint: "#95917F",     // tertiary / placeholder text
+-        alarm: "#B8121F",     // ANSI signal red — danger, E-STOP only
+-        warn: "#B4700A",      // ANSI safety amber — caution/alarm states
+-        telemetry: "#155F82", // engineering blueprint blue — data, active state
+-        ok: "#28703F",        // ANSI safety green — nominal/success
+-        scope: "#12110D",     // camera/video viewport black (always dark)
++        // Same operator-console structure as before (dense telemetry, ANSI-style
++        // signal colors), re-skinned in a warm dark register — deep teal-black
++        // enclosure instead of brushed-aluminum light, glowing signal colors
++        // instead of flat print-safety ones. Still one job: read fast, trust it.
++        base: "#0A1A1C",         // app shell, deep teal-black
++        panel: "#0E2429",        // card / instrument surface
++        panel2: "#143036",       // hover / secondary surface
++        line: "rgba(251,247,238,0.10)",  // hairline dividers on dark
++        ink: "#F7F3E8",          // primary text, warm paper
++        muted: "rgba(247,243,232,0.60)", // secondary text
++        faint: "rgba(247,243,232,0.36)", // tertiary / placeholder text
++        alarm: "#F0604A",        // coral — danger, E-STOP only
++        warn: "#F4B942",         // gold — caution/alarm states
++        telemetry: "#2FB8A6",    // mint — data, active state
++        ok: "#5FE3B0",           // brighter mint-green — nominal/success
++        scope: "#050807",        // camera/video viewport black (always dark)
+       },
+       fontFamily: {
+-        sans: ["IBM Plex Sans", "system-ui", "sans-serif"],
+-        mono: ["IBM Plex Mono", "ui-monospace", "monospace"],
++        sans: ["Sora", "system-ui", "sans-serif"],
++        mono: ["JetBrains Mono", "ui-monospace", "monospace"],
++        display: ['"Baloo 2"', "ui-rounded", "system-ui", "sans-serif"],
++      },
++      boxShadow: {
++        panel: "0 1px 2px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.04)",
+       },
+     },
+   },

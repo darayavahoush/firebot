@@ -36,7 +36,7 @@ export default function ThermalFrame({ frame, width = 220, height = 165 }) {
     <canvas
       ref={ref}
       style={{ width, height, imageRendering: "pixelated" }}
-      className="border border-line"
+      className="border border-line rounded-lg"
     />
   );
 }

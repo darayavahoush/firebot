@@ -24,8 +24,8 @@ export default function History() {
   return (
     <div className="p-6 flex flex-col gap-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-[13px] font-mono text-muted tracking-wide">
-          RUN HISTORY
+        <h1 className="font-display font-bold text-[15px] text-ink tracking-wide">
+          Run History
         </h1>
         <span className="text-[11px] font-mono text-faint">
           {loading ? "loading…" : `${runs.length} runs logged`}

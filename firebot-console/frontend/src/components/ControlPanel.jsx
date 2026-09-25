@@ -59,9 +59,9 @@ export default function ControlPanel({ enabled, onDrive, onPump, onNozzle }) {
                   <button
                     key={d.id}
                     onClick={() => drive(d.id)}
-                    className={`h-10 w-10 flex items-center justify-center text-[13px] border transition-colors ${
+                    className={`h-10 w-10 rounded-lg flex items-center justify-center text-[13px] border transition-colors ${
                       activeDir === d.id
-                        ? "bg-telemetry text-base border-telemetry"
+                        ? "bg-telemetry text-[#0A1A1C] border-telemetry"
                         : isStop
                         ? "border-alarm/50 text-alarm hover:bg-alarm/10"
                         : "border-line text-muted hover:text-ink hover:border-faint"
@@ -96,7 +96,7 @@ export default function ControlPanel({ enabled, onDrive, onPump, onNozzle }) {
             <span className="text-[11px] text-muted">Pump</span>
             <button
               onClick={togglePump}
-              className={`font-mono text-[11px] px-3 py-1.5 border transition-colors ${
+              className={`font-mono text-[11px] px-3 py-1.5 rounded-lg border transition-colors ${
                 pumpOn
                   ? "border-warn text-warn bg-warn/10"
                   : "border-line text-muted hover:text-ink"

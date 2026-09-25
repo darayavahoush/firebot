@@ -83,17 +83,17 @@ export default function Simulator() {
   return (
     <main className="flex-1 flex flex-col">
       <div className="border-b border-line bg-panel px-6 py-2.5 flex items-center gap-4 flex-wrap">
-        <span className="text-[11px] text-muted tracking-wide">SIMULATOR</span>
-        <button onClick={newBuilding} className="border border-line px-3 py-1 text-[12px] font-mono text-ink hover:border-telemetry hover:text-telemetry transition-colors">
+        <span className="font-display font-bold text-[13px] text-ink tracking-wide">SIMULATOR</span>
+        <button onClick={newBuilding} className="rounded-lg border border-line px-3 py-1 text-[12px] font-mono text-ink hover:border-telemetry hover:text-telemetry transition-colors">
           New Building
         </button>
-        <button onClick={() => setPaused((p) => !p)} className="border border-line px-3 py-1 text-[12px] font-mono text-ink hover:border-telemetry hover:text-telemetry transition-colors">
+        <button onClick={() => setPaused((p) => !p)} className="rounded-lg border border-line px-3 py-1 text-[12px] font-mono text-ink hover:border-telemetry hover:text-telemetry transition-colors">
           {paused ? "Resume" : "Pause"}
         </button>
         <div className="flex items-center gap-1 font-mono text-[12px] text-muted">
           Speed
           {SPEEDS.map((s) => (
-            <button key={s} onClick={() => setSpeed(s)} className={`px-2 py-1 border ${speed === s ? "border-telemetry text-telemetry" : "border-line text-muted hover:text-ink"}`}>
+            <button key={s} onClick={() => setSpeed(s)} className={`rounded-lg px-2 py-1 border ${speed === s ? "border-telemetry text-telemetry" : "border-line text-muted hover:text-ink"}`}>
               {s}x
             </button>
           ))}
@@ -113,29 +113,30 @@ export default function Simulator() {
         </div>
         <button
           onClick={() => sendCommand("stop")}
-          className="border border-alarm text-alarm font-mono text-[12px] font-medium px-4 py-1.5 hover:bg-alarm hover:text-base transition-colors"
+          className="bg-alarm text-[#1A0805] font-mono text-[12px] font-semibold tracking-wide px-4 py-1.5 rounded-full shadow-[0_0_14px_rgba(240,96,74,0.4)] hover:brightness-110 active:scale-95 transition"
         >
           STOP
         </button>
       </div>
 
-      <div className="flex-1 grid grid-cols-[1fr_360px] gap-px bg-line overflow-hidden">
-        <div className="bg-base flex flex-col">
+      <div className="flex-1 grid grid-cols-[1fr_360px] gap-3 bg-base overflow-hidden p-3">
+        <div className="panel flex flex-col relative">
+          <div className="ember-glow w-40 h-40 -top-10 -right-10" />
           <SimCanvas engineRef={engineRef} showTree={showTree} showSensors={showSensors} height={620} />
-          <div className="border-t border-line bg-panel px-4 py-2 flex items-center gap-4 text-[11px] font-mono text-muted flex-wrap">
+          <div className="border-t border-line bg-panel px-4 py-2 flex items-center gap-4 text-[11px] font-mono text-muted flex-wrap relative">
             <Legend swatch="#3FA7D6" label="robot" />
-            <Legend swatch="#E8432F" label="fire (ground truth)" />
-            <Legend swatch="#F5A623" label="fire estimate + \u03c3" />
+            <Legend swatch="#E14A3A" label="fire (ground truth)" />
+            <Legend swatch="#D69A3C" label="fire estimate + \u03c3" />
             <Legend swatch="#4CAF6D" label="planned path" />
             <Legend swatch="rgba(63,167,214,0.6)" label="RRT* search tree" />
             <span className="ml-auto text-faint">{t.world.width.toFixed(1)}m \u00d7 {t.world.height.toFixed(1)}m building, seed {engineRef.current.seed}</span>
           </div>
         </div>
 
-        <div className="bg-base flex flex-col overflow-hidden">
-          <div className="flex border-b border-line bg-panel">
+        <div className="panel flex flex-col overflow-hidden">
+          <div className="flex bg-panel2">
             {["telemetry", "sensors", "planner", "voice"].map((k) => (
-              <button key={k} onClick={() => setTab(k)} className={`flex-1 px-2 py-2 text-[11px] font-mono tracking-wide uppercase border-b-2 ${tab === k ? "border-telemetry text-ink" : "border-transparent text-muted hover:text-ink"}`}>
+              <button key={k} onClick={() => setTab(k)} className={`flex-1 px-2 py-2.5 text-[11px] font-mono tracking-wide uppercase transition-colors ${tab === k ? "bg-panel text-telemetry" : "text-muted hover:text-ink"}`}>
                 {k}
               </button>
             ))}
@@ -309,8 +310,10 @@ function VoiceTab({ t, speechSupported, listening, toggleListening, transcript, 
         <button
           onClick={toggleListening}
           disabled={!speechSupported}
-          className={`w-16 h-16 rounded-full border flex items-center justify-center font-mono text-[11px] transition-colors ${
-            listening ? "border-alarm text-alarm pulse-dot" : "border-telemetry text-telemetry hover:bg-telemetry hover:text-base"
+          className={`w-16 h-16 rounded-full border flex items-center justify-center font-mono text-[11px] transition-all ${
+            listening
+              ? "border-alarm text-alarm pulse-dot shadow-[0_0_18px_rgba(240,96,74,0.35)]"
+              : "border-telemetry text-telemetry hover:bg-telemetry hover:text-[#0A1A1C] hover:shadow-[0_0_18px_rgba(47,184,166,0.35)]"
           } ${!speechSupported ? "opacity-30 cursor-not-allowed" : ""}`}
         >
           {listening ? "LIVE" : "MIC"}
@@ -324,11 +327,11 @@ function VoiceTab({ t, speechSupported, listening, toggleListening, transcript, 
           onChange={(e) => setTextCmd(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Enter") { sendCommand(textCmd); setTextCmd(""); } }}
           placeholder='"go to the north room", "stop", "status"'
-          className="flex-1 bg-panel2 border border-line px-2.5 py-1.5 text-[12px] font-mono text-ink outline-none focus:border-telemetry"
+          className="flex-1 rounded-lg bg-panel2 border border-line px-2.5 py-1.5 text-[12px] font-mono text-ink outline-none focus:border-telemetry"
         />
         <button
           onClick={() => { sendCommand(textCmd); setTextCmd(""); }}
-          className="border border-line px-3 py-1.5 text-[12px] font-mono text-ink hover:border-telemetry hover:text-telemetry"
+          className="rounded-lg border border-line px-3 py-1.5 text-[12px] font-mono text-ink hover:border-telemetry hover:text-telemetry"
         >
           Send
         </button>

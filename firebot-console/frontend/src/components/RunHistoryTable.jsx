@@ -95,7 +95,7 @@ export default function RunHistoryTable({ runs, selectedId, onSelect }) {
 function ResultBadge({ extinguished }) {
   return (
     <span
-      className={`inline-block px-2 py-0.5 text-[10px] border ${
+      className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] border ${
         extinguished
           ? "border-ok/40 text-ok"
           : "border-warn/40 text-warn"

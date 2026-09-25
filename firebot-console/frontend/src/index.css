@@ -14,24 +14,34 @@ body,
 
 body {
   @apply bg-base text-ink font-sans antialiased;
-  /* Faint blueprint-style grid, not a generic AI-dashboard dot grid —
-     ties to the schematic/engineering subject matter. */
+  /* Faint blueprint-style grid, kept from the original — now mint on
+     near-black instead of blue on light, so it reads as glow, not print. */
   background-image:
-    linear-gradient(rgba(21, 95, 130, 0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(21, 95, 130, 0.05) 1px, transparent 1px);
+    linear-gradient(rgba(47, 184, 166, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(47, 184, 166, 0.06) 1px, transparent 1px);
   background-size: 32px 32px;
 }
 
 ::selection {
-  background: #155f8226;
+  background: #2fb8a640;
 }
 
 .panel {
-  @apply bg-panel border border-line;
-  /* Subtle elevation — a real enclosed instrument, not a flat card */
+  @apply bg-panel border border-line rounded-2xl overflow-hidden;
+  /* Instrument sits proud of the dark enclosure, lit from above */
   box-shadow:
-    0 1px 2px rgba(28, 27, 23, 0.06),
-    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+    0 1px 2px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+/* Single restrained glow accent, used once behind the sim canvas
+   and the brand mark — not scattered across every card. */
+.ember-glow {
+  position: absolute;
+  border-radius: 9999px;
+  background: radial-gradient(circle, rgba(47, 184, 166, 0.16), transparent 70%);
+  pointer-events: none;
+  filter: blur(2px);
 }
 
 .data {

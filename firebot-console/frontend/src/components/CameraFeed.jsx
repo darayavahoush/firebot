@@ -12,7 +12,7 @@ export default function CameraFeed({ frame }) {
           </span>
         }
       />
-      <div className="border-t border-line flex-1 relative bg-[#12110D] min-h-[280px] overflow-hidden">
+      <div className="border-t border-line flex-1 relative bg-scope min-h-[280px] overflow-hidden">
         {/* Wire this <img>/<video> to your MJPEG or WebRTC stream endpoint
             once camera hardware is on the Pi. */}
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">

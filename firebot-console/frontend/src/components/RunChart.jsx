@@ -35,33 +35,33 @@ export default function RunChart({ runId, detail }) {
       <div className="border-t border-line p-4 flex-1 min-h-[240px]">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={detail.points} margin={{ top: 4, right: 12, bottom: 0, left: 0 }}>
-            <CartesianGrid stroke="#D2CDC1" vertical={false} />
+            <CartesianGrid stroke="rgba(247,243,232,0.14)" vertical={false} />
             <XAxis
               dataKey="t"
-              tick={{ fill: "#95917F", fontSize: 10, fontFamily: "IBM Plex Mono" }}
-              axisLine={{ stroke: "#D2CDC1" }}
+              tick={{ fill: "rgba(247,243,232,0.4)", fontSize: 10, fontFamily: "JetBrains Mono" }}
+              axisLine={{ stroke: "rgba(247,243,232,0.14)" }}
               tickLine={false}
             />
             <YAxis
-              tick={{ fill: "#95917F", fontSize: 10, fontFamily: "IBM Plex Mono" }}
-              axisLine={{ stroke: "#D2CDC1" }}
+              tick={{ fill: "rgba(247,243,232,0.4)", fontSize: 10, fontFamily: "JetBrains Mono" }}
+              axisLine={{ stroke: "rgba(247,243,232,0.14)" }}
               tickLine={false}
               width={32}
             />
             <Tooltip
               contentStyle={{
-                background: "#EFEDE6",
-                border: "1px solid #D2CDC1",
-                fontFamily: "IBM Plex Mono",
+                background: "#143036",
+                border: "1px solid rgba(247,243,232,0.14)",
+                fontFamily: "JetBrains Mono",
                 fontSize: 11,
-                color: "#1C1B17",
+                color: "#F7F3E8",
               }}
-              labelStyle={{ color: "#5F5C53" }}
+              labelStyle={{ color: "rgba(247,243,232,0.6)" }}
             />
             <Line
               type="monotone"
               dataKey="temp_c"
-              stroke="#B4700A"
+              stroke="#F4B942"
               strokeWidth={1.5}
               dot={false}
               name="Temp °C"
@@ -69,7 +69,7 @@ export default function RunChart({ runId, detail }) {
             <Line
               type="monotone"
               dataKey="battery_v"
-              stroke="#155F82"
+              stroke="#2FB8A6"
               strokeWidth={1.5}
               dot={false}
               name="Battery V"
@@ -78,8 +78,8 @@ export default function RunChart({ runId, detail }) {
         </ResponsiveContainer>
       </div>
       <div className="border-t border-line px-4 py-2 flex gap-4 font-mono text-[10px] text-muted">
-        <Legend color="#B4700A" label="Temp °C" />
-        <Legend color="#155F82" label="Battery V" />
+        <Legend color="#F4B942" label="Temp °C" />
+        <Legend color="#2FB8A6" label="Battery V" />
       </div>
     </div>
   );
