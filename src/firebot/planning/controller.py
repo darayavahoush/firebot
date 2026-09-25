@@ -118,10 +118,17 @@ class PlanningController:
         if in_position:
             self.path = None
             return base
-        moved = self.fire_est is None or float(np.hypot(*(fire - self.fire_est))) > GOAL_SHIFT
+        first = self.fire_est is None
+        moved = (not first) and float(np.hypot(*(fire - self.fire_est))) > GOAL_SHIFT
         stuck = obs[15] < .15 and self.path is not None and self.since_plan > 1.0
         retry = self.path is None and self.since_plan > RETRY_AFTER  # back off after a failed plan
-        if self.fire_est is None or moved or stuck or retry or self.since_plan > REPLAN_EVERY:
+        # Never replan purely because a still-noisy bearing-only estimate drifted more than once
+        # a second -- otherwise a not-yet-converged EIF can trigger a fresh RRT* solve almost
+        # every tick, each with a slightly different goal/tree, which reads as the robot
+        # constantly changing its mind rather than navigating. `first`/`stuck`/`retry`/the
+        # periodic REPLAN_EVERY timeout are unaffected -- only the noise-driven `moved` trigger
+        # is debounced. Mirrors the equivalent guard in firebot-console's simController.js.
+        if first or stuck or retry or self.since_plan > REPLAN_EVERY or (moved and self.since_plan > 1.0):
             self._replan(fire, pose)
         if self.path is None:
             return base  # no route: fall back to reactive behaviour
