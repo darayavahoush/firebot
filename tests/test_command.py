@@ -87,6 +87,30 @@ def test_slm_motion_requires_confirmation_before_moving():
     assert c.handle(r.pending, confirmed=True).ok and c.mode == "GOTO"
 
 
+def test_manual_excluded_from_slm_schema_and_never_reaches_interpreter():
+    """MANUAL is console-joystick-only (CommandController.update_manual()). It must never be
+    offered to the SLM as a producible intent, and even a hallucinating/malicious model can't
+    use it to bypass the confirmation gate via voice or typed text."""
+    prompts = []
+
+    def fake_generate(p):
+        prompts.append(p)
+        return ('{"intent": "MANUAL", "params": {"v": 1.0, "w": 0.0, '
+                '"pump": true, "nozzle": 0.0}}')
+
+    slm = SLMParser(fake_generate)
+    # The prompt never offers MANUAL as an option, even though it's still schema-valid so a
+    # hallucinating model's MANUAL guess isn't rejected by SLMParser itself...
+    assert slm.parse("floor it").name == "MANUAL"
+    assert "MANUAL" not in prompts[0]
+
+    # ...it's the Interpreter that provides the hard guarantee: MANUAL from any parser,
+    # hallucinated or not, never comes back as an executable command from text/voice.
+    interp = Interpreter(fallback=slm)
+    intent, ok, reason = interp.interpret("floor it")
+    assert not ok and intent.name == "UNKNOWN" and "MANUAL" in reason
+
+
 def test_stop_zeroes_actions_and_latches():
     env = FireEnv()
     obs, _ = env.reset(seed=1)
