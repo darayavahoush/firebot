@@ -114,7 +114,10 @@ class SLMParser:
 
     def parse(self, text: str) -> Intent:
         t = normalise(text)
-        schema = "\n".join(f"- {n}: {{{', '.join(p)}}}" for n, p in SCHEMA.items() if n != "UNKNOWN")
+        # MANUAL is console-joystick-only (see executor.update_manual()) -- never offer it as
+        # something a spoken/typed utterance can produce.
+        schema = "\n".join(f"- {n}: {{{', '.join(p)}}}" for n, p in SCHEMA.items()
+                          if n not in ("UNKNOWN", "MANUAL"))
         try:
             raw = self.generate(SLM_PROMPT.format(schema=schema, text=t))
             blob = re.search(r"\{.*\}", raw, re.DOTALL)
@@ -140,6 +143,13 @@ class Interpreter:
         intent = self.rules.parse(text)
         if intent.name == "UNKNOWN" and self.fallback is not None:
             intent = self.fallback.parse(text)
+        if intent.name == "MANUAL":
+            # Defense in depth: MANUAL must only ever reach the executor via
+            # CommandController.update_manual(), never through a parsed utterance -- no
+            # parser should produce it, but a hallucinating SLM is exactly the case this
+            # guards against, so text/voice can never bypass the confirmation gate this way.
+            return Intent("UNKNOWN", {}, 0.0, intent.source, intent.text), False, \
+                "MANUAL is not a voice/text command"
         ok, reason = validate(intent)
         if not ok:
             return Intent("UNKNOWN", {}, 0.0, intent.source, intent.text), False, reason
