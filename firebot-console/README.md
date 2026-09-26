@@ -38,6 +38,18 @@ simulated robot connects. The **Simulator** tab doesn't need either of the above
 self-contained, browser-only demo (its own procedural map, sensors, planner, and voice/text
 commands), useful for iterating on planner/UI behavior without the backend running at all.
 
+## Configuration
+
+- `FIREBOT_BRAIN_CMD_URL`, `FIREBOT_TOKEN` -- see the repo-root `README.md`.
+- `GROQ_API_KEY` -- required for the `/api/transcribe` voice fallback (Groq-hosted
+  Whisper). Without it, that endpoint returns a 503 unless the local classifier below
+  handles the request standalone.
+- `FIREBOT_VOICE_INTENT_CHECKPOINT` / `FIREBOT_VOICE_INTENT_MIN_CONFIDENCE` /
+  `FIREBOT_VOICE_INTENT_ROUTER_STATE` -- optional local first-pass for `/api/transcribe`,
+  tried before Groq. Unset by default (no effect on a console that doesn't use it); see
+  `src/firebot/voice_intent/README.md` ("6. Wire it into the console backend") for what
+  each one does and how to train a checkpoint.
+
 ## Layout
 - `backend/server.py` -- FastAPI bridge: `/api/runs*` (read history from Postgres),
   `/api/command*` (forward drive/pump/nozzle/estop to the brain's manual-control bridge),

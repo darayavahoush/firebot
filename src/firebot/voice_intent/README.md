@@ -139,12 +139,40 @@ payload = clf.predict_intent_payload(wav_path, min_confidence=0.6)
 #  "source": "voice_intent", "raw_label": "GOTO_NORTH", "scores": {...}}
 ```
 `payload["name"]`/`payload["params"]` line up with `command.intents.Intent`
-so it can go through the same `validate()` call as the rules/SLM parsers —
-this isn't wired into `server.py` yet, that's a separate step once you've
-got a checkpoint you're happy with (natural design: try this classifier
-first since it's instant and free/offline; anything below `min_confidence`,
-or a coordinate-based `GOTO`, falls through to the existing Groq
-transcription + regex path).
+so it can go through the same `validate()` call as the rules/SLM parsers.
+
+## 6. Wire it into the console backend
+
+Once you've got a checkpoint you're happy with, point `firebot-console/backend/server.py`
+at it with one environment variable — this classifier tries first (instant, free, offline);
+anything below `min_confidence`, `UNKNOWN`, or an undecodable/unsupported clip falls straight
+through to the existing Groq transcription + regex path, so a bad or missing checkpoint can
+never break `/api/transcribe`, only skip this optimization:
+
+```bash
+export FIREBOT_VOICE_INTENT_CHECKPOINT=checkpoints/intent_head.pt   # required to enable it at all
+export FIREBOT_VOICE_INTENT_MIN_CONFIDENCE=0.6                      # optional, default 0.6
+export FIREBOT_VOICE_INTENT_ROUTER_STATE=voice_intent_router.json   # optional, default shown
+```
+
+- `FIREBOT_VOICE_INTENT_CHECKPOINT` — unset (the default) means the local classifier is
+  never loaded at all, so a console deployed without this checkpoint/the `torch`+`librosa`
+  extras installed is completely unaffected. Set it to a `train.py` checkpoint path to
+  turn this on.
+- `FIREBOT_VOICE_INTENT_MIN_CONFIDENCE` — below this confidence, the classifier's own
+  guess is discarded and the request goes to Groq like normal (same gate as
+  `predict_intent_payload`'s `min_confidence` above).
+- `FIREBOT_VOICE_INTENT_ROUTER_STATE` — where `voice_intent.router.ShadowRouter` persists
+  its learned per-confidence-decile trust state as JSON between server restarts. A
+  missing/corrupt file just starts fresh (always double-checking against Groq) rather than
+  erroring. See `router.py`'s module docstring for why a confidence-bucketed Thompson-
+  sampling bandit, not a trust threshold on raw confidence: in short, it starts cautious
+  (always calling Groq to build up ground truth) and only starts skipping Groq for a given
+  confidence decile once that decile has enough observed agreement with Groq — and even
+  then, a small fraction of requests in a trusted decile are still audited in the
+  background so a stale/drifting checkpoint gets caught. This never affects which command
+  is actually dispatched to the robot: it only decides whether Groq gets called *in
+  addition*, purely to keep collecting ground truth.
 
 ## A note on expectations
 
