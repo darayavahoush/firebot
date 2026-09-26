@@ -12,8 +12,10 @@ export default function App() {
   const [linkOk, setLinkOk] = useState(true);
   const [mode, setModeState] = useState("auto");
   const [log, setLog] = useState([]);
+  const [ack, setAck] = useState(null);
   const logRef = useRef(null);
   const lastFrameAtRef = useRef(0);
+  const ackTimerRef = useRef(null);
 
   // `frame.link_ok` doesn't exist on the wire (the frames table has no such column), so this
   // used to read undefined and show "LINK LOST" permanently. Derive it instead from whether
@@ -37,11 +39,22 @@ export default function App() {
       (c) => {
         const label = c.valid ? c.text : `${c.text} — rejected: ${c.message ?? "invalid"}`;
         pushLog(c.channel, label);
+        showAck(c);
       },
     );
     return disconnect;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Brief on-screen acknowledgment so the operator can tell at a glance that a voice/typed
+  // command actually landed and was (or wasn't) understood, instead of having to go find it
+  // in the scrolling Command Log. Auto-dismisses; a new command replaces the old one immediately.
+  const showAck = useCallback((c) => {
+    if (ackTimerRef.current) clearTimeout(ackTimerRef.current);
+    setAck({ text: c.text, channel: c.channel, valid: c.valid, message: c.message });
+    ackTimerRef.current = setTimeout(() => setAck(null), 3200);
+  }, []);
+  useEffect(() => () => { if (ackTimerRef.current) clearTimeout(ackTimerRef.current); }, []);
 
   const pushLog = useCallback((source, text) => {
     setLog((prev) => {
@@ -121,10 +134,26 @@ export default function App() {
     <div className="min-h-full flex">
       <Sidebar page={page} setPage={setPage} linkOk={frame ? linkOk : true} />
 
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 relative">
         <TopBar page={page} mode={mode} onEstop={onEstop} />
 
-        {page === "live" ? (
+        {ack && (
+          <div
+            className={`absolute top-3 left-1/2 -translate-x-1/2 z-20 rounded-full border px-4 py-1.5 text-[12px] font-mono shadow-lg bg-panel ${
+              ack.valid ? "border-telemetry text-telemetry" : "border-warn text-warn"
+            }`}
+          >
+            {ack.valid ? "\u2713 command received: " : "\u26a0 not understood: "}
+            <span className="text-ink">{"\u201c"}{ack.text}{"\u201d"}</span>
+            <span className="text-faint"> ({ack.channel})</span>
+          </div>
+        )}
+
+        {/* All three pages stay mounted once visited, toggled with display rather than
+            conditional rendering, so the Simulator's in-memory engine (building, fire, robot
+            position, planner state) survives switching to Live Ops/History and back instead of
+            being torn down and recreated from scratch on every navigation. */}
+        <div className={page === "live" ? "contents" : "hidden"}>
           <LiveOps
             frame={frame}
             mode={mode}
@@ -134,11 +163,13 @@ export default function App() {
             onPump={onPump}
             onNozzle={onNozzle}
           />
-        ) : page === "sim" ? (
+        </div>
+        <div className={page === "sim" ? "contents" : "hidden"}>
           <Simulator />
-        ) : (
+        </div>
+        <div className={page === "history" ? "contents" : "hidden"}>
           <History />
-        )}
+        </div>
       </div>
     </div>
   );

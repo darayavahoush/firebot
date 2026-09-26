@@ -30,10 +30,12 @@ export default function Simulator() {
   const [listening, setListening] = useState(false);
   const [transcript, setTranscript] = useState("");
   const [voiceError, setVoiceError] = useState("");
+  const [ack, setAck] = useState(null);
   const recogRef = useRef(null);
   const rafRef = useRef(null);
   const lastRef = useRef(performance.now());
   const renderThrottleRef = useRef(0);
+  const ackTimerRef = useRef(null);
 
   // simulation loop: physics steps every frame at `speed`x, React state refreshed a few times/sec
   useEffect(() => {
@@ -59,11 +61,22 @@ export default function Simulator() {
     setTick((t) => t + 1);
   }, []);
 
+  // Brief on-screen acknowledgment so the operator knows a voice/text command was actually
+  // received and parsed, rather than having to go check the command/event log to find out.
+  // Auto-dismisses; a new command replaces the old ack immediately rather than stacking.
+  const showAck = useCallback((text, intent) => {
+    if (ackTimerRef.current) clearTimeout(ackTimerRef.current);
+    setAck({ text, intent: intent.name, understood: intent.name !== "UNKNOWN" });
+    ackTimerRef.current = setTimeout(() => setAck(null), 3200);
+  }, []);
+  useEffect(() => () => { if (ackTimerRef.current) clearTimeout(ackTimerRef.current); }, []);
+
   const sendCommand = useCallback((text) => {
     if (!text.trim()) return;
-    engineRef.current.say(text);
+    const intent = engineRef.current.say(text);
+    showAck(text, intent);
     setTick((t) => t + 1);
-  }, []);
+  }, [showAck]);
 
   // Web Speech API -- Chrome/Edge only; Safari partial; Firefox unsupported, hence the text fallback
   const speechSupported = useMemo(
@@ -106,7 +119,18 @@ export default function Simulator() {
   const sigma = t.estimate?.sigma;
 
   return (
-    <main className="flex-1 flex flex-col">
+    <main className="flex-1 flex flex-col relative">
+      {ack && (
+        <div
+          className={`absolute top-3 left-1/2 -translate-x-1/2 z-20 rounded-full border px-4 py-1.5 text-[12px] font-mono shadow-lg transition-opacity ${
+            ack.understood ? "border-telemetry text-telemetry bg-panel" : "border-warn text-warn bg-panel"
+          }`}
+        >
+          {ack.understood ? "\u2713 command received: " : "\u26a0 not understood: "}
+          <span className="text-ink">{"\u201c"}{ack.text}{"\u201d"}</span>
+          {ack.understood && <span className="text-faint"> {"\u2192"} {ack.intent}</span>}
+        </div>
+      )}
       <div className="border-b border-line bg-panel px-6 py-2.5 flex items-center gap-4 flex-wrap">
         <span className="font-display font-bold text-[13px] text-ink tracking-wide">SIMULATOR</span>
         <button onClick={newBuilding} className="rounded-lg border border-line px-3 py-1 text-[12px] font-mono text-ink hover:border-telemetry hover:text-telemetry transition-colors">
