@@ -23,6 +23,7 @@ import numpy as np
 from firebot.command import CommandController, Interpreter, Result, RuleParser
 from firebot.command.intents import Intent
 from firebot.perception import Perception
+from firebot.sim.env import TURRET_LIMIT
 from firebot.sim.world import World
 
 from .protocol import STOP, Command, Frame
@@ -119,9 +120,16 @@ class Brain:
         dt = 0.1 if self.last_t is None else float(np.clip(frame.t - self.last_t, 0.02, 0.5))
         self.last_t = frame.t
         s = {**frame.sensors, "thermal": np.asarray(frame.thermal, dtype=np.float32)}
-        obs = self.perception.update(s, frame.pose, frame.tank, frame.speed)
+        # Perception.update() itself stays turret-agnostic (it also runs on real-hardware
+        # frames, which don't have a pan servo yet -- item 8); the turret component is
+        # appended here from the frame's own telemetry, exactly like FireEnv._obs() appends
+        # the sim's internal turret state, so CommandController always sees a uniform 17-wide
+        # observation regardless of whether it's driven by SimHardware or (eventually) a real
+        # Pi.
+        obs = np.concatenate([self.perception.update(s, frame.pose, frame.tank, frame.speed),
+                              [frame.turret / TURRET_LIMIT]]).astype(np.float32)
         a = self.ctrl.act(obs, np.asarray(frame.pose), dt)
-        cmd = Command(float(a[0]), float(a[1]), bool(a[2] > 0.5), frame.seq)
+        cmd = Command(float(a[0]), float(a[1]), bool(a[3] > 0.5), frame.seq, float(a[2]))
         if self.estop.is_set() or self.ctrl.mode == "IDLE":
             cmd = Command(0.0, 0.0, False, frame.seq)
         self.frames += 1

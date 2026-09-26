@@ -1,6 +1,14 @@
 """Gymnasium-style environment (reset/step API) around the world, sensors and EIF fusion.
 
-Action (3, normalised): [forward speed 0..1, turn rate -1..1, pump >0.5 = on].
+Action (4, normalised): [forward speed 0..1, turn rate -1..1, turret rate -1..1, pump >0.5 = on].
+
+The turret is the pan servo (`servo_pan` in `firebot.db.devices`) the nozzle is mounted on --
+it aims independently of the chassis, so the robot no longer has to turn its whole body to
+bring the nozzle to bear on the fire. It is a bare pan angle relative to the chassis heading
+(`self.turret`, world-frame direction `theta + turret`), driven by a commanded angular rate and
+clamped to `TURRET_LIMIT`. There is no tilt DOF in this 2D sim -- `servo_tilt` in the device
+registry is a real-hardware-only axis (elevation against a flat-world model has no effect here)
+and stays out of scope until item 8 (real hardware drivers) lands.
 """
 from __future__ import annotations
 
@@ -15,9 +23,17 @@ from .world import Fire, World
 
 DT, VMAX, WMAX = 0.1, 0.7, 1.6
 SPRAY_RANGE, SPRAY_CONE, EXTINGUISH_RATE, WATER_RATE = 2.5, 0.2, 0.2, 0.03
-OBS_DIM, ACT_DIM = 16, 3
+# TURRET_WMAX faster than WMAX: an SG90-class pan servo slews a light nozzle assembly quicker
+# than the whole chassis can turn. TURRET_LIMIT is the servo's usable mechanical range on a
+# typical pan-tilt bracket, +/-90 deg either side of dead-ahead.
+TURRET_WMAX, TURRET_LIMIT = 2.5, np.pi / 2
+OBS_DIM, ACT_DIM = 17, 4
 DEFAULT_MIN_FIRE_DIST = 4.0
 _START = (1.2, 1.0)  # robot's spawn point on the default single-room map
+
+
+def _wrap(a: float) -> float:
+    return float(np.arctan2(np.sin(a), np.cos(a)))
 
 
 def clamp_min_fire_dist(world: World, requested: float) -> float:
@@ -39,7 +55,7 @@ def clamp_min_fire_dist(world: World, requested: float) -> float:
 def obs_layout() -> dict[str, slice | int]:
     return {"us": slice(0, 4), "flame": slice(4, 7), "gas": 7, "seen": 8, "therm_bearing": 9,
             "est_bearing": 10, "est_range": 11, "est_sigma": 12, "therm_peak": 13,
-            "tank": 14, "speed": 15}
+            "tank": 14, "speed": 15, "turret": 16}
 
 
 class FireEnv:
@@ -79,6 +95,7 @@ class FireEnv:
         start = _START if self.world.is_free(*_START, .22) else \
             self.world.random_free_point(self.rng, .22)
         self.robot = np.array([start[0], start[1], 0.6])  # x, y, theta
+        self.turret = 0.0  # pan angle relative to chassis heading, dead-ahead at spawn
         min_dist = clamp_min_fire_dist(self.world, self.min_fire_dist)
         fx, fy = self.world.random_free_point(self.rng, .5, self.robot[:2], min_dist)
         self.fire, self.perception = Fire(fx, fy), Perception(VMAX)
@@ -91,14 +108,16 @@ class FireEnv:
     def _obs(self) -> np.ndarray:
         obs = self.perception.update(self.last, self.robot, self.tank, self.meas_speed)
         self.est, self.eif = self.perception.est, self.perception.eif
-        return obs
+        return np.concatenate([obs, [self.turret / TURRET_LIMIT]]).astype(np.float32)
 
     def step(self, action):
         v = float(np.clip(action[0], 0, 1)) * VMAX
         w = float(np.clip(action[1], -1, 1)) * WMAX
-        pump = float(action[2]) > .5 and self.tank > 0
+        turret_rate = float(np.clip(action[2], -1, 1)) * TURRET_WMAX
+        pump = float(action[3]) > .5 and self.tank > 0
         x, y, th = self.robot
         th += w * DT
+        self.turret = float(np.clip(self.turret + turret_rate * DT, -TURRET_LIMIT, TURRET_LIMIT))
         nx, ny = x + np.cos(th) * v * DT, y + np.sin(th) * v * DT
         collided = v > 0 and not self.world.is_free(nx, ny, .22)
         if collided:
@@ -116,7 +135,11 @@ class FireEnv:
         if pump:
             self.tank = max(0.0, self.tank - WATER_RATE * DT)
             self.water += WATER_RATE * DT
-            if tr["visible"] and tr["dist"] < SPRAY_RANGE and abs(tr["bearing"]) < SPRAY_CONE:
+            # nozzle-relative bearing: the turret, not the chassis, has to be pointed at the
+            # fire now -- a robot that's turned its body away can still spray if the pan servo
+            # has swung the nozzle onto target.
+            nozzle_bearing = _wrap(tr["bearing"] - self.turret)
+            if tr["visible"] and tr["dist"] < SPRAY_RANGE and abs(nozzle_bearing) < SPRAY_CONE:
                 dp = min(self.fire.p, EXTINGUISH_RATE * DT)
                 self.fire.p -= dp
                 reward += 2.0 * dp

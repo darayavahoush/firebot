@@ -8,8 +8,10 @@ MANUAL is entered via `update_manual()`, a fast path for continuous joystick-sty
 bypasses `handle()`'s validation/logging so a full joystick tick rate doesn't spam the operator
 log. It carries its own 0.5s dead-man timeout (`MANUAL_TIMEOUT`): if no fresh sample arrives
 within that window, `act()` drops back to IDLE on its own, even with no operator STOP. Nozzle
-angle is tracked here for completeness but has no backing actuator anywhere in the physics
-model or wire protocol -- it never reaches the returned action.
+angle (`manual_state["nozzle"]`, degrees, +/-45) is an absolute pan target; `act()` reads the
+turret's current angle back from the observation (`FireEnv`'s 17th component, see
+`firebot.sim.env`) and closes the loop with a proportional rate command each tick, same as
+`RuleController` does for SPRAY.
 """
 from __future__ import annotations
 
@@ -18,6 +20,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from firebot.planning import PlanningController, follow_path
+from firebot.sim.env import TURRET_LIMIT
 from firebot.sim.world import World
 
 from .intents import SAFE_WITHOUT_CONFIRMATION, Intent, validate
@@ -119,7 +122,7 @@ class CommandController:
     # ---- control side -------------------------------------------------------------------
     def act(self, obs: np.ndarray, pose, dt: float = 0.1) -> np.ndarray:
         self.obs, self.pose = obs, np.asarray(pose, float)
-        idle = np.zeros(3, dtype=np.float32)
+        idle = np.zeros(4, dtype=np.float32)
         if self.mode == "AUTO":
             return self.auto.act(obs, self.pose, dt)
         if self.mode == "MANUAL":
@@ -128,7 +131,11 @@ class CommandController:
                 self.mode = "IDLE"
                 return idle
             m = self.manual_state
-            return np.array([m["v"], m["w"], 1.0 if m["pump"] else 0.0], dtype=np.float32)
+            turret = float(obs[16]) * TURRET_LIMIT
+            target = np.deg2rad(m["nozzle"])
+            turret_cmd = float(np.clip((target - turret) * 3.0, -1.0, 1.0))
+            return np.array([m["v"], m["w"], turret_cmd, 1.0 if m["pump"] else 0.0],
+                             dtype=np.float32)
         if self.mode != "GOTO" or self.path is None:
             return idle
         front = min(obs[0], obs[1]) * 4

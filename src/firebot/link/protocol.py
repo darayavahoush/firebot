@@ -1,10 +1,15 @@
 """Wire protocol: newline-delimited JSON over TCP. Stdlib only (runs on the Pi).
 
 Pi -> PC   hello  {"type","version","robot","token"}
-           frame  {"type","seq","t","pose":[x,y,th],"speed","tank","sensors":{...}}
+           frame  {"type","seq","t","pose":[x,y,th],"speed","tank","sensors":{...},"turret"}
+                  turret: current pan-servo angle, radians, chassis-relative (optional, defaults
+                  to 0.0 for senders that predate the pan-tilt DOF)
            bye    {"type"}
 PC -> Pi   welcome {"type","session"}         error {"type","reason"}
-           cmd     {"type","ack","v","w","pump"}   v in [0,1], w in [-1,1] (normalised), pump bool
+           cmd     {"type","ack","v","w","pump","turret"}   v in [0,1], w in [-1,1] (normalised),
+                   pump bool, turret in [-1,1] (normalised pan-servo rate; optional, defaults to
+                   0.0 for senders/receivers that predate the pan-tilt DOF -- see item 8, no real
+                   driver consumes it yet)
 
 Everything received is validated: a malformed frame is dropped by the brain, a malformed
 command is ignored by the Pi (and the Pi's watchdog stops the robot if valid ones stop coming).
@@ -42,11 +47,12 @@ class Frame:
     tank: float                               # water level 0..1
     sensors: dict[str, float] = field(default_factory=dict)
     thermal: list[list[float]] = field(default_factory=list)  # 24 x 32, degC
+    turret: float = 0.0                       # pan-servo angle, radians, chassis-relative
 
     def to_msg(self) -> dict:
         return {"type": "frame", "seq": self.seq, "t": self.t, "pose": list(self.pose),
                 "speed": self.speed, "tank": self.tank,
-                "sensors": {**self.sensors, "thermal": self.thermal}}
+                "sensors": {**self.sensors, "thermal": self.thermal}, "turret": self.turret}
 
 
 @dataclass
@@ -55,9 +61,12 @@ class Command:
     w: float = 0.0
     pump: bool = False
     ack: int = -1
+    turret: float = 0.0  # normalised pan-servo rate, appended so existing positional callers
+                          # (real or in tests) that predate the turret keep working unchanged
 
     def to_msg(self) -> dict:
-        return {"type": "cmd", "ack": self.ack, "v": self.v, "w": self.w, "pump": self.pump}
+        return {"type": "cmd", "ack": self.ack, "v": self.v, "w": self.w, "pump": self.pump,
+                "turret": self.turret}
 
 
 STOP = Command()
@@ -82,7 +91,7 @@ def parse_frame(msg: dict) -> Frame:
             raise ProtocolError("seq must be an integer")
         return Frame(seq, _num(msg["t"], "t"), tuple(_num(p, "pose") for p in pose),  # type: ignore[arg-type]
                      _num(msg["speed"], "speed"), min(1.0, max(0.0, _num(msg["tank"], "tank"))),
-                     sensors, thermal)
+                     sensors, thermal, _num(msg.get("turret", 0.0), "turret"))
     except KeyError as e:
         raise ProtocolError(f"missing field {e}") from None
 
@@ -96,7 +105,9 @@ def parse_command(msg: dict) -> Command:
         if not isinstance(pump, bool):
             raise ProtocolError("pump must be boolean")
         ack = msg.get("ack", -1)
-        return Command(v, w, pump, ack if isinstance(ack, int) and not isinstance(ack, bool) else -1)
+        turret = min(1.0, max(-1.0, _num(msg.get("turret", 0.0), "turret")))
+        return Command(v, w, pump, ack if isinstance(ack, int) and not isinstance(ack, bool) else -1,
+                       turret)
     except KeyError as e:
         raise ProtocolError(f"missing field {e}") from None
 
