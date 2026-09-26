@@ -335,15 +335,57 @@ const RE_GOTO = /\b(go|move|drive|head|navigate|travel|proceed|come|position)\b/
 const RE_FIRE = /\b(fire|flame|flames|blaze|burning|smoke)\b/;
 const RE_EXT = /\b(put out|extinguish|douse|suppress|spray|fight|find|search|start|begin|resume|carry on|continue|auto|autonomous|patrol|explore|deal with|handle)\b/;
 const RE_COORD = /\bx\s*[=:]?\s*(-?\d+(?:\.\d+)?)[\s,;and]*y\s*[=:]?\s*(-?\d+(?:\.\d+)?)|\(?\s*(-?\d+(?:\.\d+)?)\s*(?:,|\s)\s*(-?\d+(?:\.\d+)?)\s*\)?/;
-function normalise(t) { return t.toLowerCase().trim().replace(/[^\w\s.,()=:;-]/g, ' ').replace(/\s+/g, ' '); }
+// Politeness/filler wrapping that ASR (and typed input) commonly adds around the actual
+// command -- stripped before matching so it doesn't dilute or confuse the intent regexes.
+// Deliberately narrow (whole words only) so it never touches words the regexes above rely on,
+// e.g. "what do you see" (RE_STATUS) keeps its "you".
+const RE_FILLER = /^(?:hey|ok|okay|so|um+|uh+)\b[,.]?\s*|\b(?:can|could|would) you\s+(?:please\s+)?|\bplease\b|\bkindly\b|\bjust\b|\bgo ahead and\b|\bfor me\b\??$/g;
+function normalise(t) {
+  return t.toLowerCase().trim().replace(/[^\w\s.,()=:;-]/g, ' ').replace(/\s+/g, ' ')
+    .replace(RE_FILLER, ' ').replace(/\s+/g, ' ').trim();
+}
+// Small edit distance (insert/delete/substitute/adjacent-swap) so a misheard or mistyped place
+// name -- "eest", "norht", "northwset" -- still resolves. ASR restricted to the grammar rarely
+// mangles words this badly, but typed commands and transposed letters do it constantly. Names
+// this short never need more than one correction, so a bounded Damerau-Levenshtein is plenty.
+function withinOneEdit(a, b) {
+  if (a === b) return true;
+  if (Math.abs(a.length - b.length) > 1) return false;
+  const n = a.length, m = b.length;
+  let back2 = new Array(m + 1).fill(0);
+  let prev = Array.from({ length: m + 1 }, (_, j) => j);
+  let cur = new Array(m + 1);
+  for (let i = 1; i <= n; i++) {
+    cur[0] = i;
+    for (let j = 1; j <= m; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost);
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
+        cur[j] = Math.min(cur[j], back2[j - 2] + 1); // adjacent transposition
+      }
+    }
+    [back2, prev, cur] = [prev, cur, back2];
+  }
+  return prev[m] <= 1;
+}
 function placeFor(t, places) {
   const words = (t.match(/[a-z]+/g) || []).map((w) => ALIASES[w] || w);
-  for (const name of Object.keys(places)) {
-    if (['north', 'south', 'east', 'west'].includes(name)) continue;
+  const names = Object.keys(places).filter((n) => !['north', 'south', 'east', 'west'].includes(n));
+  for (const name of names) {
     if (words.includes(name)) return places[name];
   }
-  const ns = words.find((w) => w === 'north' || w === 'south') || '';
-  const ew = words.find((w) => w === 'east' || w === 'west') || '';
+  for (const name of names) {
+    if (name.length < 4) continue; // too short for edit-distance matching to be safe
+    if (words.some((w) => w.length >= 4 && withinOneEdit(w, name))) return places[name];
+  }
+  const dir = (cands) => {
+    const exact = words.find((w) => cands.includes(w));
+    if (exact) return exact;
+    const w = words.find((w) => cands.some((c) => withinOneEdit(w, c)));
+    return w ? cands.find((c) => withinOneEdit(w, c)) : undefined;
+  };
+  const ns = dir(['north', 'south']) || '';
+  const ew = dir(['east', 'west']) || '';
   const key = ns + ew;
   if (places[key]) return places[key];
   return places[ns || ew] || null;

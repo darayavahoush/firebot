@@ -31,11 +31,15 @@ export default function Simulator() {
   const [transcript, setTranscript] = useState("");
   const [voiceError, setVoiceError] = useState("");
   const [ack, setAck] = useState(null);
+  const [showSuggestions, setShowSuggestions] = useState(false);
   const recogRef = useRef(null);
+  const restartTimerRef = useRef(null);
+  const restartAttemptsRef = useRef(0);
   const rafRef = useRef(null);
   const lastRef = useRef(performance.now());
   const renderThrottleRef = useRef(0);
   const ackTimerRef = useRef(null);
+  const cmdInputRef = useRef(null);
 
   // simulation loop: physics steps every frame at `speed`x, React state refreshed a few times/sec
   useEffect(() => {
@@ -85,35 +89,97 @@ export default function Simulator() {
   );
   const toggleListening = useCallback(() => {
     if (!speechSupported) return;
-    if (listening) { const r = recogRef.current; recogRef.current = null; r?.stop(); setListening(false); return; }
+    if (listening) {
+      if (restartTimerRef.current) { clearTimeout(restartTimerRef.current); restartTimerRef.current = null; }
+      const r = recogRef.current; recogRef.current = null; r?.stop(); setListening(false); setTranscript("");
+      return;
+    }
     setVoiceError("");
+    restartAttemptsRef.current = 0;
     const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    const r = new Recognition();
-    r.continuous = true; r.interimResults = true; r.lang = "en-US";
-    r.onresult = (e) => {
-      let interim = "", final = "";
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        const t = e.results[i][0].transcript;
-        if (e.results[i].isFinal) final += t; else interim += t;
-      }
-      if (final) { sendCommand(final); setTranscript(""); } else setTranscript(interim);
-    };
-    r.onerror = (e) => {
-      // Fatal: the browser has given up on this recognizer for good \u2014 restarting it in
-      // onend would just loop the same error forever. Transient (no-speech, aborted,
-      // occasional network blips) are normal mid-session noise; let onend restart quietly.
-      if (FATAL_VOICE_ERRORS.has(e.error)) {
-        recogRef.current = null; // stops onend from restarting it
+    const start = () => {
+      const r = new Recognition();
+      r.continuous = true; r.interimResults = true; r.lang = "en-US";
+      r.onresult = (e) => {
+        restartAttemptsRef.current = 0; // a real result means the recognizer is healthy again
+        let interim = "", final = "";
+        for (let i = e.resultIndex; i < e.results.length; i++) {
+          const t = e.results[i][0].transcript;
+          if (e.results[i].isFinal) final += t; else interim += t;
+        }
+        if (final) { sendCommand(final); setTranscript(""); } else setTranscript(interim);
+      };
+      r.onerror = (e) => {
+        // Fatal: the browser has given up on this recognizer for good \u2014 restarting it in
+        // onend would just loop the same error forever. Transient (no-speech, aborted,
+        // occasional network blips) are normal mid-session noise; let onend restart quietly.
+        if (FATAL_VOICE_ERRORS.has(e.error)) {
+          recogRef.current = null; // stops onend from restarting it
+          setListening(false);
+          setVoiceError(VOICE_ERROR_MESSAGES[e.error] || `Speech recognition stopped (${e.error}).`);
+        }
+      };
+      r.onend = () => {
+        // Chrome ends the recognizer on its own after a stretch of silence even in continuous
+        // mode; restart to keep "listening" actually listening. Calling start() again
+        // immediately can throw (the browser's speech service hasn't fully torn down yet), and
+        // that exception used to go uncaught here \u2014 the mic would silently go dead while the
+        // UI still showed LIVE. A short delay plus a capped, backed-off retry with a real error
+        // surfaced fixes both.
+        if (recogRef.current !== r) return;
+        restartAttemptsRef.current += 1;
+        if (restartAttemptsRef.current > 5) {
+          recogRef.current = null;
+          setListening(false);
+          setVoiceError("Speech recognition kept dropping and gave up restarting. Try the mic button again.");
+          return;
+        }
+        const delay = Math.min(1500, 150 * restartAttemptsRef.current);
+        restartTimerRef.current = setTimeout(() => {
+          if (recogRef.current !== r) return;
+          try { start(); } catch {
+            recogRef.current = null;
+            setListening(false);
+            setVoiceError("Speech recognition stopped unexpectedly. Try the mic button again.");
+          }
+        }, delay);
+      };
+      recogRef.current = r;
+      try {
+        r.start();
+      } catch {
+        recogRef.current = null;
         setListening(false);
-        setVoiceError(VOICE_ERROR_MESSAGES[e.error] || `Speech recognition stopped (${e.error}).`);
+        setVoiceError("Couldn't start speech recognition. Try the mic button again.");
+        return;
       }
+      setListening(true);
     };
-    r.onend = () => { if (recogRef.current === r) r.start(); }; // keep listening until the user toggles off
-    recogRef.current = r;
-    r.start();
-    setListening(true);
+    start();
   }, [listening, speechSupported, sendCommand]);
-  useEffect(() => () => { const r = recogRef.current; recogRef.current = null; r?.stop(); }, []);
+  useEffect(() => () => {
+    if (restartTimerRef.current) clearTimeout(restartTimerRef.current);
+    const r = recogRef.current; recogRef.current = null; r?.stop();
+  }, []);
+
+  // Flat example-phrase list for the text-command autocomplete, built once from the same
+  // reference list the "Eligible Commands" panel shows -- so suggestions never drift from it.
+  const allExamples = useMemo(() => COMMAND_HELP.flatMap((c) => c.examples), []);
+  const suggestions = useMemo(() => {
+    const q = textCmd.trim().toLowerCase();
+    if (!q) return [];
+    const starts = allExamples.filter((ex) => ex.startsWith(q));
+    const contains = allExamples.filter((ex) => !ex.startsWith(q) && ex.includes(q));
+    return [...starts, ...contains].slice(0, 6);
+  }, [textCmd, allExamples]);
+
+  // Shared by clicking an autocomplete suggestion and clicking a past command in the log --
+  // both just load the text into the box so the operator can review/edit before sending.
+  const fillCommand = useCallback((text) => {
+    setTextCmd(text);
+    setShowSuggestions(false);
+    cmdInputRef.current?.focus();
+  }, []);
 
   const t = engineRef.current.telemetry();
   const sigma = t.estimate?.sigma;
@@ -208,6 +274,11 @@ export default function Simulator() {
                 textCmd={textCmd}
                 setTextCmd={setTextCmd}
                 sendCommand={sendCommand}
+                cmdInputRef={cmdInputRef}
+                suggestions={suggestions}
+                showSuggestions={showSuggestions}
+                setShowSuggestions={setShowSuggestions}
+                fillCommand={fillCommand}
               />
             )}
           </div>
@@ -386,7 +457,10 @@ const COMMAND_HELP = [
   },
 ];
 
-function VoiceTab({ t, speechSupported, listening, toggleListening, transcript, voiceError, textCmd, setTextCmd, sendCommand }) {
+function VoiceTab({
+  t, speechSupported, listening, toggleListening, transcript, voiceError, textCmd, setTextCmd,
+  sendCommand, cmdInputRef, suggestions, showSuggestions, setShowSuggestions, fillCommand,
+}) {
   return (
     <div>
       <PanelHeader label="Voice Command" />
@@ -406,16 +480,40 @@ function VoiceTab({ t, speechSupported, listening, toggleListening, transcript, 
         {speechSupported && voiceError && <div className="text-[11px] text-warn text-center">{voiceError}</div>}
         {transcript && <div className="text-[12px] text-muted font-mono italic">\u201c{transcript}\u2026\u201d</div>}
       </div>
-      <div className="border-t border-line px-4 py-3 flex gap-2">
-        <input
-          value={textCmd}
-          onChange={(e) => setTextCmd(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") { sendCommand(textCmd); setTextCmd(""); } }}
-          placeholder='"go to the north room", "stop", "status"'
-          className="flex-1 rounded-lg bg-panel2 border border-line px-2.5 py-1.5 text-[12px] font-mono text-ink outline-none focus:border-telemetry"
-        />
+      <div className="border-t border-line px-4 py-3 flex gap-2 relative">
+        <div className="flex-1 relative">
+          <input
+            ref={cmdInputRef}
+            value={textCmd}
+            onChange={(e) => { setTextCmd(e.target.value); setShowSuggestions(true); }}
+            onFocus={() => setShowSuggestions(true)}
+            onBlur={() => window.setTimeout(() => setShowSuggestions(false), 120)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") { sendCommand(textCmd); setTextCmd(""); setShowSuggestions(false); }
+              else if (e.key === "Escape") setShowSuggestions(false);
+            }}
+            placeholder='"go to the north room", "stop", "status"'
+            autoComplete="off"
+            className="w-full rounded-lg bg-panel2 border border-line px-2.5 py-1.5 text-[12px] font-mono text-ink outline-none focus:border-telemetry"
+          />
+          {showSuggestions && suggestions.length > 0 && (
+            <div className="absolute left-0 right-0 top-full mt-1 z-30 rounded-lg border border-line bg-panel shadow-lg overflow-hidden">
+              {suggestions.map((s) => (
+                <button
+                  key={s}
+                  // onMouseDown (not onClick) fires before the input's onBlur, so the click
+                  // registers instead of the dropdown vanishing first.
+                  onMouseDown={(e) => { e.preventDefault(); fillCommand(s); }}
+                  className="w-full text-left px-2.5 py-1.5 text-[12px] font-mono text-ink hover:bg-panel2 hover:text-telemetry"
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <button
-          onClick={() => { sendCommand(textCmd); setTextCmd(""); }}
+          onClick={() => { sendCommand(textCmd); setTextCmd(""); setShowSuggestions(false); }}
           className="rounded-lg border border-line px-3 py-1.5 text-[12px] font-mono text-ink hover:border-telemetry hover:text-telemetry"
         >
           Send
@@ -441,14 +539,19 @@ function VoiceTab({ t, speechSupported, listening, toggleListening, transcript, 
         ))}
       </div>
 
-      <PanelHeader label="Recognized Commands" />
+      <PanelHeader label="Recognized Commands" right={<span className="font-mono text-[10px] text-faint">click to re-enter</span>} />
       <div className="border-t border-line divide-y divide-line max-h-72 overflow-y-auto">
         {t.commandLog.length === 0 && <div className="px-4 py-3 text-[12px] text-faint font-mono">no commands yet \u2014 try \u201cstop\u201d, \u201creturn home\u201d, \u201cgo to the east room\u201d, \u201cstatus\u201d</div>}
         {t.commandLog.map((c, i) => (
-          <div key={i} className="px-4 py-2 flex items-center justify-between text-[12px]">
+          <button
+            key={i}
+            onClick={() => fillCommand(c.text)}
+            title="Load this back into the command box"
+            className="w-full px-4 py-2 flex items-center justify-between text-[12px] text-left hover:bg-panel2 transition-colors"
+          >
             <span className="text-ink font-mono truncate max-w-[180px]">{c.text}</span>
             <span className={`font-mono text-[11px] ${c.intent === "UNKNOWN" ? "text-faint" : "text-telemetry"}`}>{c.intent}</span>
-          </div>
+          </button>
         ))}
       </div>
     </div>
