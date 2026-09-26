@@ -46,6 +46,35 @@ def goto_target(label: str) -> tuple[float, float] | None:
     return PLACES[label[len("GOTO_"):].lower()]
 
 
+# One canonical, unambiguous phrase per non-UNKNOWN class -- chosen to parse the same way
+# under both this classifier and `firebot.command.parser.RuleParser` (see build_phrase_table's
+# docstring: the two are meant to agree). Used to hand the classifier's *label* back to
+# callers (like the console backend's /api/transcribe) that only know how to consume text,
+# without exposing CLASSES' internal naming (`GOTO_NORTHEAST`, etc.) to them.
+_CANONICAL_PHRASES: dict[str, str] = {
+    "STOP": "stop",
+    "EXTINGUISH": "put out the fire",
+    "RETURN_HOME": "return home",
+    "STATUS": "status report",
+}
+
+
+def canonical_phrase(label: str) -> str:
+    """`label` (any `CLASSES` entry) -> a natural-language phrase parsing back to it under
+    `RuleParser`. Raises `KeyError` for `UNKNOWN` or any label outside `CLASSES` -- callers
+    should already be branching on `UNKNOWN`/low confidence before reaching here (see
+    `IntentClassifier.predict_intent_payload`), so treat that as a bug, not a fallback path.
+    """
+    if label not in LABEL_TO_IDX:
+        raise KeyError(f"{label!r} is not a known class")
+    if label in _CANONICAL_PHRASES:
+        return _CANONICAL_PHRASES[label]
+    target = goto_target(label)
+    if target is not None:
+        return f"go to {label[len('GOTO_'):].lower()}"
+    raise KeyError(f"no canonical phrase defined for {label!r}")
+
+
 # --------------------------------------------------------------------------
 # Phrasing templates, grouped by class. These mirror the synonym groups the
 # regex parser already uses (see parser.py's _STOP/_STATUS/_HOME/_GOTO/_EXT)

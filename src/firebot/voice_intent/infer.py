@@ -43,6 +43,21 @@ class IntentClassifier:
         self.head.eval()
 
     @torch.no_grad()
+    def predict_array(self, audio: np.ndarray, sample_rate: int = 16_000
+                       ) -> tuple[str, float, dict[str, float]]:
+        """Same pipeline as `predict`, but for audio already decoded into memory (e.g. a
+        browser-recorded clip loaded via `librosa.load(..., sr=16_000)`) rather than a
+        file on disk -- avoids a round-trip through a temp .wav for the server's live
+        request path. `audio` must already be mono float32 at `sample_rate`."""
+        inputs = self.extractor([np.asarray(audio, dtype="float32")],
+                                sampling_rate=sample_rate, return_tensors="pt")
+        pooled = self.encoder(inputs.input_features.to(self.device)).last_hidden_state.mean(dim=1)
+        logits = self.head(pooled)[0]
+        probs = torch.softmax(logits, dim=0).cpu().numpy()
+        idx = int(probs.argmax())
+        scores = {c: float(p) for c, p in zip(self.classes, probs)}
+        return self.classes[idx], float(probs[idx]), scores
+
     def predict(self, wav_path: str | Path, sample_rate: int = 16_000
                 ) -> tuple[str, float, dict[str, float]]:
         import soundfile as sf
@@ -51,21 +66,11 @@ class IntentClassifier:
         if sr != sample_rate:
             raise ValueError(f"{wav_path} is {sr}Hz, expected {sample_rate}Hz "
                               f"(resample first, e.g. via synth_data._resample_to_target)")
-        inputs = self.extractor([audio], sampling_rate=sample_rate, return_tensors="pt")
-        pooled = self.encoder(inputs.input_features.to(self.device)).last_hidden_state.mean(dim=1)
-        logits = self.head(pooled)[0]
-        probs = torch.softmax(logits, dim=0).cpu().numpy()
-        idx = int(probs.argmax())
-        scores = {c: float(p) for c, p in zip(self.classes, probs)}
-        return self.classes[idx], float(probs[idx]), scores
+        return self.predict_array(audio, sample_rate)
 
-    def predict_intent_payload(self, wav_path: str | Path, min_confidence: float = 0.6
-                                ) -> dict:
-        """Convenience wrapper returning something close to `command.intents.Intent`
-        shape, for the backend to validate/dispatch. Confidence gate is the
-        classifier's job to expose, not to enforce -- caller decides what to
-        do below `min_confidence` (e.g. fall back to the Groq+regex path)."""
-        label, confidence, scores = self.predict(wav_path)
+    @staticmethod
+    def _payload(label: str, confidence: float, scores: dict[str, float],
+                 min_confidence: float) -> dict:
         if confidence < min_confidence:
             return {"name": "UNKNOWN", "params": {}, "confidence": confidence,
                     "source": "voice_intent", "raw_label": label, "scores": scores}
@@ -76,6 +81,21 @@ class IntentClassifier:
                     "raw_label": label, "scores": scores}
         return {"name": label, "params": {}, "confidence": confidence,
                 "source": "voice_intent", "raw_label": label, "scores": scores}
+
+    def predict_intent_payload(self, wav_path: str | Path, min_confidence: float = 0.6
+                                ) -> dict:
+        """Convenience wrapper returning something close to `command.intents.Intent`
+        shape, for the backend to validate/dispatch. Confidence gate is the
+        classifier's job to expose, not to enforce -- caller decides what to
+        do below `min_confidence` (e.g. fall back to the Groq+regex path)."""
+        label, confidence, scores = self.predict(wav_path)
+        return self._payload(label, confidence, scores, min_confidence)
+
+    def predict_intent_payload_array(self, audio: np.ndarray, sample_rate: int = 16_000,
+                                      min_confidence: float = 0.6) -> dict:
+        """`predict_intent_payload`, but for an in-memory clip -- see `predict_array`."""
+        label, confidence, scores = self.predict_array(audio, sample_rate)
+        return self._payload(label, confidence, scores, min_confidence)
 
 
 def main() -> None:

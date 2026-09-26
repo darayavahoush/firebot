@@ -4,6 +4,8 @@ Action (3, normalised): [forward speed 0..1, turn rate -1..1, pump >0.5 = on].
 """
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import numpy as np
 
 from firebot.perception import Perception
@@ -14,6 +16,24 @@ from .world import Fire, World
 DT, VMAX, WMAX = 0.1, 0.7, 1.6
 SPRAY_RANGE, SPRAY_CONE, EXTINGUISH_RATE, WATER_RATE = 2.5, 0.2, 0.2, 0.03
 OBS_DIM, ACT_DIM = 16, 3
+DEFAULT_MIN_FIRE_DIST = 4.0
+_START = (1.2, 1.0)  # robot's spawn point on the default single-room map
+
+
+def clamp_min_fire_dist(world: World, requested: float) -> float:
+    """Clamp a requested robot<->fire distance to what `World.random_free_point` can
+    actually deliver on `world`, so it never spins forever rejecting samples.
+
+    `random_free_point` samples uniformly inside a fixed ``[1, width-1] x [1, height-1]``
+    box (independent of the `margin` argument, which only gates the wall-clearance check)
+    and rejects draws closer than `min_dist` to `avoid`. The largest distance between two
+    points in that box is its diagonal -- and that's only reachable from the box's opposite
+    corners, so even clamping to exactly the diagonal can starve the rejection sampler on a
+    small/cluttered map. Clamp to 90% of the reachable diagonal, floored at 0 (a degenerate
+    box, e.g. width/height <= 2, just drops the distance constraint entirely).
+    """
+    reachable = float(np.hypot(max(world.width - 2.0, 0.0), max(world.height - 2.0, 0.0)))
+    return float(np.clip(requested, 0.0, reachable * 0.9))
 
 
 def obs_layout() -> dict[str, slice | int]:
@@ -25,8 +45,27 @@ def obs_layout() -> dict[str, slice | int]:
 class FireEnv:
     obs_dim, act_dim = OBS_DIM, ACT_DIM
 
-    def __init__(self, max_steps: int = 1500, world: World | None = None) -> None:
-        self.world, self.max_steps = world or World(), max_steps
+    def __init__(self, max_steps: int = 1500, world: World | None = None,
+                 world_factory: Callable[[np.random.Generator], World] | None = None,
+                 min_fire_dist: float = DEFAULT_MIN_FIRE_DIST) -> None:
+        """`world_factory`, if given, is called as `world_factory(rng)` at the start of
+        *every* `reset()` to build a fresh `World` -- e.g. `lambda rng: World.random(rng)`
+        for a new procedurally-generated building each episode (curriculum/domain
+        randomization). `world` seeds the very first map (or is the map, permanently, when
+        `world_factory` is None) but plays no further role once `world_factory` is set --
+        every `reset()` after that replaces it. Both default to today's behavior: one fixed
+        `World()` for the whole env's lifetime. `min_fire_dist` is the requested
+        robot<->fire spawn distance, clamped per-episode via `clamp_min_fire_dist` since it
+        may not fit every map `world_factory` produces.
+        """
+        self.world_factory = world_factory
+        if world is not None:
+            self.world = world
+        elif world_factory is not None:
+            self.world = world_factory(np.random.default_rng())
+        else:
+            self.world = World()
+        self.min_fire_dist, self.max_steps = min_fire_dist, max_steps
         self.rng = np.random.default_rng()
 
     def config(self) -> dict:
@@ -35,8 +74,13 @@ class FireEnv:
 
     def reset(self, seed: int | None = None):
         self.rng = np.random.default_rng(seed)
-        self.robot = np.array([1.2, 1.0, 0.6])  # x, y, theta
-        fx, fy = self.world.random_free_point(self.rng, .5, self.robot[:2], 4.0)
+        if self.world_factory is not None:
+            self.world = self.world_factory(self.rng)
+        start = _START if self.world.is_free(*_START, .22) else \
+            self.world.random_free_point(self.rng, .22)
+        self.robot = np.array([start[0], start[1], 0.6])  # x, y, theta
+        min_dist = clamp_min_fire_dist(self.world, self.min_fire_dist)
+        fx, fy = self.world.random_free_point(self.rng, .5, self.robot[:2], min_dist)
         self.fire, self.perception = Fire(fx, fy), Perception(VMAX)
         self.t, self.tank, self.collisions, self.water = 0, 1.0, 0, 0.0
         self.meas_speed = 0.0
