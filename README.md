@@ -27,6 +27,12 @@ firebot-pi --sim --host <pc-ip>          # on the robot (--sim = simulated robot
 # DRL (needs the `drl` extra: pip install -e ".[dev,drl]")
 firebot-train --timesteps 200000 --n-envs 8 --out runs/ppo   # PPO via Stable-Baselines3
 firebot-eval --model runs/ppo/model_final.zip --episodes 30  # vs. the rule baseline
+
+# Curriculum: one PPO model trained through 3 increasingly hard stages (fixed room ->
+# fixed room with fire further away -> a fresh procedurally-generated building every
+# episode), see src/firebot/drl/curriculum.py's docstring for the stage-by-stage detail.
+firebot-train-curriculum --timesteps-per-stage 100000 --n-envs 8 --out runs/curriculum
+firebot-eval --model runs/curriculum/model_final.zip --episodes 30 --train-db training.db
 ```
 
 ## Layout

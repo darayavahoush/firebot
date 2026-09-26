@@ -106,9 +106,16 @@ def compare(model_path: str, episodes: int, seed: int, train_path: str) -> None:
         print(f"{'run':>4}  {'algo':<6} {'success':>8} {'reward':>8} {'steps':>7} "
               f"{'collisions':>11}")
         for r in rows:
-            print(f"{r['run_id']:>4}  {r['algo']:<6} {r['success_rate']:>7.0%} "
-                  f"{r['mean_reward']:>8.1f} {r['mean_steps']:>7.0f} "
-                  f"{r['mean_collisions']:>11.2f}")
+            # Runs with no per-episode data (e.g. a `firebot-train-curriculum` run, which
+            # logs checkpoints rather than episodes) leave these stats as None in
+            # `run_summary()` -- format those as "--" instead of crashing the comparison
+            # print for every other run in the same training DB.
+            success = f"{r['success_rate']:>7.0%}" if r["success_rate"] is not None else f"{'--':>7}"
+            reward = f"{r['mean_reward']:>8.1f}" if r["mean_reward"] is not None else f"{'--':>8}"
+            steps = f"{r['mean_steps']:>7.0f}" if r["mean_steps"] is not None else f"{'--':>7}"
+            collisions = (f"{r['mean_collisions']:>11.2f}" if r["mean_collisions"] is not None
+                         else f"{'--':>11}")
+            print(f"{r['run_id']:>4}  {r['algo']:<6} {success} {reward} {steps} {collisions}")
 
 
 def main() -> None:
