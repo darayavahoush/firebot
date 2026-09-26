@@ -296,7 +296,7 @@ export class EIF {
     const y = Pinv[1][0] * this.yv[0] + Pinv[1][1] * this.yv[1];
     return { x, y, P: Pinv };
   }
-  update(z, sigma, rx, ry) {
+  update(z, sigma, rx, ry, th) {
     // small forgetting factor: bearing-only fusion from a single, slowly-moving observer is
     // prone to becoming falsely "confident" in a wrong direction when consecutive bearings are
     // nearly co-linear (a near-singular information matrix). Bleeding off a little certainty each
@@ -308,7 +308,10 @@ export class EIF {
     const dx = e.x - rx, dy = e.y - ry, r2 = dx * dx + dy * dy + 1e-6;
     const H = [-dy / r2, dx / r2];
     const ri = 1 / (sigma * sigma);
-    const innov = wrapA(z - Math.atan2(dy, dx)) + H[0] * e.x + H[1] * e.y;
+    // `z` (sense.bearing) is robot-relative, so the predicted bearing must be converted into the
+    // robot frame (subtract heading th) before comparing, matching src/firebot/fusion/eif.py.
+    const h = wrapA(Math.atan2(dy, dx) - th);
+    const innov = wrapA(z - h) + H[0] * e.x + H[1] * e.y;
     for (let i = 0; i < 2; i++) {
       this.yv[i] += H[i] * ri * innov;
       for (let j = 0; j < 2; j++) this.Y[i][j] += H[i] * H[j] * ri;

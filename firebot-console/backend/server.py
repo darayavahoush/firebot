@@ -32,7 +32,7 @@ from typing import Any
 
 import asyncpg
 import httpx
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -46,6 +46,14 @@ DATABASE_URL = "postgresql://firebot:firebot@localhost:5432/firebot"
 BRAIN_CMD_URL = os.environ.get("FIREBOT_BRAIN_CMD_URL", "http://127.0.0.1:8766")
 BRAIN_TOKEN = os.environ.get("FIREBOT_TOKEN", "")
 MAX_TURN_RATE = 1.0  # matches wire protocol's w range; ControlPanel speed is 0-100%
+
+# Voice-command fallback for browsers with no (or broken -- looking at you, Opera/Brave)
+# built-in speech recognition: the frontend records a clip and posts it here; we forward it
+# to Groq's hosted Whisper (OpenAI-compatible endpoint, generous free tier) and hand back
+# plain text. Nothing is stored -- this is stateless request forwarding, same trust boundary
+# as /api/command's bridge to the brain.
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
+GROQ_TRANSCRIBE_URL = "https://api.groq.com/openai/v1/audio/transcriptions"
 
 app = FastAPI(title="firebot-api")
 app.add_middleware(
@@ -193,6 +201,28 @@ async def post_command(cmd: Command) -> dict[str, Any]:
 @app.post("/api/command/estop")
 async def post_estop() -> dict[str, Any]:
     return await _post_bridge("/estop", {})
+
+
+# ---- REST: voice transcription fallback (Groq-hosted Whisper) ----
+
+@app.post("/api/transcribe")
+async def transcribe(file: UploadFile = File(...)) -> dict[str, str]:
+    if not GROQ_API_KEY:
+        raise HTTPException(503, "GROQ_API_KEY isn't set on the server -- voice fallback is unavailable")
+    audio_bytes = await file.read()
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            r = await client.post(
+                GROQ_TRANSCRIBE_URL,
+                headers={"Authorization": f"Bearer {GROQ_API_KEY}"},
+                files={"file": (file.filename or "clip.webm", audio_bytes, file.content_type or "audio/webm")},
+                data={"model": "whisper-large-v3-turbo", "temperature": "0", "response_format": "json"},
+            )
+    except httpx.RequestError as e:
+        raise HTTPException(502, f"couldn't reach Groq: {e}") from e
+    if r.status_code != 200:
+        raise HTTPException(502, f"Groq transcription failed ({r.status_code}): {r.text}")
+    return {"text": (r.json().get("text") or "").strip()}
 
 
 # ---- WebSocket: live telemetry, polling the active session's latest frame ----

@@ -16,6 +16,15 @@ const VOICE_ERROR_MESSAGES = {
   "language-not-supported": "This browser doesn't support the en-US recognition language.",
 };
 
+// Opera exposes `webkitSpeechRecognition` (Chromium-based) but never wired it to a working
+// backend -- Chrome's version talks to a Google-hosted recognition service Opera doesn't ship
+// a key for, so it "listens" forever and returns zero results with zero errors. Brave, same
+// story. Detect both so the UI can be honest about it instead of showing a dead "LIVE" state.
+function detectBrokenWebSpeech() {
+  if (typeof navigator === "undefined") return false;
+  return /\bOPR\//.test(navigator.userAgent || "");
+}
+
 export default function Simulator() {
   const engineRef = useRef(null);
   if (!engineRef.current) engineRef.current = new SimController();
@@ -32,6 +41,9 @@ export default function Simulator() {
   const [voiceError, setVoiceError] = useState("");
   const [ack, setAck] = useState(null);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [webSpeechBroken, setWebSpeechBroken] = useState(detectBrokenWebSpeech);
+  const [asrStatus, setAsrStatus] = useState("idle"); // idle | recording | transcribing | error
+  const [asrError, setAsrError] = useState("");
   const recogRef = useRef(null);
   const restartTimerRef = useRef(null);
   const restartAttemptsRef = useRef(0);
@@ -40,6 +52,19 @@ export default function Simulator() {
   const renderThrottleRef = useRef(0);
   const ackTimerRef = useRef(null);
   const cmdInputRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
+  const micStreamRef = useRef(null);
+
+  // Brave's "is this Brave" check is async (privacy: it can't be read synchronously off the
+  // UA string like Opera's), so it lands a tick after mount.
+  useEffect(() => {
+    if (navigator?.brave?.isBrave) {
+      navigator.brave.isBrave().then((isBrave) => {
+        if (isBrave) setWebSpeechBroken(true);
+      }).catch(() => {});
+    }
+  }, []);
 
   // simulation loop: physics steps every frame at `speed`x, React state refreshed a few times/sec
   useEffect(() => {
@@ -82,13 +107,16 @@ export default function Simulator() {
     setTick((t) => t + 1);
   }, [showAck]);
 
-  // Web Speech API -- Chrome/Edge only; Safari partial; Firefox unsupported, hence the text fallback
+  // Web Speech API -- Chrome/Edge only; Safari partial; Firefox unsupported. Opera/Brave
+  // *report* support (see detectBrokenWebSpeech above) but have no working engine behind it,
+  // so `speechUsable` is the one to gate the mic button on, not `speechSupported` alone.
   const speechSupported = useMemo(
-    () => typeof window !== "undefined" && (window.SpeechRecognition || window.webkitSpeechRecognition),
+    () => typeof window !== "undefined" && Boolean(window.SpeechRecognition || window.webkitSpeechRecognition),
     []
   );
+  const speechUsable = speechSupported && !webSpeechBroken;
   const toggleListening = useCallback(() => {
-    if (!speechSupported) return;
+    if (!speechUsable) return;
     if (listening) {
       if (restartTimerRef.current) { clearTimeout(restartTimerRef.current); restartTimerRef.current = null; }
       const r = recogRef.current; recogRef.current = null; r?.stop(); setListening(false); setTranscript("");
@@ -156,10 +184,66 @@ export default function Simulator() {
       setListening(true);
     };
     start();
-  }, [listening, speechSupported, sendCommand]);
+  }, [listening, speechUsable, sendCommand]);
   useEffect(() => () => {
     if (restartTimerRef.current) clearTimeout(restartTimerRef.current);
     const r = recogRef.current; recogRef.current = null; r?.stop();
+  }, []);
+
+  // Offline-browser voice fallback (click-to-record, not continuous) for when Web Speech is
+  // missing or broken: record a clip, POST it to our backend, which forwards it to Groq's
+  // hosted Whisper and hands back text. No model ships to the browser at all.
+  const toggleRecording = useCallback(async () => {
+    if (asrStatus === "recording") {
+      mediaRecorderRef.current?.stop(); // onstop below does the upload
+      return;
+    }
+    if (asrStatus === "transcribing") return;
+
+    setAsrError("");
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      setAsrStatus("error");
+      setAsrError("Microphone access was denied \u2014 allow it in your browser's site settings and try again.");
+      return;
+    }
+    micStreamRef.current = stream;
+    audioChunksRef.current = [];
+    const recorder = new MediaRecorder(stream);
+    mediaRecorderRef.current = recorder;
+    recorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
+    recorder.onstop = async () => {
+      micStreamRef.current?.getTracks().forEach((tr) => tr.stop());
+      micStreamRef.current = null;
+      const blob = new Blob(audioChunksRef.current, { type: recorder.mimeType || "audio/webm" });
+      audioChunksRef.current = [];
+      if (blob.size === 0) { setAsrStatus("idle"); return; }
+      setAsrStatus("transcribing");
+      try {
+        const form = new FormData();
+        form.append("file", blob, "clip.webm");
+        const res = await fetch("/api/transcribe", { method: "POST", body: form });
+        if (!res.ok) {
+          const detail = await res.json().catch(() => null);
+          throw new Error(detail?.detail || `Transcription failed (${res.status}).`);
+        }
+        const { text } = await res.json();
+        setAsrStatus("idle");
+        if (text) { setTextCmd(text); cmdInputRef.current?.focus(); }
+      } catch (err) {
+        setAsrStatus("error");
+        setAsrError(err?.message || "Couldn't reach the transcription service. Try again.");
+      }
+    };
+    recorder.start();
+    setAsrStatus("recording");
+  }, [asrStatus]);
+
+  useEffect(() => () => {
+    mediaRecorderRef.current?.state === "recording" && mediaRecorderRef.current.stop();
+    micStreamRef.current?.getTracks().forEach((tr) => tr.stop());
   }, []);
 
   // Flat example-phrase list for the text-command autocomplete, built once from the same
@@ -267,6 +351,8 @@ export default function Simulator() {
               <VoiceTab
                 t={t}
                 speechSupported={speechSupported}
+                speechUsable={speechUsable}
+                webSpeechBroken={webSpeechBroken}
                 listening={listening}
                 toggleListening={toggleListening}
                 transcript={transcript}
@@ -279,6 +365,9 @@ export default function Simulator() {
                 showSuggestions={showSuggestions}
                 setShowSuggestions={setShowSuggestions}
                 fillCommand={fillCommand}
+                asrStatus={asrStatus}
+                asrError={asrError}
+                toggleRecording={toggleRecording}
               />
             )}
           </div>
@@ -458,26 +547,53 @@ const COMMAND_HELP = [
 ];
 
 function VoiceTab({
-  t, speechSupported, listening, toggleListening, transcript, voiceError, textCmd, setTextCmd,
+  t, speechSupported, speechUsable, webSpeechBroken, listening, toggleListening, transcript, voiceError, textCmd, setTextCmd,
   sendCommand, cmdInputRef, suggestions, showSuggestions, setShowSuggestions, fillCommand,
+  asrStatus, asrError, toggleRecording,
 }) {
+  const asrBusy = asrStatus === "transcribing";
+  const asrLabel = asrStatus === "recording" ? "STOP" : asrStatus === "transcribing" ? "\u2026" : "REC";
   return (
     <div>
       <PanelHeader label="Voice Command" />
       <div className="border-t border-line px-4 py-4 flex flex-col items-center gap-3">
-        <button
-          onClick={toggleListening}
-          disabled={!speechSupported}
-          className={`w-16 h-16 rounded-full border flex items-center justify-center font-mono text-[11px] transition-all ${
-            listening
-              ? "border-alarm text-alarm pulse-dot shadow-[0_0_18px_rgba(240,96,74,0.35)]"
-              : "border-telemetry text-telemetry hover:bg-telemetry hover:text-[#0A1A1C] hover:shadow-[0_0_18px_rgba(47,184,166,0.35)]"
-          } ${!speechSupported ? "opacity-30 cursor-not-allowed" : ""}`}
-        >
-          {listening ? "LIVE" : "MIC"}
-        </button>
-        {!speechSupported && <div className="text-[11px] text-faint text-center">Speech recognition isn\u2019t supported in this browser \u2014 use the text field below.</div>}
-        {speechSupported && voiceError && <div className="text-[11px] text-warn text-center">{voiceError}</div>}
+        {speechUsable ? (
+          <button
+            onClick={toggleListening}
+            className={`w-16 h-16 rounded-full border flex items-center justify-center font-mono text-[11px] transition-all ${
+              listening
+                ? "border-alarm text-alarm pulse-dot shadow-[0_0_18px_rgba(240,96,74,0.35)]"
+                : "border-telemetry text-telemetry hover:bg-telemetry hover:text-[#0A1A1C] hover:shadow-[0_0_18px_rgba(47,184,166,0.35)]"
+            }`}
+          >
+            {listening ? "LIVE" : "MIC"}
+          </button>
+        ) : (
+          <button
+            onClick={toggleRecording}
+            disabled={asrBusy}
+            title="Records a few seconds, then transcribes on-device with Whisper \u2014 no cloud speech API involved."
+            className={`w-16 h-16 rounded-full border flex items-center justify-center font-mono text-[11px] transition-all ${
+              asrStatus === "recording"
+                ? "border-alarm text-alarm pulse-dot shadow-[0_0_18px_rgba(240,96,74,0.35)]"
+                : "border-telemetry text-telemetry hover:bg-telemetry hover:text-[#0A1A1C] hover:shadow-[0_0_18px_rgba(47,184,166,0.35)]"
+            } ${asrBusy ? "opacity-40 cursor-wait" : ""}`}
+          >
+            {asrLabel}
+          </button>
+        )}
+
+        {!speechUsable && (
+          <div className="text-[11px] text-faint text-center max-w-[220px]">
+            {!speechSupported
+              ? "This browser doesn't have live speech recognition."
+              : "This browser shows a working mic button but has no speech engine behind it (a known Opera/Brave limitation)."}
+            {" "}Tap REC to record a command and transcribe it via the server \u2014 or type below.
+          </div>
+        )}
+        {speechUsable && voiceError && <div className="text-[11px] text-warn text-center">{voiceError}</div>}
+        {!speechUsable && asrStatus === "transcribing" && <div className="text-[11px] text-faint text-center">Transcribing\u2026</div>}
+        {!speechUsable && asrStatus === "error" && asrError && <div className="text-[11px] text-warn text-center">{asrError}</div>}
         {transcript && <div className="text-[12px] text-muted font-mono italic">\u201c{transcript}\u2026\u201d</div>}
       </div>
       <div className="border-t border-line px-4 py-3 flex gap-2 relative">
