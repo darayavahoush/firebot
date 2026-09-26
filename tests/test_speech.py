@@ -8,6 +8,7 @@ from firebot.db.store import Store
 from firebot.speech import EXAMPLES, VOCAB, Listener, SileroGate, grammar_json, spoken_to_text
 from firebot.speech.audio import wav_chunks
 from firebot.speech.run import listen
+from firebot.speech.speaker_id import SpeakerIdentifier
 
 
 class FakeRecognizer:
@@ -154,3 +155,44 @@ def test_vad_reset_clears_hangover_but_keeps_the_loaded_scorer():
     gate.reset()
     assert gate._speech_prob is scorer                    # scorer/model kept, not reloaded
     assert list(gate(["N", "N"])) == []                   # hangover really was cleared
+
+
+def _fake_embed(pcm):
+    """Deterministic stand-in for the real SpeechBrain embedding: derives a fixed-size
+    (8-element) vector from the clip's own bytes, tiled/truncated to that length --
+    real embeddings are always a fixed size (192-dim) regardless of clip length, so this
+    matches that shape while still varying with the clip's actual content."""
+    padded = (pcm * 8)[:8].ljust(8, b"\x00")
+    return np.frombuffer(padded, dtype=np.uint8).astype(np.float32)
+
+
+def test_enroll_multi_saves_mean_of_clip_embeddings(tmp_path, monkeypatch):
+    monkeypatch.setattr(SpeakerIdentifier, "embed", lambda self, pcm: _fake_embed(pcm))
+    ident = SpeakerIdentifier(voiceprint_dir=tmp_path)
+    clips = [b"abc", b"defg", b"h"]
+
+    ident.enroll_multi("ananya", clips)
+
+    saved = np.load(tmp_path / "ananya.npy")
+    expected = np.mean([_fake_embed(c) for c in clips], axis=0)
+    assert np.allclose(saved, expected)
+
+
+def test_enroll_multi_rejects_empty_clip_list(tmp_path):
+    ident = SpeakerIdentifier(voiceprint_dir=tmp_path)
+    with pytest.raises(ValueError):
+        ident.enroll_multi("ananya", [])
+
+
+def test_enroll_multi_result_is_immediately_identifiable(tmp_path, monkeypatch):
+    """enroll_multi should reload voiceprints (like enroll() already does) so a freshly
+    enrolled speaker is found by identify() in the same process, no restart needed."""
+    monkeypatch.setattr(SpeakerIdentifier, "embed", lambda self, pcm: _fake_embed(pcm))
+    ident = SpeakerIdentifier(voiceprint_dir=tmp_path, threshold=0.99)
+
+    assert ident.identify(b"probe") == (None, 0.0)  # nobody enrolled yet
+
+    ident.enroll_multi("ananya", [b"probe", b"probe"])  # voiceprint == embed(b"probe") exactly
+    name, score = ident.identify(b"probe")
+    assert name == "ananya"
+    assert score == pytest.approx(1.0)

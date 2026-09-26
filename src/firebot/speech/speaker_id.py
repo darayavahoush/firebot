@@ -96,8 +96,30 @@ class SpeakerIdentifier:
         return (best_name, best_score) if best_score >= self.threshold else (None, best_score)
 
     def enroll(self, speaker: str, pcm: bytes) -> None:
-        """Save `speaker`'s voiceprint from a natural-speech clip (several seconds, not a
-        single command word -- same guidance as the original `enroll-voice` prototype)."""
+        """Save `speaker`'s voiceprint from a single clip. Prefer `enroll_multi` for anything
+        meant to recognize short, command-length audio at test time (see its docstring) --
+        this single-clip form is kept for callers enrolling from one long, already-known-good
+        recording where averaging doesn't apply."""
         self.voiceprint_dir.mkdir(parents=True, exist_ok=True)
         np.save(self.voiceprint_dir / f"{speaker}.npy", self.embed(pcm))
+        self.reload()
+
+    def enroll_multi(self, speaker: str, clips: list[bytes]) -> None:
+        """Save `speaker`'s voiceprint as the mean of several clips' embeddings, not one clip's.
+
+        `identify()` is tested against short, command-length audio (a few seconds or less --
+        whatever a single spoken command yields), not the multi-second natural-speech monologue
+        a single enrollment clip would naturally be. A voiceprint built from one long clip is a
+        real but different acoustic sample than what it'll be compared against, which costs
+        similarity score independent of whether it's really the same speaker (a length/content
+        mismatch, not an identity one). Enrolling from several separate clips *at the length and
+        style `identify()` will actually see* removes that mismatch, and averaging their
+        embeddings reduces the variance any single short clip's embedding carries on its own --
+        the same reason any noisy measurement benefits from averaging repeated samples.
+        """
+        if not clips:
+            raise ValueError("enroll_multi: need at least one clip")
+        embedding = np.mean([self.embed(pcm) for pcm in clips], axis=0)
+        self.voiceprint_dir.mkdir(parents=True, exist_ok=True)
+        np.save(self.voiceprint_dir / f"{speaker}.npy", embedding)
         self.reload()
