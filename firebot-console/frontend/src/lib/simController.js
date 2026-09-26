@@ -202,12 +202,12 @@ export class SimController {
     const flamePeak = Math.max(sense.flame_left, sense.flame_center, sense.flame_right);
     const detected = sense.seen || flamePeak > 0.12;
 
-    if (sense.seen) this.eif.update(sense.bearing, 0.04, this.robot.x, this.robot.y);
+    if (sense.seen) this.eif.update(sense.bearing, 0.04, this.robot.x, this.robot.y, this.robot.th);
     else {
       const fs = sense.flame_left + sense.flame_center + sense.flame_right;
       if (fs > 0.15) {
         const bearing = (sense.flame_left * 0.52 + sense.flame_center * 0 + sense.flame_right * -0.52) / fs;
-        this.eif.update(bearing, 0.3, this.robot.x, this.robot.y);
+        this.eif.update(bearing, 0.3, this.robot.x, this.robot.y, this.robot.th);
       }
     }
     const est = this.eif.estimate();
