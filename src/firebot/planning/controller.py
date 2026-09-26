@@ -27,7 +27,9 @@ def _wrap(a: float) -> float:
 
 
 def follow_path(path: np.ndarray, pose: np.ndarray) -> np.ndarray | None:
-    """Pure-pursuit step along `path`. Returns [v, w, pump=0] (normalised), or None on arrival."""
+    """Pure-pursuit step along `path`. Returns [v, w, turret=0, pump=0] (normalised), or None on
+    arrival. Turret stays put while driving to the standoff point -- `RuleController` takes over
+    aiming once `PlanningController` hands off to it in SPRAY."""
     p = np.asarray(pose, float)[:2]
     if float(np.hypot(*(path[-1] - p))) < 0.25:
         return None
@@ -59,7 +61,7 @@ def follow_path(path: np.ndarray, pose: np.ndarray) -> np.ndarray | None:
     # angle (normal on any path with a kink, RRT* included) turns into a stutter between full
     # speed and a dead stop instead of a smooth slow-down-to-turn.
     v = VMAX * float(np.clip(np.cos(err), 0.0, 1.0))
-    return np.array([v / VMAX, w / WMAX, 0.0], dtype=np.float32)
+    return np.array([v / VMAX, w / WMAX, 0.0, 0.0], dtype=np.float32)
 
 
 def standoff_point(world: World, cmap: CostMap, fire: np.ndarray, robot: np.ndarray):

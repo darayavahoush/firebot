@@ -21,8 +21,9 @@ from firebot.sim.world import World
 class FireGymEnv(gym.Env):
     """``FireEnv`` behind a standard ``gymnasium.Env`` interface.
 
-    Action: ``[forward speed 0..1, turn rate -1..1, pump >0.5 = on]`` (see ``FireEnv``).
-    Observation: the 16-value fused vector from ``FireEnv.obs_layout()``.
+    Action: ``[forward speed 0..1, turn rate -1..1, turret rate -1..1, pump >0.5 = on]``
+    (see ``FireEnv``).
+    Observation: the 17-value fused vector from ``FireEnv.obs_layout()``.
     """
 
     metadata: ClassVar[dict] = {"render_modes": []}
@@ -38,8 +39,8 @@ class FireGymEnv(gym.Env):
         # unbounded Box triggers, and keeps SB3's default policy init well-scaled.
         self.observation_space = spaces.Box(-10.0, 10.0, (OBS_DIM,), dtype=np.float32)
         self.action_space = spaces.Box(
-            low=np.array([0.0, -1.0, 0.0], dtype=np.float32),
-            high=np.array([1.0, 1.0, 1.0], dtype=np.float32),
+            low=np.array([0.0, -1.0, -1.0, 0.0], dtype=np.float32),
+            high=np.array([1.0, 1.0, 1.0, 1.0], dtype=np.float32),
             shape=(ACT_DIM,), dtype=np.float32,
         )
 

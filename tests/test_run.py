@@ -15,4 +15,4 @@ def test_run_baseline_writes_both_databases(tmp_path):
         s = tr.run_summary()[0]
         assert s["episodes"] == 3 and s["status"] == "done"
         ep = next(tr.iter_episodes("train"))
-        assert ep["obs"].shape[1] == 16 and ep["actions"].shape[1] == 3
+        assert ep["obs"].shape[1] == 17 and ep["actions"].shape[1] == 4

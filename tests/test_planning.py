@@ -50,7 +50,7 @@ def test_controller_action_shape_and_range():
     ctrl = PlanningController(env.world, seed=0)
     for _ in range(50):
         a = ctrl.act(obs, env.robot)
-        assert a.shape == (3,) and 0 <= a[0] <= 1 and -1 <= a[1] <= 1
+        assert a.shape == (4,) and 0 <= a[0] <= 1 and -1 <= a[1] <= 1
         obs, *_ = env.step(a)
 
 

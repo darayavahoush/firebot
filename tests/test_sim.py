@@ -18,8 +18,8 @@ def test_env_is_deterministic_and_obs_shape():
     ob, _ = b.reset(seed=3)
     assert oa.shape == (FireEnv.obs_dim,) and np.allclose(oa, ob)
     for _ in range(20):
-        ra = a.step([.5, .2, 0])
-        rb = b.step([.5, .2, 0])
+        ra = a.step([.5, .2, 0, 0])
+        rb = b.step([.5, .2, 0, 0])
     assert np.allclose(ra[0], rb[0]) and ra[1] == rb[1]
 
 

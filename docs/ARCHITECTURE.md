@@ -20,7 +20,9 @@ data structures, so switching to the robot changes drivers only.
    benchmarks it against the baseline via `v_run_summary`
 5. [x] DRL: `FireGymEnv` (gymnasium.Env) + PPO (Stable-Baselines3), benchmarked against the
    rule baseline via `firebot-eval` / `v_run_summary`
-6. [ ] Pan-tilt aiming
+6. [x] Pan-tilt aiming: `FireEnv` turret DOF (4th action component, nozzle-relative spray
+   cone), `RuleController`/`PlanningController`/`DRLController` all updated, voice `nozzle`
+   command now actually drives it. Sim/software-only -- the real servo driver is item 8.
 7. [x] Command layer: rule-based intent parser -> validated JSON intents -> executor; optional
    local SLM fallback (confirm-before-act), logged to `voice_commands`/`actions`;
    `firebot-cmd`. Speech: see below

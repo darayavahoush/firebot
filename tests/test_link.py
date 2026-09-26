@@ -121,10 +121,12 @@ def test_perception_matches_env():
     ref = Perception(vmax=0.7)
     rng = np.random.default_rng(0)
     for _ in range(60):
-        obs, *_ = env.step(np.array([.7, rng.uniform(-1, 1), 0.0]))
-        # env fused this frame already; a fresh filter fed the same history must agree
+        obs, *_ = env.step(np.array([.7, rng.uniform(-1, 1), 0.0, 0.0]))
+        # env fused this frame already; a fresh filter fed the same history must agree.
+        # FireEnv's obs is Perception's fused vector with the turret angle appended as its
+        # last component (see FireEnv._obs), so a raw Perception.update() is one shorter.
         mine = ref.update(env.last, env.robot, env.tank, env.meas_speed)
-        assert mine.shape == obs.shape
+        assert mine.shape == (obs.shape[0] - 1,)
     assert np.allclose(ref.est["x"], env.est["x"], atol=1.0)
 
 
