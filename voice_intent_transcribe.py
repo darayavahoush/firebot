@@ -648,6 +648,66 @@ def cmd_evaluate(args):
                   f"predicted='{predicted}' ({score:.2f})")
 
 
+def cmd_recognize(args):
+    """One-shot recognize: transcribe a single clip -- either an existing file
+    (--audio PATH) or a fresh recording (--live, args.clip_seconds long) --
+    and fuzzy-match it against the command list. This is the quick, single-
+    attempt counterpart to `listen`'s continuous loop (see `cmd_listen`'s
+    docstring for that distinction): useful for sanity-checking one clip's
+    transcription, match, and speaker guess before trusting the full loop.
+
+    Also runs speaker auto-ID (same approach as `listen`) whenever any
+    voiceprints are enrolled, and loads that speaker's personalized command
+    profile for matching -- `recognize` has no --speaker override, so this
+    always auto-detects rather than letting you force a profile.
+    """
+    if bool(args.audio) == bool(args.live):
+        raise SystemExit("recognize: pass exactly one of --audio PATH or --live")
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    whisper_model = load_whisper_cached(args.model_size, device) if args.engine == "whisper" else None
+    commands = (
+        [c.strip() for c in args.commands.split(",") if c.strip()]
+        if args.commands else DEFAULT_COMMANDS
+    )
+
+    if args.live:
+        print("Speak right after the beep.")
+        play_tone(880, duration=0.12)
+        audio = record_clip(args.clip_seconds, SAMPLE_RATE)
+        play_tone(440, duration=0.12)
+    else:
+        if not args.audio.exists():
+            raise SystemExit(f"recognize: --audio path not found: {args.audio}")
+        audio = whisper.load_audio(str(args.audio))  # resampled to SAMPLE_RATE (16 kHz) mono
+
+    voiceprints = load_all_voiceprints()
+    speaker_profile = None
+    if voiceprints:
+        embedding = compute_speaker_embedding(audio, SAMPLE_RATE)
+        identified, id_score = identify_speaker(embedding, voiceprints)
+        if identified:
+            print(f"Speaker: {identified}  (confidence {id_score:.2f})")
+            speaker_profile = load_speaker_profile(identified)
+        else:
+            print(f"Speaker: unrecognized  (closest was {id_score:.2f}, "
+                  f"below threshold {SPEAKER_ID_THRESHOLD:.2f})")
+    else:
+        print("No enrolled voiceprints found -- run `enroll-voice` first for speaker auto-ID.")
+
+    text = transcribe_any(audio, args, whisper_model)
+    if not text:
+        print("Didn't hear anything.")
+        return
+
+    cmd, score = best_match(text, commands, speaker_profile)
+    if score < args.threshold:
+        print(f"Heard: \"{text}\" -- no confident match (closest: {cmd}, {score:.2f})")
+        return
+
+    print(f"Heard: \"{text}\"  ->  {cmd}  (confidence {score:.2f})")
+
+
 def add_common_args(p):
     p.add_argument("--engine", choices=["whisper", "vosk"], default="whisper")
     p.add_argument("--model-size", default="tiny", choices=["tiny", "base", "small", "medium"],
