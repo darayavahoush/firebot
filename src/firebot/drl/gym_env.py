@@ -7,13 +7,14 @@ wrapper adds those without touching the sim core, so the rule-based baseline kee
 """
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import ClassVar
 
 import gymnasium as gym
 import numpy as np
 from gymnasium import spaces
 
-from firebot.sim.env import ACT_DIM, OBS_DIM, FireEnv
+from firebot.sim.env import ACT_DIM, DEFAULT_MIN_FIRE_DIST, OBS_DIM, FireEnv
 from firebot.sim.world import World
 
 
@@ -26,9 +27,12 @@ class FireGymEnv(gym.Env):
 
     metadata: ClassVar[dict] = {"render_modes": []}
 
-    def __init__(self, max_steps: int = 1500, world: World | None = None) -> None:
+    def __init__(self, max_steps: int = 1500, world: World | None = None,
+                 world_factory: Callable[[np.random.Generator], World] | None = None,
+                 min_fire_dist: float = DEFAULT_MIN_FIRE_DIST) -> None:
         super().__init__()
-        self.env = FireEnv(max_steps=max_steps, world=world)
+        self.env = FireEnv(max_steps=max_steps, world=world, world_factory=world_factory,
+                          min_fire_dist=min_fire_dist)
         # All 16 components of FireEnv's observation are designed to sit in roughly [-1, 1]
         # (see FireEnv._obs); +/-10 gives headroom without the "too low/high" warnings an
         # unbounded Box triggers, and keeps SB3's default policy init well-scaled.

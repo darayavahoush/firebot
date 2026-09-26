@@ -37,6 +37,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from firebot.link.protocol import THERM_COLS, THERM_ROWS
+from firebot.voice_intent.router import ShadowRouter
+from firebot.voice_intent.vocab import canonical_phrase
 
 DATABASE_URL = "postgresql://firebot:firebot@localhost:5432/firebot"
 
@@ -55,6 +57,17 @@ MAX_TURN_RATE = 1.0  # matches wire protocol's w range; ControlPanel speed is 0-
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 GROQ_TRANSCRIBE_URL = "https://api.groq.com/openai/v1/audio/transcriptions"
 
+# Optional local first-pass: a trained firebot.voice_intent checkpoint, tried before Groq
+# (see firebot.voice_intent.README -- "not wired in yet"). Entirely opt-in: torch/librosa
+# and the checkpoint itself are only loaded lazily, on first use, and only if this is set,
+# so a console deployed without the voice_intent extras installed is completely unaffected.
+VOICE_INTENT_CHECKPOINT = os.environ.get("FIREBOT_VOICE_INTENT_CHECKPOINT", "")
+VOICE_INTENT_MIN_CONFIDENCE = float(os.environ.get("FIREBOT_VOICE_INTENT_MIN_CONFIDENCE", "0.6"))
+# Where the ShadowRouter persists its learned per-confidence-decile trust state between
+# server restarts. A missing/corrupt file just starts fresh (see ShadowRouter.load).
+VOICE_INTENT_ROUTER_STATE = os.environ.get("FIREBOT_VOICE_INTENT_ROUTER_STATE",
+                                          "voice_intent_router.json")
+
 app = FastAPI(title="firebot-api")
 app.add_middleware(
     CORSMiddleware,
@@ -64,6 +77,27 @@ app.add_middleware(
 )
 
 _pool: asyncpg.Pool | None = None
+
+# Lazily constructed on first /api/transcribe call that has VOICE_INTENT_CHECKPOINT set --
+# loading torch/transformers/the checkpoint at import time would slow down (or break) every
+# console deployment that doesn't use this feature at all.
+_voice_classifier: Any = None
+_voice_router: ShadowRouter | None = None
+
+
+def _get_voice_classifier() -> Any:
+    global _voice_classifier
+    if _voice_classifier is None:
+        from firebot.voice_intent.infer import IntentClassifier
+        _voice_classifier = IntentClassifier(VOICE_INTENT_CHECKPOINT)
+    return _voice_classifier
+
+
+def _get_voice_router() -> ShadowRouter:
+    global _voice_router
+    if _voice_router is None:
+        _voice_router = ShadowRouter.load(VOICE_INTENT_ROUTER_STATE)
+    return _voice_router
 
 
 @app.on_event("startup")
@@ -205,24 +239,76 @@ async def post_estop() -> dict[str, Any]:
 
 # ---- REST: voice transcription fallback (Groq-hosted Whisper) ----
 
-@app.post("/api/transcribe")
-async def transcribe(file: UploadFile = File(...)) -> dict[str, str]:
+async def _call_groq(audio_bytes: bytes, filename: str, content_type: str) -> str:
     if not GROQ_API_KEY:
         raise HTTPException(503, "GROQ_API_KEY isn't set on the server -- voice fallback is unavailable")
-    audio_bytes = await file.read()
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             r = await client.post(
                 GROQ_TRANSCRIBE_URL,
                 headers={"Authorization": f"Bearer {GROQ_API_KEY}"},
-                files={"file": (file.filename or "clip.webm", audio_bytes, file.content_type or "audio/webm")},
+                files={"file": (filename, audio_bytes, content_type)},
                 data={"model": "whisper-large-v3-turbo", "temperature": "0", "response_format": "json"},
             )
     except httpx.RequestError as e:
         raise HTTPException(502, f"couldn't reach Groq: {e}") from e
     if r.status_code != 200:
         raise HTTPException(502, f"Groq transcription failed ({r.status_code}): {r.text}")
-    return {"text": (r.json().get("text") or "").strip()}
+    return (r.json().get("text") or "").strip()
+
+
+def _local_intent_phrase(audio_bytes: bytes) -> tuple[str, float] | None:
+    """Try the local classifier on a raw uploaded clip. Returns (canonical_phrase,
+    confidence) on a usable prediction, or None -- for *any* reason the local path isn't
+    available (no checkpoint configured, decode failure, missing optional deps, low
+    confidence, UNKNOWN) -- so callers always have a clean Groq fallback to drop into.
+    This opt-in feature is never allowed to turn into a 500 for a console that otherwise
+    only relies on Groq.
+    """
+    if not VOICE_INTENT_CHECKPOINT:
+        return None
+    try:
+        import io
+
+        import librosa
+
+        audio, _ = librosa.load(io.BytesIO(audio_bytes), sr=16_000, mono=True)
+        clf = _get_voice_classifier()
+        payload = clf.predict_intent_payload_array(audio, sample_rate=16_000,
+                                                    min_confidence=VOICE_INTENT_MIN_CONFIDENCE)
+        if payload["name"] == "UNKNOWN":
+            return None
+        return canonical_phrase(payload["raw_label"]), payload["confidence"]
+    except Exception:
+        # Missing librosa/torch, a corrupt checkpoint, an undecodable clip, etc. -- the
+        # local first-pass is a pure optimization, never the only path.
+        return None
+
+
+@app.post("/api/transcribe")
+async def transcribe(file: UploadFile = File(...)) -> dict[str, str]:
+    audio_bytes = await file.read()
+    filename = file.filename or "clip.webm"
+    content_type = file.content_type or "audio/webm"
+
+    local = _local_intent_phrase(audio_bytes)
+    if local is None:
+        return {"text": await _call_groq(audio_bytes, filename, content_type)}
+
+    phrase, confidence = local
+    router = _get_voice_router()
+    if router.should_trust(confidence) and not router.should_audit():
+        return {"text": phrase}
+
+    # Either not (yet) trusted for this confidence decile, or a background audit of an
+    # otherwise-trusted one -- either way, ground truth from Groq updates the router.
+    if not GROQ_API_KEY:
+        # Can't audit without Groq; the local prediction is all we have.
+        return {"text": phrase}
+    groq_text = await _call_groq(audio_bytes, filename, content_type)
+    router.update(confidence, agreed=(phrase == groq_text))
+    router.save(VOICE_INTENT_ROUTER_STATE)
+    return {"text": groq_text}
 
 
 # ---- WebSocket: live telemetry, polling the active session's latest frame ----
