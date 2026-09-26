@@ -1,52 +1,51 @@
-# FireBot
+# FireBot Console
 
-Autonomous firefighting robot: simulation, EIF sensor fusion, motion planning, fire-event database.
+The web console: a React frontend (Live Ops, Simulator, History) talking to a small FastAPI
+bridge, which forwards live commands to `firebot-brain` and reads run history from Postgres.
 
-## Setup (macOS)
+## One-time setup
 ```bash
+# from the repo root
 python3 -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
-pytest -q && ruff check .
+pip install -e ".[pc]"                                  # firebot-brain/firebot-pi + psycopg
+pip install -r firebot-console/backend/requirements.txt # the FastAPI bridge + asyncpg
+
+# Postgres itself is assumed to already be running as a local service
+# (e.g. `brew services start postgresql@16`); this just needs a role + db once:
+createuser -s firebot && createdb -O firebot firebot
 ```
 
-## Quick start
+## Running it -- 2 tabs
+
+**Tab 1 -- backend** (from `firebot-console/backend/`, venv active):
 ```bash
-firebot-sim --episodes 20   # runs the baseline, writes firebot.db + training.db
-
-firebot-plan --episodes 30   # RRT* planning controller vs. the rule baseline
-# voice (needs the `speech` extra + a Vosk model directory)
-firebot-listen --model ~/models/vosk-model-small-en-us-0.15
-firebot-cmd --script "go to the east side; put out the fire; status"   # operator commands
-
-# PC brain + thin robot (needs the `pc` extra for PostgreSQL: pip install -e ".[pc]")
-export FIREBOT_TOKEN=change-me
-firebot-brain --host 0.0.0.0 --db postgresql://user:pw@localhost/firebot   # on the PC; type commands here
-firebot-brain ... --voice-model ~/models/vosk-model-small-en-us-0.15   # + speak to the PC (needs the `speech` extra)
-firebot-pi --sim --host <pc-ip>          # on the robot (--sim = simulated robot; real drivers: item 8)
-
-# DRL (needs the `drl` extra: pip install -e ".[dev,drl]")
-firebot-train --timesteps 200000 --n-envs 8 --out runs/ppo   # PPO via Stable-Baselines3
-firebot-eval --model runs/ppo/model_final.zip --episodes 30  # vs. the rule baseline
+./run.sh
 ```
+Starts the FastAPI bridge (`:8000`), a simulated robot (`firebot-pi --sim`), and `firebot-brain`.
+The brain owns this terminal's stdin, so you can also type operator commands directly here
+("put out the fire", "go to the east side", "status", "stop"). `--auto` means it starts
+extinguishing on its own without needing a typed command first. Ctrl-C stops all three.
+
+**Tab 2 -- frontend** (from `firebot-console/frontend/`):
+```bash
+./run.sh
+```
+Installs `node_modules` on first run, then starts the Vite dev server at
+`http://localhost:5173`.
+
+That's it -- open `http://localhost:5173`, Live Ops should show live telemetry once the
+simulated robot connects. The **Simulator** tab doesn't need either of the above: it's a
+self-contained, browser-only demo (its own procedural map, sensors, planner, and voice/text
+commands), useful for iterating on planner/UI behavior without the backend running at all.
 
 ## Layout
-- `src/firebot/db/` operational DB (`Store`), training DB (`TrainingStore`), migrations, device registry
-- `src/firebot/fusion/` bearing-only Extended Information Filter
-- `src/firebot/sim/` world, sensor models, `FireEnv` (Gymnasium-style), rule-based baseline, `firebot-sim` CLI
-- `src/firebot/drl/` `FireGymEnv` (real `gymnasium.Env` wrapper for SB3), `firebot-train` (PPO),
-  `firebot-eval` (compares a checkpoint against the rule baseline via `v_run_summary`)
-- `src/firebot/planning/` numpy RRT* (`RRTStar`, `Planner` interface), `PlanningController`
-  (plans to a spray stand-off point, pure-pursuit follow), `firebot-plan` benchmark
-- `src/firebot/command/` rule-based command interpreter (+ optional SLM fallback), intent schema/
-  validator, executor, `firebot-cmd` CLI
-- `src/firebot/speech/` offline speech input: Vosk recogniser, restricted grammar, STOP backstop,
-  `firebot-listen` CLI
-- `src/firebot/link/` robot<->PC link: Pi agent (stdlib only), wire protocol, brain, network server,
-  PostgreSQL telemetry sink, simulated hardware, voice hookup (`voice.py`); `firebot-brain`, `firebot-pi`
-- `src/firebot/perception.py` sensor frame -> observation (fusion), shared by the sim and the brain
-- `web/firebot-sim.html` standalone browser visualiser (open in any browser)
-- `docs/ARCHITECTURE.md`, `docs/DATABASE.md` design, roadmap, schema reference
-
-## Workflow
-Branch from `main` (`feat/...`, `fix/...`), open a PR, CI must pass. Conventional commit messages
-(`feat:`, `fix:`, `docs:`, `test:`, `chore:`). Never commit `*.db` files.
+- `backend/server.py` -- FastAPI bridge: `/api/runs*` (read history from Postgres),
+  `/api/command*` (forward drive/pump/nozzle/estop to the brain's manual-control bridge),
+  `/ws/telemetry` (live frames + operator commands, polled from Postgres)
+- `frontend/src/pages/` -- `LiveOps.jsx` (real robot), `Simulator.jsx` (self-contained JS sim),
+  `History.jsx` (past runs)
+- `frontend/src/lib/simEngine.js` / `simController.js` -- the browser-only simulator: procedural
+  map generator, mock sensors, EIF fire-source estimator, RRT* planner, command grammar -- all
+  ported from the Python backend so the Simulator tab needs no server at all
+- See the repo-root `README.md` / `docs/ARCHITECTURE.md` for the rest of the Python package
+  (`src/firebot/`) that the backend/brain/robot processes are built on.
