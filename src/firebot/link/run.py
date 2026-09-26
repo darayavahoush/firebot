@@ -69,6 +69,8 @@ def brain_main() -> None:
                                      "mechanism as firebot-cmd's --slm-cmd. Confirmation-gated "
                                      "like any other SLM-sourced intent; MANUAL can never come "
                                      "from it (see command/parser.py)")
+    p.add_argument("--speaker-id", action="store_true",
+                   help="identify the enrolled speaker for each voice command")
     p.add_argument("--seed", type=int, default=0)
     a = p.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s: %(message)s")
@@ -135,7 +137,11 @@ def brain_main() -> None:
                 chunks = SileroGate(threshold=a.vad_threshold)(chunks)
         except Exception as e:  # noqa: BLE001
             sys.exit(f"voice input unavailable: {e}")
-        start_voice(server, rec, chunks, say=lambda m: print(m, flush=True))
+        speaker_id = None
+        if a.speaker_id:
+            from firebot.speech.speaker_id import SpeakerIdentifier
+            speaker_id = SpeakerIdentifier()
+        start_voice(server, rec, chunks, say=lambda m: print(m, flush=True), speaker_id=speaker_id)
         log.info("voice control on (say: put out the fire / go to the east side / status / stop)")
     try:
         loop.run_until_complete(serve_forever(server))

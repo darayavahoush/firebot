@@ -15,3 +15,7 @@ firebot-console/frontend/node_modules/
 firebot-console/frontend/dist/
 firebot-console/backend/.venv/
 .venv-ompl/
+runs/
+vosk-model-small-en-us-0.15/
+vosk-model-small-en-us-0.15.zip
+checkpoints/

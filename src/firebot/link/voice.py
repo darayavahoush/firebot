@@ -19,10 +19,11 @@ from .server import BrainServer
 
 
 def make_listener(server: BrainServer, recognizer: Recognizer,
-                  say: Callable[[str], None] = print) -> Listener:
+                  say: Callable[[str], None] = print, speaker_id=None) -> Listener:
     def on_command(h: Heard) -> None:
-        say(f"heard: {h.text!r}")
-        if not server.submit_command(h.text, "voice"):
+        say(f"heard: {h.text!r}" + (f" [speaker: {h.speaker}]" if h.speaker else ""))
+        channel = f"voice:{h.speaker}" if h.speaker else "voice"
+        if not server.submit_command(h.text, channel):
             say("  (no robot connected)")
 
     def on_stop(partial: str) -> None:
@@ -30,13 +31,13 @@ def make_listener(server: BrainServer, recognizer: Recognizer,
         server.emergency_stop(partial)
 
     # rules-only interpreter: the brain re-interprets the text and owns validation/execution
-    return Listener(recognizer, Interpreter(), on_command, on_stop)
+    return Listener(recognizer, Interpreter(), on_command, on_stop, speaker_id=speaker_id)
 
 
 def start_voice(server: BrainServer, recognizer: Recognizer, chunks: Iterable[bytes],
-                say: Callable[[str], None] = print) -> threading.Thread:
+                say: Callable[[str], None] = print, speaker_id=None) -> threading.Thread:
     """Process `chunks` on a daemon thread. Errors are reported; typed control keeps working."""
-    listener = make_listener(server, recognizer, say)
+    listener = make_listener(server, recognizer, say, speaker_id=speaker_id)
 
     def run() -> None:
         try:
