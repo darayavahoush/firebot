@@ -54,6 +54,11 @@ export default function Simulator() {
     setTick((t) => t + 1);
   }, []);
 
+  const newFire = useCallback(() => {
+    engineRef.current.newFire();
+    setTick((t) => t + 1);
+  }, []);
+
   const sendCommand = useCallback((text) => {
     if (!text.trim()) return;
     engineRef.current.say(text);
@@ -106,6 +111,9 @@ export default function Simulator() {
         <span className="font-display font-bold text-[13px] text-ink tracking-wide">SIMULATOR</span>
         <button onClick={newBuilding} className="rounded-lg border border-line px-3 py-1 text-[12px] font-mono text-ink hover:border-telemetry hover:text-telemetry transition-colors">
           New Building
+        </button>
+        <button onClick={newFire} className="rounded-lg border border-line px-3 py-1 text-[12px] font-mono text-ink hover:border-telemetry hover:text-telemetry transition-colors">
+          New Fire
         </button>
         <button onClick={() => setPaused((p) => !p)} className="rounded-lg border border-line px-3 py-1 text-[12px] font-mono text-ink hover:border-telemetry hover:text-telemetry transition-colors">
           {paused ? "Resume" : "Pause"}

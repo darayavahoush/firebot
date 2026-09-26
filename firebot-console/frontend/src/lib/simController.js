@@ -95,6 +95,42 @@ export class SimController {
     this._logEvent('scenario', `New building generated \u2013 ${width.toFixed(1)}m \u00d7 ${height.toFixed(1)}m, ${rooms.length} rooms (seed ${s})`);
   }
 
+  /** Relocate the fire within the *current* building instead of regenerating the whole layout --
+   *  for repeatedly exercising the approach-and-extinguish behavior without waiting on a fresh
+   *  building or a full blind search each time. Robot position and the world/rooms are left
+   *  alone; everything specific to the previous fire (EIF estimate, planner state, state
+   *  machine, tank/battery so a drained tank from the last run doesn't block the next one) is
+   *  reset. The point of this button is exercising TRACK -> PLAN -> SPRAY, not EXPLORE, so the
+   *  EIF is seeded with a coarse initial fix (as if from a building alarm panel ping) rather than
+   *  the wide-open prior `new EIF()` starts with, and the state machine drops straight into
+   *  TRACK instead of EXPLORE. k=4 gives sigma=0.5, comfortably under the sigma<1.0 gate TRACK
+   *  needs to start planning a standoff approach immediately; a small jitter keeps it an initial
+   *  estimate rather than an omniscient one, so normal bearing fusion still has to refine it once
+   *  the robot gets a direct line of sight. */
+  newFire() {
+    const [fx, fy] = this.world.randomFreePoint(
+      this.rng, 0.5, [this.robot.x, this.robot.y], Math.min(this.world.width, this.world.height) * 0.5
+    );
+    this.fire = { x: fx, y: fy, p: 1.0 };
+    const k = 4;
+    const jx = fx + (this.rng() - 0.5) * 0.6, jy = fy + (this.rng() - 0.5) * 0.6;
+    this.eif = new EIF();
+    this.eif.Y = [[k, 0], [0, k]];
+    this.eif.yv = [k * jx, k * jy];
+    this.tank = 1.0;
+    this.battery = 1.0;
+    this.mode = 'AUTO';
+    this.state = 'TRACK';
+    this.path = null; this.tree = []; this.goal = null; this.goalKind = null;
+    this.sincePlan = Infinity; this.fireEstAtPlan = null; this.stuckT = 0; this.lastSpeed = 0;
+    this.recoveryT = 0; this.recoveryDir = 1;
+    this.explorePoint = null;
+    this.trackStallT = 0; this.trackCooldown = 0; this.lost = 0; this.spinT = 0;
+    this.errHistory = [];
+    this.lastSense = null;
+    this._logEvent('scenario', `New fire placed at (${fx.toFixed(1)}, ${fy.toFixed(1)}) \u2013 approaching to extinguish (tank/battery reset)`);
+  }
+
   _logEvent(kind, text) {
     this.events.unshift({ t: this.t, kind, text });
     if (this.events.length > 300) this.events.length = 300;
