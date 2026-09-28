@@ -22,8 +22,7 @@ export FIREBOT_TOKEN="${FIREBOT_TOKEN:-dev-secret}"
 # `import librosa` fails with "cannot cache function ... no locator available". Give it one.
 export NUMBA_CACHE_DIR="${NUMBA_CACHE_DIR:-$(cd ../.. && pwd)/.numba_cache}"
 mkdir -p "$NUMBA_CACHE_DIR"
-# Must match server.py's DATABASE_URL -- that one's hardcoded, not read from the environment,
-# so if you override this, go update the constant at the top of server.py to match.
+# server.py reads the same FIREBOT_DB variable (same default), so setting it here is enough.
 DB_URL="${FIREBOT_DB:-postgresql://firebot:firebot@localhost:5432/firebot}"
 
 command -v firebot-brain >/dev/null 2>&1 || {

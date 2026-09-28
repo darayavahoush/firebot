@@ -1,9 +1,44 @@
-# Changes in this drop
+# Console changelog
 
-Generated locally from a clone of `darayavahoush/firebot`; nothing has been pushed. Review with
-`git status` / `git diff`, then commit and push yourself.
+Newest first. Commit messages carry the detail; this is the readable summary.
 
-## Backend (Python) -- `src/firebot/`
+## Fix: Live thermal view stuck on "Waiting for a thermal frame"
+`/ws/telemetry` only ever sent the newest frame, and the brain stores a thermal grid on only every
+10th frame, so the grid arrived only if a poll happened to land on such a frame. The WebSocket now
+also fetches the newest stored grid when the latest frame has none, and sends it once
+(`thermal_seq`). No schema or frontend change. See `docs/DATABASE.md` ("Thermal grids are sparse").
+
+## Simulator: Sensors, Planner and Voice tabs redesigned
+- Sensors: larger thermal view, a top-down view of the ultrasonic rays and flame sensors, gas and
+  flame meters.
+- Planner: plain-English status, straight-line distance, search-tree size, success-rate ring.
+- Voice: mic hero with a status line, last-command card, collapsible tappable phrase list, history.
+- The three tabs moved to `components/sim/`; the phrase reference moved to `lib/commandHelp.js`.
+
+## Live Ops redesign
+- Thermal view is the centrepiece (smoothed, crosshair on the hottest pixel, "Held from Ns ago").
+- Tank, gas and fire-fix rings; analog joystick that re-sends while held (keeps the brain's 0.5 s
+  dead-man timer fed) and sends an explicit stop on release.
+- Backend: `DRIVE` also accepts analog `v` and `w` (clamped, non-finite rejected).
+- Behaviour changes: left and right in `_DRIVE_VECTORS` were swapped so a right turn turns the sim
+  robot right (positive `w` is counter-clockwise). The reverse button and arrow key were removed:
+  there is no reverse gear, so they always returned 501.
+- The camera is still placeholder footage and is labelled as such.
+
+## History: replay, summary and fault list
+Top-down run replay with a scrubber and speed control, a plain-English summary from
+`/api/runs/{id}/summary`, and faults from `/api/runs/{id}/anomalies` that jump the replay to the
+moment they happened. The replay draws the default room's walls as a reference outline.
+
+## Earlier work
+Browser notifications (link loss, low tank, fire located, pump on), the ironbow re-theme and slim
+rail navigation, manual control through the brain's loopback bridge, real-telemetry rewiring to the
+Postgres schema, speaker identification, the offline voice-intent classifier, and the Azure
+low-cost deploy scripts.
+
+## Simulator drop (original)
+
+### Backend (Python) -- `src/firebot/`
 
 - **`sim/mapgen.py`** (new) -- procedural BSP building generator: a bigger, randomly laid-out
   multi-room floor plan (with doorways and a few furniture props) every call, instead of the
@@ -28,7 +63,7 @@ Generated locally from a clone of `darayavahoush/firebot`; nothing has been push
 Full suite: `104 passed, 3 skipped` (the 3 skips are pre-existing, unrelated to this change).
 `ruff check .` clean.
 
-## Frontend (React) -- `firebot-console/frontend/`
+### Frontend (React) -- `firebot-console/frontend/`
 
 New "Simulator" tab (`TopBar.jsx` / `App.jsx`) -- a self-contained, browser-only demo that
 doesn't need the backend running:
@@ -56,11 +91,3 @@ Note on OMPL in the browser: OMPL is a C++/Python library with no browser build,
 planner runs the same informed-RRT* *algorithm* in plain JS rather than calling real OMPL. The
 Python backend's `OMPLPlanner` (above) is the one that actually uses OMPL.
 
-## To ship it
-
-```
-git add -A
-git commit -m "Bigger procedural maps, mock sensors, voice input, OMPL planner"
-git push
-cd firebot-console/frontend && npm install   # package-lock.json is untouched, nothing new to add
-```

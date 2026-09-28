@@ -3,6 +3,9 @@
 Robot (Pi)  --sensor frames-->  PC brain  --commands-->  Robot (Pi)
                                  fusion (EIF) -> planning / DRL -> command layer
                                      \-> PostgreSQL (telemetry, operator commands)
+                                             ^
+Browser <-> React console <-> FastAPI bridge -+   (reads history + live frames)
+                                  \-> brain's loopback command bridge (manual drive, e-stop)
 
 The Pi is a thin terminal: it streams sensors and applies commands, nothing else -- no
 database, no planning, no numpy. See "Robot link" below. (`firebot-sim` and the training DB
@@ -29,6 +32,10 @@ data structures, so switching to the robot changes drivers only.
 8. [ ] Hardware drivers (Pi / ESP): implement the 3-method `Hardware` interface
    (`read` / `apply` / `stop`) in `firebot.link.agent`; sim already implements it (`SimHardware`)
 9. [x] Robot link: thin Pi agent <-> PC brain over TCP, PostgreSQL telemetry, fail-safes
+10. [x] Web console: Live (thermal, rings, joystick), History (replay, summary, faults),
+    Simulator (browser-only), see "Web console" below
+11. [x] Speaker identification for the audit trail; offline voice-intent classifier
+12. [ ] Real camera stream (the console shows placeholder footage), real map / SLAM
 
 ## Command layer (`firebot.command`)
 operator text -> `RuleParser` (deterministic) -> [`SLMParser`, only if rules returned UNKNOWN]
@@ -95,6 +102,37 @@ it overrides a command already being computed. Each operator command is logged w
 start-up the brain exits with an error; if the audio stream dies later, typed control continues.
 Voice complements a physical e-stop; it does not replace one.
 
+Speaker ID (`firebot.speech.speaker_id`, `firebot-brain --speaker-id`): SpeechBrain ECAPA embeddings
+matched by cosine similarity against enrolled voiceprints (`enroll_speaker.py`, threshold and margin
+tunable via `FIREBOT_SPEAKER_*`). It answers "who said it" for the audit trail and never changes
+what a command means: the rule parser stays deterministic. The speaker is recorded in the command
+channel (`voice:<name>`).
+
 Limits: the token authenticates but the link is not encrypted -- use it over a trusted LAN or a
 VPN (WireGuard/Tailscale). Odometry pose comes from the Pi (wheel encoders/IMU); there is no SLAM
 yet. `Brain` assumes the sim's room map (`World`) until a real map is configured.
+
+## Web console (`firebot-console/`)
+```
+React (Vite) --HTTP/WS--> FastAPI bridge (server.py) --SQL--> PostgreSQL   (history, live frames)
+                                     \--loopback HTTP + bearer token--> brain (manual, e-stop)
+```
+- **Live frames:** `/ws/telemetry` polls the live session's newest frame every 0.4 s. Because
+  thermal grids are stored only every Nth frame, it also fetches the newest stored grid when the
+  latest frame has none and sends it once (`thermal_seq`). The frontend keeps the last grid and
+  labels it "Held from Ns ago".
+- **Manual control:** the console sends drive, pump and nozzle as separate events; the bridge merges
+  them into one `(v, w, pump, nozzle)` sample for the brain's `/manual` route (`link/cmdhttp.py`).
+  Analog `v` is clamped to 0..1 (no reverse) and `w` to -1..1, positive = counter-clockwise. If no
+  fresh sample arrives for 0.5 s (`MANUAL_TIMEOUT`) the brain goes to IDLE and stops motors and
+  pump, so the UI re-sends while the stick is held. `/estop` calls `BrainServer.emergency_stop()`. Both routes need the
+  token; the brain refuses to start the bridge without one.
+- **History:** `/api/runs/{id}/anomalies` and `/summary` are computed from stored frames and
+  operator commands by `firebot.fusion.anomaly` (deterministic; an optional local model may only
+  re-word the text and is rejected if it changes a number).
+- **Voice transcription:** `/api/transcribe` tries the local intent classifier, then offline Vosk,
+  then Groq Whisper, and reports the mode in `/api/voice/status`. Speaker ID runs on the same audio.
+- **Simulator page:** a browser-only port of the sim, planner (informed RRT*, standing in for OMPL
+  which has no browser build) and command grammar. It shares no state with the real robot.
+- **Reading the console safely:** the console never opens a socket to the Pi; everything goes
+  through the brain, so the fail-safes above still apply to manual driving.

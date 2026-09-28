@@ -685,9 +685,11 @@ async def _transcribe_text(audio_bytes: bytes, filename: str, content_type: str)
 async def ws_telemetry(ws: WebSocket) -> None:
     await ws.accept()
     last_seq: int | None = None
+    last_thermal_seq: int | None = None
     last_cmd_id = 0
     try:
         while True:
+            thermal_row = None
             async with _pool.acquire() as conn:
                 session = await conn.fetchrow(
                     "SELECT id FROM sessions WHERE ended_at IS NULL "
@@ -704,6 +706,17 @@ async def ws_telemetry(ws: WebSocket) -> None:
                     "ORDER BY seq DESC LIMIT 1",
                     session["id"],
                 )
+                # Thermal grids are only stored every Nth frame (thermal_every) and this loop
+                # only ever reads the newest row, so the newest row usually has none and a
+                # lucky-alignment poll was the only way the console ever saw one. Fetch the
+                # newest stored grid separately when the newest frame lacks it.
+                if row is not None and row["thermal"] is None:
+                    thermal_row = await conn.fetchrow(
+                        "SELECT seq, thermal FROM frames "
+                        "WHERE session_id = $1 AND thermal IS NOT NULL "
+                        "ORDER BY seq DESC LIMIT 1",
+                        session["id"],
+                    )
 
                 cmd_rows = await conn.fetch(
                     "SELECT id, at, text, intent, valid, message FROM operator_commands "
@@ -716,6 +729,12 @@ async def ws_telemetry(ws: WebSocket) -> None:
                 d = dict(row)
                 sensors = d.pop("sensors")
                 d["sensors"] = json.loads(sensors) if isinstance(sensors, str) else sensors
+                if d["thermal"] is not None:
+                    last_thermal_seq = d["seq"]
+                elif thermal_row is not None and thermal_row["seq"] != last_thermal_seq:
+                    d["thermal"] = thermal_row["thermal"]  # newest stored grid, sent once
+                    d["thermal_seq"] = thermal_row["seq"]
+                    last_thermal_seq = thermal_row["seq"]
                 d["thermal"] = _reshape_thermal(d["thermal"])
                 d["session_id"] = str(session["id"])
                 d["type"] = "frame"
