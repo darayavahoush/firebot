@@ -1,4 +1,4 @@
-# FireBot Console
+# NIRVANA Console
 
 The web console: a React frontend (Live Ops, Simulator, History) talking to a small FastAPI
 bridge, which forwards live commands to `firebot-brain` and reads run history from Postgres.

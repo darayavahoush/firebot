@@ -74,6 +74,8 @@ def brain_main() -> None:
     p.add_argument("--seed", type=int, default=0)
     a = p.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s: %(message)s")
+    from .. import branding
+    print(branding.banner(), file=sys.stderr)
     if not _is_loopback(a.host) and not a.token:
         sys.exit("refusing to listen on a non-loopback address without --token / FIREBOT_TOKEN: "
                  "this port controls a pump and motors")

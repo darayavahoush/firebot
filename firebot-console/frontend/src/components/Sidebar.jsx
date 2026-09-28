@@ -13,8 +13,8 @@ export default function Sidebar({ page, setPage, linkOk }) {
         <div className="ember-glow w-16 h-16 -left-4 -top-2" />
         <BrandMark />
         <div className="leading-tight relative">
-          <div className="font-display font-extrabold text-[15px] text-ink tracking-tight">FIREBOT</div>
-          <div className="font-mono text-[9px] text-faint tracking-wide">MISSION CONSOLE · R0.1</div>
+          <div className="font-display font-extrabold text-[15px] text-ink tracking-tight">NIRVANA</div>
+          <div className="font-mono text-[9px] text-faint tracking-wide">THE FIRE ENDS HERE · R0.1</div>
         </div>
       </div>
 

@@ -1,6 +1,8 @@
-# FireBot
+# NIRVANA
 
-Autonomous firefighting robot: simulation, EIF sensor fusion, motion planning, fire-event database.
+> **The fire ends here.**
+
+NIRVANA is an autonomous firefighting robot: simulation, EIF sensor fusion, motion planning, fire-event database.
 
 ## Setup (macOS)
 ```bash
@@ -56,3 +58,7 @@ firebot-eval --model runs/curriculum/model_final.zip --episodes 30 --train-db tr
 ## Workflow
 Branch from `main` (`feat/...`, `fix/...`), open a PR, CI must pass. Conventional commit messages
 (`feat:`, `fix:`, `docs:`, `test:`, `chore:`). Never commit `*.db` files.
+
+> Naming: the product is **NIRVANA**. The Python package, CLI commands (`firebot-*`), environment
+> variables (`FIREBOT_*`) and database names keep the original `firebot` identifier so existing
+> installs, configs and stored runs keep working.
