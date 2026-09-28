@@ -423,3 +423,60 @@ def test_run_summary_endpoint_and_narration_guard(server, monkeypatch):
     monkeypatch.setenv("FIREBOT_SLM_CMD", "cat")   # echoes the prompt: contains only source numbers
     out2 = _run(server.run_summary("abc", narrate_text=True))
     assert out2["text"]
+
+
+# ---- agreement is judged on meaning, not exact text ----------------------------------------
+
+@pytest.mark.parametrize("local, groq", [
+    ("stop", "Stop."),
+    ("stop", "Stop the robot!"),
+    ("go to north", "Go to the north side."),
+    ("go to northeast", "Head to the top right."),
+    ("put out the fire", "Put out the fire."),
+    ("return home", "Go home."),
+    ("status report", "Status report."),
+])
+def test_same_intent_true_for_realistic_groq_output(server, local, groq):
+    assert server._same_intent(local, groq)
+
+
+@pytest.mark.parametrize("local, groq", [
+    ("stop", "go to home"),
+    ("go to north", "go to south"),
+    ("go to northeast", "go to northwest"),
+    ("put out the fire", "status report"),
+])
+def test_same_intent_false_when_meaning_differs(server, local, groq):
+    assert not server._same_intent(local, groq)
+
+
+def test_same_intent_false_when_either_side_is_unparseable(server):
+    assert not server._same_intent("stop", "uh what")
+    assert not server._same_intent("blah", "blah")  # two failures to understand != agreement
+    assert not server._same_intent("stop", "")
+
+
+def test_router_is_told_agreed_for_groq_punctuated_transcript(server, monkeypatch):
+    """Regression: exact string equality made this False, so the router never learned to
+    trust the local model."""
+    monkeypatch.setattr(server, "_local_intent_phrase", lambda audio_bytes: ("stop", 0.9))
+    monkeypatch.setattr(server, "GROQ_API_KEY", "fake-key")
+    updates = []
+
+    class Router:
+        def should_trust(self, confidence):
+            return False
+        def should_audit(self):
+            return False
+        def update(self, confidence, agreed):
+            updates.append((confidence, agreed))
+        def save(self, path):
+            pass
+    monkeypatch.setattr(server, "_get_voice_router", lambda: Router())
+
+    async def fake_groq(*a, **k):
+        return "Stop."
+    monkeypatch.setattr(server, "_call_groq", fake_groq)
+
+    assert _run(server.transcribe(_FakeUploadFile(b"clip"))) == {"text": "Stop."}
+    assert updates == [(0.9, True)]

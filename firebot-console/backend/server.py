@@ -37,6 +37,7 @@ from fastapi import FastAPI, File, HTTPException, UploadFile, WebSocket, WebSock
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from firebot.command.parser import RuleParser
 from firebot.db.summary import narrate, summarize_run
 from firebot.fusion.anomaly import detect_anomalies
 from firebot.link.protocol import THERM_COLS, THERM_ROWS
@@ -415,6 +416,28 @@ def _decode_audio_16k(audio_bytes: bytes):
     return np.frombuffer(proc.stdout, dtype=np.float32).copy()
 
 
+_agreement_parser = RuleParser()
+
+
+def _same_intent(local_phrase: str, groq_text: str) -> bool:
+    """Do the local classifier's canonical phrase and Groq's raw transcript mean the same
+    command? Compared as parsed intents (name + params), not as strings: Groq returns text
+    like "Stop." or "Go to the north side.", so exact string equality with the canonical
+    phrase ("stop", "go to north") almost never held, the ShadowRouter concluded the local
+    model never agreed with Groq, and so never trusted it. An unparseable utterance on
+    either side is never agreement -- two failures to understand aren't a match.
+    """
+    try:
+        a = _agreement_parser.parse(local_phrase)
+        b = _agreement_parser.parse(groq_text)
+    except Exception:  # noqa: BLE001 -- agreement is bookkeeping; never fail a request over it
+        return False
+    if a.name == "UNKNOWN" or b.name == "UNKNOWN":
+        return False
+    norm = lambda p: {k: round(v, 3) if isinstance(v, float) else v for k, v in p.items()}  # noqa: E731
+    return a.name == b.name and norm(a.params) == norm(b.params)
+
+
 def _local_intent_phrase(audio_bytes: bytes) -> tuple[str, float] | None:
     """Try the local classifier on a raw uploaded clip. Returns (canonical_phrase,
     confidence) on a usable prediction, or None -- for *any* reason the local path isn't
@@ -511,7 +534,7 @@ async def transcribe(file: UploadFile = File(...)) -> dict[str, str]:
         # Can't audit without Groq; the local prediction is all we have.
         return {"text": phrase}
     groq_text = await _call_groq(audio_bytes, filename, content_type)
-    router.update(confidence, agreed=(phrase == groq_text))
+    router.update(confidence, agreed=_same_intent(phrase, groq_text))
     router.save(VOICE_INTENT_ROUTER_STATE)
     return {"text": groq_text}
 
