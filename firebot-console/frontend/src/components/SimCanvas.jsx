@@ -1,17 +1,17 @@
 import React, { useEffect, useRef } from "react";
 import { HFOV } from "../lib/simEngine.js";
 
-// Palette pulled from tailwind.config.js — the canvas is a deliberately dark
-// "instrument screen" (matches the camera/thermal viewport's `scope` color)
-// sitting inside the light industrial-HMI shell, not a leftover dark theme.
+// Palette pulled from tailwind.config.js — the canvas is a deliberately true-black
+// "instrument screen" (matches the camera/thermal viewport's `scope` color), a tactical
+// plot rather than a lit floor plan.
 const COLORS = {
-  bg: "#12110D",
-  floor: "#1C1A14",
-  fog: "#0B0A07",
-  fogHatch: "rgba(247,243,232,0.025)",
-  grid: "rgba(247,243,232,0.035)",
-  gridMajor: "rgba(247,243,232,0.09)",
-  axis: "rgba(247,243,232,0.45)",
+  bg: "#0A0C0F",
+  floor: "#14181C",
+  fog: "#050607",
+  fogHatch: "rgba(232,236,239,0.025)",
+  grid: "rgba(232,236,239,0.035)",
+  gridMajor: "rgba(232,236,239,0.09)",
+  axis: "rgba(232,236,239,0.45)",
   robot: "#3FA7D6",
   fireTrue: "#E14A3A",
   fireEst: "#D69A3C",
@@ -270,12 +270,12 @@ function drawWall(ctx, px, py, pw, ph) {
   ctx.fillRect(px, py + ph, pw, Math.min(4, Math.max(1, ph * 0.12)));
 
   const grad = ctx.createLinearGradient(px, py, px, py + ph);
-  grad.addColorStop(0, "#5A5646");
-  grad.addColorStop(1, "#2E2B21");
+  grad.addColorStop(0, "#4A5058");
+  grad.addColorStop(1, "#1E2226");
   ctx.fillStyle = grad;
   ctx.fillRect(px, py, pw, ph);
 
-  ctx.strokeStyle = "rgba(247,243,232,0.20)"; ctx.lineWidth = 1;
+  ctx.strokeStyle = "rgba(232,236,239,0.20)"; ctx.lineWidth = 1;
   ctx.beginPath(); ctx.moveTo(px, py + ph); ctx.lineTo(px, py); ctx.lineTo(px + pw, py); ctx.stroke();
   ctx.strokeStyle = "rgba(0,0,0,0.45)";
   ctx.beginPath(); ctx.moveTo(px + pw, py); ctx.lineTo(px + pw, py + ph); ctx.lineTo(px, py + ph); ctx.stroke();
@@ -293,15 +293,15 @@ function drawCrate(ctx, px, py, pw, ph) {
 
   roundedRectPath(ctx, px, py, pw, ph, r);
   const grad = ctx.createLinearGradient(px, py, px + pw, py + ph);
-  grad.addColorStop(0, "#524D3B");
-  grad.addColorStop(1, "#221F16");
+  grad.addColorStop(0, "#454A52");
+  grad.addColorStop(1, "#181B1F");
   ctx.fillStyle = grad;
   ctx.fill();
 
-  ctx.strokeStyle = "rgba(247,243,232,0.15)"; ctx.lineWidth = 1;
+  ctx.strokeStyle = "rgba(232,236,239,0.15)"; ctx.lineWidth = 1;
   ctx.beginPath(); ctx.moveTo(px, py + ph / 2); ctx.lineTo(px + pw, py + ph / 2); ctx.stroke();
 
-  ctx.fillStyle = "rgba(247,243,232,0.3)";
+  ctx.fillStyle = "rgba(232,236,239,0.3)";
   for (const [cx, cy] of [[px + 3, py + 3], [px + pw - 3, py + 3], [px + 3, py + ph - 3], [px + pw - 3, py + ph - 3]]) {
     if (cx > px + pw || cy > py + ph) continue;
     ctx.beginPath(); ctx.arc(cx, cy, 1, 0, 7); ctx.fill();
@@ -310,7 +310,7 @@ function drawCrate(ctx, px, py, pw, ph) {
   ctx.save();
   roundedRectPath(ctx, px + 1, py + 1, Math.max(0, pw - 2), Math.max(0, ph - 2), r);
   ctx.setLineDash([4, 3]);
-  ctx.strokeStyle = "#F4B942"; ctx.lineWidth = 1.5;
+  ctx.strokeStyle = "#FFB000"; ctx.lineWidth = 1.5;
   ctx.stroke();
   ctx.setLineDash([]);
   ctx.restore();

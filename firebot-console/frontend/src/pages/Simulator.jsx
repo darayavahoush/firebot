@@ -44,6 +44,16 @@ export default function Simulator() {
   const [webSpeechBroken, setWebSpeechBroken] = useState(detectBrokenWebSpeech);
   const [asrStatus, setAsrStatus] = useState("idle"); // idle | recording | transcribing | error
   const [asrError, setAsrError] = useState("");
+  // Which server speech path is live: "local" (trained model), "local-degraded", "groq", "unavailable"
+  const [voiceMode, setVoiceMode] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/voice/status")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (alive && j) setVoiceMode(j); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
   const recogRef = useRef(null);
   const restartTimerRef = useRef(null);
   const restartAttemptsRef = useRef(0);
@@ -230,6 +240,7 @@ export default function Simulator() {
           throw new Error(detail?.detail || `Transcription failed (${res.status}).`);
         }
         const { text } = await res.json();
+        fetch("/api/voice/status").then((r) => (r.ok ? r.json() : null)).then((j) => j && setVoiceMode(j)).catch(() => {});
         setAsrStatus("idle");
         if (text) { setTextCmd(text); cmdInputRef.current?.focus(); }
       } catch (err) {
@@ -282,20 +293,20 @@ export default function Simulator() {
         </div>
       )}
       <div className="border-b border-line bg-panel px-6 py-2.5 flex items-center gap-4 flex-wrap">
-        <span className="font-display font-bold text-[13px] text-ink tracking-wide">SIMULATOR</span>
-        <button onClick={newBuilding} className="rounded-lg border border-line px-3 py-1 text-[12px] font-mono text-ink hover:border-telemetry hover:text-telemetry transition-colors">
+        <span className="font-display font-extrabold text-[13px] text-ink tracking-wide">SIMULATOR</span>
+        <button onClick={newBuilding} className="rounded-[3px] border border-line px-3 py-1 text-[12px] font-mono text-ink hover:border-telemetry hover:text-telemetry transition-colors">
           New Building
         </button>
-        <button onClick={newFire} className="rounded-lg border border-line px-3 py-1 text-[12px] font-mono text-ink hover:border-telemetry hover:text-telemetry transition-colors">
+        <button onClick={newFire} className="rounded-[3px] border border-line px-3 py-1 text-[12px] font-mono text-ink hover:border-telemetry hover:text-telemetry transition-colors">
           New Fire
         </button>
-        <button onClick={() => setPaused((p) => !p)} className="rounded-lg border border-line px-3 py-1 text-[12px] font-mono text-ink hover:border-telemetry hover:text-telemetry transition-colors">
+        <button onClick={() => setPaused((p) => !p)} className="rounded-[3px] border border-line px-3 py-1 text-[12px] font-mono text-ink hover:border-telemetry hover:text-telemetry transition-colors">
           {paused ? "Resume" : "Pause"}
         </button>
         <div className="flex items-center gap-1 font-mono text-[12px] text-muted">
           Speed
           {SPEEDS.map((s) => (
-            <button key={s} onClick={() => setSpeed(s)} className={`rounded-lg px-2 py-1 border ${speed === s ? "border-telemetry text-telemetry" : "border-line text-muted hover:text-ink"}`}>
+            <button key={s} onClick={() => setSpeed(s)} className={`rounded-[3px] px-2 py-1 border ${speed === s ? "border-telemetry text-telemetry" : "border-line text-muted hover:text-ink"}`}>
               {s}x
             </button>
           ))}
@@ -315,7 +326,8 @@ export default function Simulator() {
         </div>
         <button
           onClick={() => sendCommand("stop")}
-          className="bg-alarm text-[#1A0805] font-mono text-[12px] font-semibold tracking-wide px-4 py-1.5 rounded-full shadow-[0_0_14px_rgba(240,96,74,0.4)] hover:brightness-110 active:scale-95 transition"
+          aria-label="Emergency stop"
+          className="h-9 w-9 shrink-0 rounded-full bg-alarm text-[#1A0605] font-mono text-[8px] font-bold tracking-tight leading-none flex items-center justify-center border-2 border-[#1A0605]/40 shadow-[0_0_14px_rgba(252,61,33,0.45)] hover:brightness-110 active:scale-95 transition"
         >
           STOP
         </button>
@@ -563,7 +575,7 @@ function VoiceTab({
             className={`w-16 h-16 rounded-full border flex items-center justify-center font-mono text-[11px] transition-all ${
               listening
                 ? "border-alarm text-alarm pulse-dot shadow-[0_0_18px_rgba(240,96,74,0.35)]"
-                : "border-telemetry text-telemetry hover:bg-telemetry hover:text-[#0A1A1C] hover:shadow-[0_0_18px_rgba(47,184,166,0.35)]"
+                : "border-telemetry text-telemetry hover:bg-telemetry hover:text-[#050607] hover:shadow-[0_0_18px_rgba(74,199,236,0.35)]"
             }`}
           >
             {listening ? "LIVE" : "MIC"}
@@ -572,11 +584,11 @@ function VoiceTab({
           <button
             onClick={toggleRecording}
             disabled={asrBusy}
-            title="Records a few seconds, then transcribes on-device with Whisper \u2014 no cloud speech API involved."
+            title={voiceMode?.mode === "local" ? "Records a few seconds, then classifies it with the locally trained voice model." : "Records a few seconds, then transcribes it on the server."}
             className={`w-16 h-16 rounded-full border flex items-center justify-center font-mono text-[11px] transition-all ${
               asrStatus === "recording"
                 ? "border-alarm text-alarm pulse-dot shadow-[0_0_18px_rgba(240,96,74,0.35)]"
-                : "border-telemetry text-telemetry hover:bg-telemetry hover:text-[#0A1A1C] hover:shadow-[0_0_18px_rgba(47,184,166,0.35)]"
+                : "border-telemetry text-telemetry hover:bg-telemetry hover:text-[#050607] hover:shadow-[0_0_18px_rgba(74,199,236,0.35)]"
             } ${asrBusy ? "opacity-40 cursor-wait" : ""}`}
           >
             {asrLabel}
@@ -589,6 +601,15 @@ function VoiceTab({
               ? "This browser doesn't have live speech recognition."
               : "This browser shows a working mic button but has no speech engine behind it (a known Opera/Brave limitation)."}
             {" "}Tap REC to record a command and transcribe it via the server \u2014 or type below.
+          </div>
+        )}
+        {voiceMode && (
+          <div className="font-mono text-[10px] tracking-wide text-faint text-center">
+            SPEECH{" "}
+            <span className={voiceMode.mode === "local" ? "text-ok" : voiceMode.mode === "unavailable" ? "text-alarm" : "text-warn"}>
+              {{ local: "LOCAL MODEL", "local-degraded": "LOCAL MODEL FAILING \u2192 GROQ", groq: "GROQ", unavailable: "UNAVAILABLE" }[voiceMode.mode] || voiceMode.mode}
+            </span>
+            {voiceMode.last_error && <div className="text-warn normal-case tracking-normal mt-0.5">{voiceMode.last_error}</div>}
           </div>
         )}
         {speechUsable && voiceError && <div className="text-[11px] text-warn text-center">{voiceError}</div>}
@@ -610,10 +631,10 @@ function VoiceTab({
             }}
             placeholder='"go to the north room", "stop", "status"'
             autoComplete="off"
-            className="w-full rounded-lg bg-panel2 border border-line px-2.5 py-1.5 text-[12px] font-mono text-ink outline-none focus:border-telemetry"
+            className="w-full rounded-[3px] bg-panel2 border border-line px-2.5 py-1.5 text-[12px] font-mono text-ink outline-none focus:border-telemetry"
           />
           {showSuggestions && suggestions.length > 0 && (
-            <div className="absolute left-0 right-0 top-full mt-1 z-30 rounded-lg border border-line bg-panel shadow-lg overflow-hidden">
+            <div className="absolute left-0 right-0 top-full mt-1 z-30 rounded-[3px] border border-line bg-panel shadow-lg overflow-hidden">
               {suggestions.map((s) => (
                 <button
                   key={s}
@@ -630,7 +651,7 @@ function VoiceTab({
         </div>
         <button
           onClick={() => { sendCommand(textCmd); setTextCmd(""); setShowSuggestions(false); }}
-          className="rounded-lg border border-line px-3 py-1.5 text-[12px] font-mono text-ink hover:border-telemetry hover:text-telemetry"
+          className="rounded-[3px] border border-line px-3 py-1.5 text-[12px] font-mono text-ink hover:border-telemetry hover:text-telemetry"
         >
           Send
         </button>

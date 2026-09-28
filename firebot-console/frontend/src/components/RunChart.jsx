@@ -35,33 +35,33 @@ export default function RunChart({ runId, detail }) {
       <div className="border-t border-line p-4 flex-1 min-h-[240px]">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={detail.points} margin={{ top: 4, right: 12, bottom: 0, left: 0 }}>
-            <CartesianGrid stroke="rgba(247,243,232,0.14)" vertical={false} />
+            <CartesianGrid stroke="rgba(232,236,239,0.14)" vertical={false} />
             <XAxis
               dataKey="t"
-              tick={{ fill: "rgba(247,243,232,0.4)", fontSize: 10, fontFamily: "JetBrains Mono" }}
-              axisLine={{ stroke: "rgba(247,243,232,0.14)" }}
+              tick={{ fill: "rgba(232,236,239,0.4)", fontSize: 10, fontFamily: "JetBrains Mono" }}
+              axisLine={{ stroke: "rgba(232,236,239,0.14)" }}
               tickLine={false}
             />
             <YAxis
-              tick={{ fill: "rgba(247,243,232,0.4)", fontSize: 10, fontFamily: "JetBrains Mono" }}
-              axisLine={{ stroke: "rgba(247,243,232,0.14)" }}
+              tick={{ fill: "rgba(232,236,239,0.4)", fontSize: 10, fontFamily: "JetBrains Mono" }}
+              axisLine={{ stroke: "rgba(232,236,239,0.14)" }}
               tickLine={false}
               width={32}
             />
             <Tooltip
               contentStyle={{
-                background: "#143036",
-                border: "1px solid rgba(247,243,232,0.14)",
+                background: "#12171B",
+                border: "1px solid rgba(232,236,239,0.14)",
                 fontFamily: "JetBrains Mono",
                 fontSize: 11,
-                color: "#F7F3E8",
+                color: "#E8ECEF",
               }}
-              labelStyle={{ color: "rgba(247,243,232,0.6)" }}
+              labelStyle={{ color: "rgba(232,236,239,0.6)" }}
             />
             <Line
               type="monotone"
               dataKey="est_sigma"
-              stroke="#F4B942"
+              stroke="#FFB000"
               strokeWidth={1.5}
               dot={false}
               name="Fire Est. σ"
@@ -70,7 +70,7 @@ export default function RunChart({ runId, detail }) {
             <Line
               type="monotone"
               dataKey="tank"
-              stroke="#2FB8A6"
+              stroke="#4AC7EC"
               strokeWidth={1.5}
               dot={false}
               name="Tank"
@@ -79,8 +79,8 @@ export default function RunChart({ runId, detail }) {
         </ResponsiveContainer>
       </div>
       <div className="border-t border-line px-4 py-2 flex gap-4 font-mono text-[10px] text-muted">
-        <Legend color="#F4B942" label="Fire Est. σ" />
-        <Legend color="#2FB8A6" label="Tank" />
+        <Legend color="#FFB000" label="Fire Est. σ" />
+        <Legend color="#4AC7EC" label="Tank" />
       </div>
     </div>
   );

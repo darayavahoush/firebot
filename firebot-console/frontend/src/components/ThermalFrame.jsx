@@ -2,9 +2,10 @@ import React, { useEffect, useRef } from "react";
 import { THERM_ROWS, THERM_COLS } from "../lib/simEngine.js";
 
 function colorFor(t) {
-  // 22C..70C mapped dark-blue -> cyan -> amber -> red, matching the console's telemetry/warn/alarm hues
+  // 22C..70C mapped near-black -> signal cyan -> caution amber -> alarm red,
+  // matching the console's telemetry/warn/alarm hues
   const stops = [
-    [0.0, [15, 23, 32]], [0.35, [63, 167, 214]], [0.65, [245, 166, 35]], [1.0, [232, 67, 47]],
+    [0.0, [8, 10, 14]], [0.35, [74, 199, 236]], [0.65, [255, 176, 0]], [1.0, [252, 61, 33]],
   ];
   const v = Math.max(0, Math.min(1, (t - 22) / (70 - 22)));
   for (let i = 1; i < stops.length; i++) {
@@ -36,7 +37,7 @@ export default function ThermalFrame({ frame, width = 220, height = 165 }) {
     <canvas
       ref={ref}
       style={{ width, height, imageRendering: "pixelated" }}
-      className="border border-line rounded-lg"
+      className="border border-line rounded-[3px]"
     />
   );
 }

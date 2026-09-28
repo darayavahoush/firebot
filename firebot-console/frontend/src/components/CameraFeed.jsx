@@ -102,7 +102,7 @@ export default function CameraFeed({ frame }) {
           <video
             ref={videoRef}
             className="absolute inset-0 w-full h-full object-cover"
-            style={{ filter: "saturate(0.55) brightness(0.6) contrast(1.15) hue-rotate(65deg)" }}
+            style={{ filter: "saturate(0.45) brightness(0.6) contrast(1.15) hue-rotate(150deg)" }}
             src={FOOTAGE_URL}
             autoPlay
             loop
@@ -117,7 +117,7 @@ export default function CameraFeed({ frame }) {
         <CornerBrackets />
 
         {/* HUD readout strip, top */}
-        <div className="absolute top-0 left-0 right-0 flex items-center justify-between px-3 py-2 font-mono text-[10px] text-[#7FD8A0]/85">
+        <div className="absolute top-0 left-0 right-0 flex items-center justify-between px-3 py-2 font-mono text-[10px] text-[#8FE0F5]/85">
           <div className="flex items-center gap-1.5">
             <span
               className={`h-[6px] w-[6px] rounded-full ${
@@ -130,7 +130,7 @@ export default function CameraFeed({ frame }) {
         </div>
 
         {/* HUD readout strip, bottom */}
-        <div className="absolute bottom-0 left-0 right-0 flex items-center justify-between px-3 py-2 font-mono text-[10px] text-[#7FD8A0]/85">
+        <div className="absolute bottom-0 left-0 right-0 flex items-center justify-between px-3 py-2 font-mono text-[10px] text-[#8FE0F5]/85">
           <span>CAM-01 / FWD</span>
           <span>
             {frame
@@ -140,13 +140,13 @@ export default function CameraFeed({ frame }) {
         </div>
 
         {frame && peak != null && (
-          <div className="absolute bottom-8 left-3 font-mono text-[10px] text-[#E8A33D]">
+          <div className="absolute bottom-8 left-3 font-mono text-[10px] text-[#FFB000]">
             THERMAL PEAK {peak.toFixed(1)}°C
           </div>
         )}
 
         {driving && (
-          <div className="absolute bottom-8 right-3 font-mono text-[10px] text-[#7FD8A0]">
+          <div className="absolute bottom-8 right-3 font-mono text-[10px] text-[#8FE0F5]">
             {`v ${frame.cmd_v.toFixed(2)}m/s  w ${frame.cmd_w.toFixed(2)}rad/s`}
           </div>
         )}
@@ -187,21 +187,21 @@ function drawThermalOverlay(ctx, w, h, thermal) {
   }
   const hx = (hc + 0.5) * cellW, hy = (hr + 0.5) * cellH;
   const boxR = Math.max(cellW, cellH) * 1.6;
-  ctx.strokeStyle = "rgba(244,185,66,0.85)";
+  ctx.strokeStyle = "rgba(255,176,0,0.85)";
   ctx.lineWidth = 1.2;
   ctx.strokeRect(hx - boxR, hy - boxR, boxR * 2, boxR * 2);
   ctx.font = "9px 'JetBrains Mono', monospace";
-  ctx.fillStyle = "rgba(244,185,66,0.9)";
+  ctx.fillStyle = "rgba(255,176,0,0.9)";
   ctx.textAlign = "left"; ctx.textBaseline = "bottom";
   ctx.fillText(`HEAT ${hv.toFixed(0)}\u00B0C`, hx - boxR, hy - boxR - 3);
 }
 
 function thermalColor(norm) {
   const stops = [
-    [0.0, [20, 40, 120]],
-    [0.35, [40, 140, 160]],
-    [0.65, [232, 163, 61]],
-    [1.0, [225, 74, 58]],
+    [0.0, [8, 10, 14]],
+    [0.35, [74, 199, 236]],
+    [0.65, [255, 176, 0]],
+    [1.0, [252, 61, 33]],
   ];
   let i = 0;
   while (i < stops.length - 2 && norm > stops[i + 1][0]) i++;
@@ -222,7 +222,7 @@ function thermalColor(norm) {
 function drawCorridor(ctx, w, h, cx, cy, f, t, phase = 0, pan = 0) {
   const bg = ctx.createLinearGradient(0, 0, 0, h);
   bg.addColorStop(0, "#0B120F");
-  bg.addColorStop(1, "#050807");
+  bg.addColorStop(1, "#000000");
   ctx.fillStyle = bg;
   ctx.fillRect(0, 0, w, h);
 
@@ -241,7 +241,7 @@ function drawCorridor(ctx, w, h, cx, cy, f, t, phase = 0, pan = 0) {
 
   // floor seams converging to the vanishing point; seams "flow" toward the viewer
   // (rungs sliding down the corridor) at a rate proportional to real cmd_v
-  ctx.strokeStyle = "rgba(127,216,160,0.10)"; ctx.lineWidth = 1;
+  ctx.strokeStyle = "rgba(143,224,245,0.10)"; ctx.lineWidth = 1;
   for (let i = -3; i <= 3; i++) {
     ctx.beginPath();
     ctx.moveTo(cx + i * 46, floorY);
@@ -250,7 +250,7 @@ function drawCorridor(ctx, w, h, cx, cy, f, t, phase = 0, pan = 0) {
   }
   const rungSpacing = 34;
   const rungOffset = ((phase * rungSpacing) % rungSpacing + rungSpacing) % rungSpacing;
-  ctx.strokeStyle = "rgba(127,216,160,0.16)";
+  ctx.strokeStyle = "rgba(143,224,245,0.16)";
   for (let rung = rungOffset; rung < floorY - vpY; rung += rungSpacing) {
     const frac = rung / (floorY - vpY);
     const y = vpY + 6 + rung;
@@ -279,7 +279,7 @@ function drawCorridor(ctx, w, h, cx, cy, f, t, phase = 0, pan = 0) {
   ctx.closePath(); ctx.fill();
 
   // structural beams
-  ctx.strokeStyle = "rgba(127,216,160,0.14)"; ctx.lineWidth = 1;
+  ctx.strokeStyle = "rgba(143,224,245,0.14)"; ctx.lineWidth = 1;
   for (const frac of [0.25, 0.55, 0.8]) {
     const bx1 = leftX + (vpX - 40 - leftX) * frac, by1t = ceilY + (vpY - 30 - ceilY) * frac, by1b = floorY + (vpY + 6 - floorY) * frac;
     const bx2 = rightX + (vpX + 40 - rightX) * frac;
@@ -290,7 +290,7 @@ function drawCorridor(ctx, w, h, cx, cy, f, t, phase = 0, pan = 0) {
   // door at the far end
   ctx.fillStyle = "#0A100C";
   ctx.fillRect(vpX - 22, vpY - 24, 44, 30);
-  ctx.strokeStyle = "rgba(127,216,160,0.25)"; ctx.lineWidth = 1;
+  ctx.strokeStyle = "rgba(143,224,245,0.25)"; ctx.lineWidth = 1;
   ctx.strokeRect(vpX - 22, vpY - 24, 44, 30);
 }
 
@@ -301,7 +301,7 @@ function drawSpeedLines(ctx, w, h, cx, cy, v) {
   const n = 10;
   const alpha = Math.min(0.22, v * 0.11);
   ctx.save();
-  ctx.strokeStyle = `rgba(127,216,160,${alpha})`;
+  ctx.strokeStyle = `rgba(143,224,245,${alpha})`;
   ctx.lineWidth = 1;
   for (let i = 0; i < n; i++) {
     const a = (i / n) * Math.PI * 2 + v * 0.4;
@@ -335,7 +335,7 @@ function drawHeatSource(ctx, w, h, cx, cy, f, t) {
 // Cheap per-frame grain so the feed reads as a live sensor, not a still image.
 function drawGrain(ctx, w, h, t) {
   const n = 40;
-  ctx.fillStyle = "rgba(127,216,160,0.05)";
+  ctx.fillStyle = "rgba(143,224,245,0.05)";
   for (let i = 0; i < n; i++) {
     const gx = (Math.sin(i * 12.9898 + t * 7) * 43758.5453) % 1;
     const gy = (Math.sin(i * 78.233 + t * 5) * 12543.132) % 1;
@@ -362,16 +362,16 @@ function CrosshairOverlay() {
       viewBox="0 0 100 100"
       preserveAspectRatio="none"
     >
-      <line x1="50" y1="0" x2="50" y2="100" stroke="#4ADE80" strokeWidth="0.15" />
-      <line x1="0" y1="50" x2="100" y2="50" stroke="#4ADE80" strokeWidth="0.15" />
-      <circle cx="50" cy="50" r="8" fill="none" stroke="#4ADE80" strokeWidth="0.15" />
+      <line x1="50" y1="0" x2="50" y2="100" stroke="#4AC7EC" strokeWidth="0.15" />
+      <line x1="0" y1="50" x2="100" y2="50" stroke="#4AC7EC" strokeWidth="0.15" />
+      <circle cx="50" cy="50" r="8" fill="none" stroke="#4AC7EC" strokeWidth="0.15" />
     </svg>
   );
 }
 
 function CornerBrackets() {
   const size = 16;
-  const stroke = "#4ADE80";
+  const stroke = "#4AC7EC";
   const positions = [
     { top: 10, left: 10, rotate: 0 },
     { top: 10, right: 10, rotate: 90 },

@@ -13,8 +13,8 @@ export default function Sidebar({ page, setPage, linkOk }) {
         <div className="ember-glow w-16 h-16 -left-4 -top-2" />
         <BrandMark />
         <div className="leading-tight relative">
-          <div className="font-display font-bold text-[15px] text-ink tracking-tight">firebot</div>
-          <div className="font-mono text-[9px] text-faint tracking-wide">CONSOLE v0.1</div>
+          <div className="font-display font-extrabold text-[15px] text-ink tracking-tight">FIREBOT</div>
+          <div className="font-mono text-[9px] text-faint tracking-wide">MISSION CONSOLE · R0.1</div>
         </div>
       </div>
 
@@ -26,10 +26,10 @@ export default function Sidebar({ page, setPage, linkOk }) {
             <button
               key={item.id}
               onClick={() => setPage(item.id)}
-              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-[13px] transition-colors ${
+              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-[3px] text-[13px] transition-colors ${
                 active
-                  ? "text-ink bg-panel2"
-                  : "text-muted hover:text-ink hover:bg-panel2/60"
+                  ? "text-ink bg-panel2 border-l-2 border-telemetry"
+                  : "text-muted hover:text-ink hover:bg-panel2/60 border-l-2 border-transparent"
               }`}
             >
               <Icon active={active} />
@@ -53,13 +53,17 @@ export default function Sidebar({ page, setPage, linkOk }) {
   );
 }
 
+// Mission-patch roundel, not an app icon: a double hairline ring (the way a
+// flight badge or instrument bezel reads) around the flame mark, rather than
+// a rounded-square container.
 function BrandMark() {
   return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" className="relative">
-      <rect x="2" y="2" width="20" height="20" rx="6" stroke="#2FB8A6" strokeWidth="1.4" />
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" className="relative">
+      <circle cx="12" cy="12" r="10.5" stroke="#4AC7EC" strokeWidth="1" opacity="0.5" />
+      <circle cx="12" cy="12" r="8.5" stroke="#4AC7EC" strokeWidth="1.1" />
       <path
         d="M12 6.5c1.8 2.1 2.6 3.7 2.6 5.2a2.6 2.6 0 1 1-5.2 0c0-.9.4-1.7 1-2.4-.15.75.05 1.35.6 1.55-.2-1.6.4-3 1-4.35Z"
-        fill="#F4B942"
+        fill="#FFB000"
       />
     </svg>
   );
@@ -68,14 +72,14 @@ function BrandMark() {
 function LiveIcon({ active }) {
   return (
     <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
-      <circle cx="8" cy="8" r="3" fill={active ? "#2FB8A6" : "none"} stroke={active ? "#2FB8A6" : "rgba(247,243,232,0.6)"} strokeWidth="1.3" />
-      <circle cx="8" cy="8" r="6.5" stroke={active ? "#2FB8A6" : "rgba(247,243,232,0.6)"} strokeWidth="1" opacity="0.4" />
+      <circle cx="8" cy="8" r="3" fill={active ? "#4AC7EC" : "none"} stroke={active ? "#4AC7EC" : "rgba(232,236,239,0.6)"} strokeWidth="1.3" />
+      <circle cx="8" cy="8" r="6.5" stroke={active ? "#4AC7EC" : "rgba(232,236,239,0.6)"} strokeWidth="1" opacity="0.4" />
     </svg>
   );
 }
 
 function SimIcon({ active }) {
-  const c = active ? "#2FB8A6" : "rgba(247,243,232,0.6)";
+  const c = active ? "#4AC7EC" : "rgba(232,236,239,0.6)";
   return (
     <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
       <rect x="2" y="3" width="12" height="8" rx="1" stroke={c} strokeWidth="1.3" />
@@ -86,7 +90,7 @@ function SimIcon({ active }) {
 }
 
 function HistoryIcon({ active }) {
-  const c = active ? "#2FB8A6" : "rgba(247,243,232,0.6)";
+  const c = active ? "#4AC7EC" : "rgba(232,236,239,0.6)";
   return (
     <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
       <path d="M2 8a6 6 0 1 1 1.8 4.3" stroke={c} strokeWidth="1.3" strokeLinecap="round" />

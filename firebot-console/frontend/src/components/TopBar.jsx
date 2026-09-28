@@ -24,9 +24,10 @@ export default function TopBar({ page, mode, onEstop }) {
 
           <button
             onClick={onEstop}
-            className="bg-alarm text-[#1A0805] font-mono text-[12px] font-semibold tracking-wide px-5 py-2 rounded-full shadow-[0_0_16px_rgba(240,96,74,0.45)] hover:brightness-110 active:scale-95 transition"
+            aria-label="Emergency stop"
+            className="h-11 w-11 shrink-0 rounded-full bg-alarm text-[#1A0605] font-mono text-[9px] font-bold tracking-tight leading-none flex items-center justify-center border-2 border-[#1A0605]/40 shadow-[0_0_16px_rgba(252,61,33,0.5)] hover:brightness-110 active:scale-95 transition"
           >
-            E-STOP
+            STOP
           </button>
         </div>
       </div>
