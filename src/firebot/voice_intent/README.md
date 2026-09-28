@@ -143,6 +143,22 @@ so it can go through the same `validate()` call as the rules/SLM parsers.
 
 ## 6. Wire it into the console backend
 
+**Easiest path:** install the extras and drop your checkpoint at the repo root, then just run
+the backend as usual -- `firebot-console/backend/run.sh` detects it and turns the local model on:
+
+```bash
+pip install -e ".[voice]"                 # torch + transformers + librosa
+ls checkpoints/intent_head.pt             # where train.py writes it by default
+cd firebot-console/backend && ./run.sh    # prints "voice: local intent model ON (...)"
+```
+
+`run.sh` passes absolute paths, warns if the extras are missing, and never blocks startup.
+`GET /api/voice/status` (also shown under the mic in the Simulator tab) reports which path is
+live -- `local`, `local-degraded` (with the last error, e.g. a missing module), `groq`, or
+`unavailable` -- so a fallback to Groq is never silent.
+
+The manual environment-variable route, if you'd rather not use `run.sh`:
+
 Once you've got a checkpoint you're happy with, point `firebot-console/backend/server.py`
 at it with one environment variable — this classifier tries first (instant, free, offline);
 anything below `min_confidence`, `UNKNOWN`, or an undecodable/unsupported clip falls straight

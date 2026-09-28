@@ -41,6 +41,33 @@ then
   exit 1
 fi
 
+# ---- trained voice-intent model (optional) --------------------------------------------
+# The checkpoint is gitignored, so it only exists on the machine that trained it. If one is
+# there (repo-root checkpoints/intent_head.pt by default, or $FIREBOT_VOICE_INTENT_CHECKPOINT),
+# hand server.py an absolute path -- it runs from this directory, so a relative one wouldn't
+# resolve. Never fatal: without it /api/transcribe just uses Groq.
+REPO_ROOT="$(cd .. && cd .. && pwd)"
+VI_CKPT="${FIREBOT_VOICE_INTENT_CHECKPOINT:-$REPO_ROOT/checkpoints/intent_head.pt}"
+case "$VI_CKPT" in /*) ;; *) VI_CKPT="$REPO_ROOT/$VI_CKPT" ;; esac
+if [ -f "$VI_CKPT" ]; then
+  if python3 -c "import torch, transformers, librosa" 2>/dev/null; then
+    export FIREBOT_VOICE_INTENT_CHECKPOINT="$VI_CKPT"
+    export FIREBOT_VOICE_INTENT_ROUTER_STATE="${FIREBOT_VOICE_INTENT_ROUTER_STATE:-$REPO_ROOT/voice_intent_router.json}"
+    echo "-> voice: local intent model ON ($VI_CKPT)"
+  else
+    unset FIREBOT_VOICE_INTENT_CHECKPOINT
+    echo "-> voice: checkpoint found but torch/transformers/librosa missing -- run:" >&2
+    echo "     pip install -e \".[voice]\"   (falling back to Groq for now)" >&2
+  fi
+else
+  unset FIREBOT_VOICE_INTENT_CHECKPOINT
+  echo "-> voice: no checkpoint at $VI_CKPT -- using Groq only"
+  echo "     (train one: see src/firebot/voice_intent/README.md, or set FIREBOT_VOICE_INTENT_CHECKPOINT)"
+fi
+if [ -z "${GROQ_API_KEY:-}" ] && [ -z "${FIREBOT_VOICE_INTENT_CHECKPOINT:-}" ]; then
+  echo "   warning: no local model and no GROQ_API_KEY -- /api/transcribe will return 503" >&2
+fi
+
 PIDS=()
 cleanup() {
   echo

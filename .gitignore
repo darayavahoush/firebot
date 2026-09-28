@@ -19,3 +19,6 @@ runs/
 vosk-model-small-en-us-0.15/
 vosk-model-small-en-us-0.15.zip
 checkpoints/
+
+# trained voice-intent router state (written by the console backend at runtime)
+voice_intent_router.json

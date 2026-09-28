@@ -26,6 +26,7 @@ Run with: uvicorn server:app --reload --port 8000
 
 import asyncio
 import json
+import logging
 import os
 from datetime import datetime, timezone
 from typing import Any
@@ -58,7 +59,7 @@ GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 GROQ_TRANSCRIBE_URL = "https://api.groq.com/openai/v1/audio/transcriptions"
 
 # Optional local first-pass: a trained firebot.voice_intent checkpoint, tried before Groq
-# (see firebot.voice_intent.README -- "not wired in yet"). Entirely opt-in: torch/librosa
+# (see firebot.voice_intent.README, section 6; run.sh auto-enables it). Entirely opt-in: torch/librosa
 # and the checkpoint itself are only loaded lazily, on first use, and only if this is set,
 # so a console deployed without the voice_intent extras installed is completely unaffected.
 VOICE_INTENT_CHECKPOINT = os.environ.get("FIREBOT_VOICE_INTENT_CHECKPOINT", "")
@@ -83,6 +84,9 @@ _pool: asyncpg.Pool | None = None
 # console deployment that doesn't use this feature at all.
 _voice_classifier: Any = None
 _voice_router: ShadowRouter | None = None
+# Why the local classifier last failed (missing torch/librosa/transformers, bad checkpoint,
+# undecodable clip...). Surfaced by /api/voice/status so a silent Groq fallback is diagnosable.
+_voice_last_error: str | None = None
 
 
 def _get_voice_classifier() -> Any:
@@ -265,6 +269,7 @@ def _local_intent_phrase(audio_bytes: bytes) -> tuple[str, float] | None:
     This opt-in feature is never allowed to turn into a 500 for a console that otherwise
     only relies on Groq.
     """
+    global _voice_last_error
     if not VOICE_INTENT_CHECKPOINT:
         return None
     try:
@@ -278,11 +283,40 @@ def _local_intent_phrase(audio_bytes: bytes) -> tuple[str, float] | None:
                                                     min_confidence=VOICE_INTENT_MIN_CONFIDENCE)
         if payload["name"] == "UNKNOWN":
             return None
+        _voice_last_error = None  # a clean prediction means the local path is healthy again
         return canonical_phrase(payload["raw_label"]), payload["confidence"]
-    except Exception:
+    except Exception as e:
         # Missing librosa/torch, a corrupt checkpoint, an undecodable clip, etc. -- the
-        # local first-pass is a pure optimization, never the only path.
+        # local first-pass is a pure optimization, never the only path. Record why so it
+        # isn't a silent fallback: logged once per distinct error, shown in /api/voice/status.
+        msg = f"{type(e).__name__}: {e}"
+        if msg != _voice_last_error:
+            logging.getLogger("firebot.console").warning("local voice-intent unavailable: %s", msg)
+        _voice_last_error = msg
         return None
+
+
+@app.get("/api/voice/status")
+async def voice_status() -> dict[str, Any]:
+    """Which speech path /api/transcribe will use, so the UI (and you) can tell whether the
+    trained local model is actually active rather than silently falling back to Groq."""
+    configured = bool(VOICE_INTENT_CHECKPOINT)
+    exists = configured and os.path.isfile(VOICE_INTENT_CHECKPOINT)
+    if configured and exists:
+        mode = "local" if _voice_last_error is None else "local-degraded"
+    elif GROQ_API_KEY:
+        mode = "groq"
+    else:
+        mode = "unavailable"
+    return {
+        "mode": mode,
+        "local_configured": configured,
+        "local_checkpoint_found": exists,
+        "local_loaded": _voice_classifier is not None,
+        "local_min_confidence": VOICE_INTENT_MIN_CONFIDENCE,
+        "groq_available": bool(GROQ_API_KEY),
+        "last_error": _voice_last_error,
+    }
 
 
 @app.post("/api/transcribe")
