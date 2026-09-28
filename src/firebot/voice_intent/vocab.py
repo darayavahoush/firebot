@@ -178,6 +178,14 @@ def build_phrase_table() -> dict[str, list[str]]:
             for verb in _GOTO_VERBS_NOTO:
                 phrases.append(f"{verb} {alias}")
         table[f"GOTO_{place.upper()}"] = sorted(set(phrases))
+    # An utterance must have exactly one label. "go home", "head home", "move home"
+    # and "drive home" were generated for both RETURN_HOME and GOTO_HOME -- identical
+    # audio under two labels, which caps accuracy on both. RuleParser sends anything
+    # that says home/base/dock to RETURN_HOME, so the non-GOTO class keeps the phrase.
+    non_goto = {p for label, ps in table.items() if not label.startswith("GOTO_") for p in ps}
+    for label in table:
+        if label.startswith("GOTO_"):
+            table[label] = [p for p in table[label] if p not in non_goto]
     return table
 
 

@@ -22,6 +22,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
+from .features import valid_frame_count
 from .model import IntentHead
 from .vocab import goto_target
 
@@ -32,6 +33,10 @@ class IntentClassifier:
 
         ckpt = torch.load(checkpoint_path, map_location=device, weights_only=False)
         self.classes: list[str] = ckpt["classes"]
+        # Checkpoints trained before valid-frame pooling existed averaged over all
+        # 1500 padded frames; pool the same way they were trained or the head sees
+        # inputs from a different distribution.
+        self.pooling: str = ckpt.get("pooling", "all_frames")
         self.device = device
         self.extractor = WhisperFeatureExtractor.from_pretrained(ckpt["model_name"])
         self.encoder = WhisperModel.from_pretrained(ckpt["model_name"]).encoder.to(device).eval()
@@ -51,7 +56,11 @@ class IntentClassifier:
         request path. `audio` must already be mono float32 at `sample_rate`."""
         inputs = self.extractor([np.asarray(audio, dtype="float32")],
                                 sampling_rate=sample_rate, return_tensors="pt")
-        pooled = self.encoder(inputs.input_features.to(self.device)).last_hidden_state.mean(dim=1)
+        hidden = self.encoder(inputs.input_features.to(self.device)).last_hidden_state
+        if self.pooling == "valid_frames":
+            pooled = hidden[:, :valid_frame_count(len(audio), sample_rate)].mean(dim=1)
+        else:
+            pooled = hidden.mean(dim=1)
         logits = self.head(pooled)[0]
         probs = torch.softmax(logits, dim=0).cpu().numpy()
         idx = int(probs.argmax())

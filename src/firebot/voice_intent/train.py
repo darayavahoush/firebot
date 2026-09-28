@@ -21,6 +21,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset, WeightedRandomSampler
 
 from .model import IntentHead
+from .split import has_speaker_info, split_by_speaker
 from .vocab import CLASSES, NUM_CLASSES
 
 
@@ -56,7 +57,9 @@ def confusion_matrix(preds: np.ndarray, targets: np.ndarray, num_classes: int) -
     return cm
 
 
-def print_report(cm: np.ndarray) -> None:
+def print_report(cm: np.ndarray, title: str = "") -> None:
+    if title:
+        print(f"\n=== {title} ===")
     present = [i for i in range(NUM_CLASSES) if cm[i].sum() > 0]
     print(f"\n{'class':16s} {'n':>4s} {'acc':>6s}")
     for i in present:
@@ -84,6 +87,10 @@ def main() -> None:
     ap.add_argument("--hidden", type=int, default=128)
     ap.add_argument("--val-frac", type=float, default=0.15)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--holdout-real-speaker", type=str, default=None,
+                    help="hold out ALL real recordings from this person as an unseen-speaker "
+                         "test (e.g. train on ananya, test on avinandan). Default: with 2+ real "
+                         "speakers the last alphabetically is held out automatically.")
     args = ap.parse_args()
 
     torch.manual_seed(args.seed)
@@ -93,7 +100,21 @@ def main() -> None:
     model_name = str(data["model_name"])
     print(f"Loaded {len(feats)} embeddings ({d_model}-dim, from {model_name})")
 
-    train_idx, val_idx = stratified_split(labels, args.val_frac, args.seed)
+    pooling = str(data["pooling"]) if "pooling" in data.files else "all_frames"
+    speakers = data["speakers"] if "speakers" in data.files else np.array([""] * len(labels))
+    sources = data["sources"] if "sources" in data.files else np.array([""] * len(labels))
+    if has_speaker_info(speakers):
+        train_idx, val_idx, val_slice = split_by_speaker(
+            sources, speakers, labels, args.val_frac, args.seed, args.holdout_real_speaker)
+        print("split: by speaker (validation voices/people are never seen in training)")
+    else:
+        print("[warn] this features file has no speaker info (generated before the manifest "
+              "had a `speaker` column) -- falling back to a random per-clip split. Validation "
+              "accuracy will be inflated because near-identical clips land on both sides. "
+              "Regenerate the data with the current synth_data.py for an honest number.")
+        train_idx, val_idx = stratified_split(labels, args.val_frac, args.seed)
+        val_slice = np.array(["random_split"] * len(val_idx))
+    print(f"pooling: {pooling}")
     x_train = torch.from_numpy(feats[train_idx])
     y_train = torch.from_numpy(labels[train_idx])
     x_val = torch.from_numpy(feats[val_idx])
@@ -145,7 +166,12 @@ def main() -> None:
     with torch.no_grad():
         val_preds = head(x_val).argmax(dim=1).numpy()
     cm = confusion_matrix(val_preds, y_val.numpy(), NUM_CLASSES)
-    print_report(cm)
+    print_report(cm, "all validation clips")
+    if len(set(val_slice.tolist())) > 1:
+        for name in sorted(set(val_slice.tolist())):
+            m = val_slice == name
+            print_report(confusion_matrix(val_preds[m], y_val.numpy()[m], NUM_CLASSES),
+                         f"slice: {name}")
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     torch.save({
@@ -155,10 +181,12 @@ def main() -> None:
         "model_name": model_name,
         "classes": CLASSES,
         "best_val_acc": best_val_acc,
+        "pooling": pooling,
     }, args.out)
     meta_path = args.out.with_suffix(".json")
     meta_path.write_text(json.dumps({
         "model_name": model_name, "classes": CLASSES, "best_val_acc": best_val_acc,
+        "pooling": pooling,
         "n_train": len(train_idx), "n_val": len(val_idx),
     }, indent=2))
     print(f"\nSaved best checkpoint (val_acc={best_val_acc:.1%}) to {args.out}")

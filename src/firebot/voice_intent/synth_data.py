@@ -32,6 +32,8 @@ from __future__ import annotations
 
 import argparse
 import csv
+import itertools
+import re
 import sys
 from pathlib import Path
 
@@ -41,11 +43,72 @@ from . import vocab
 
 SAMPLE_RATE = 16_000
 
+# macOS "novelty" voices: they sing, hum, ring, bleat or are heavily distorted
+# rather than speak. They don't resemble a person talking near the robot, so
+# training on them mostly adds noise. Opt out of them with --no-novelty-voices.
+NOVELTY_VOICE_NAMES = frozenset({
+    "albert", "badnews", "bahh", "bells", "boing", "bubbles", "cellos",
+    "deranged", "goodnews", "hysterical", "organ", "trinoids", "whisper", "zarvox",
+})
 
-def _get_tts_voices(voice_filter: str | None):
+# Unique per synthesis attempt, independent of the output clip's own index --
+# see `_synthesize`'s docstring for why this matters.
+_tmp_counter = itertools.count()
+
+_LOCALE_SEGMENT = re.compile(r"[a-z]{2}-[a-z]{2}")
+
+
+def _voice_lang_matches(voice, lang_filter: str) -> bool:
+    """True if `voice` counts as matching `lang_filter` (e.g. "en").
+
+    Matches against the voice's actual locale, not a substring of the raw id.
+    A plain `lang_filter in voice.id.lower()` check (the previous behaviour)
+    lets unrelated voices through by coincidence of spelling -- the voice
+    *family* name "eloquence" contains "en", and so does the voice *name*
+    "Ellen", so a filter of "en" was matching German/French/Japanese/Chinese
+    Eloquence voices and a Dutch "Ellen" voice, none of which are English.
+
+    Preference order: pyttsx3's own `voice.languages` when the backend fills
+    it in, then a locale-shaped segment of the id (macOS ids look like
+    `com.apple.<family>.<locale>.<name>`, e.g. `com.apple.eloquence.de-DE.Sandy`).
+    Only if neither is available do we fall back to the old substring check,
+    since some backends (e.g. espeak ids like "english-us") don't expose a
+    clean locale token at all.
+    """
+    lang_filter = lang_filter.lower()
+    for lang in getattr(voice, "languages", None) or []:
+        if isinstance(lang, bytes):
+            lang = lang.decode("utf-8", "ignore")
+        if lang.lower().replace("_", "-").startswith(lang_filter):
+            return True
+
+    segments = re.split(r"[._]", voice.id.lower())
+    locale_segments = [s for s in segments if _LOCALE_SEGMENT.fullmatch(s)]
+    if locale_segments:
+        return any(s.startswith(lang_filter) for s in locale_segments)
+
+    return lang_filter in voice.id.lower()
+
+
+def _voice_name(voice_id: str) -> str:
+    """Last dotted segment of a voice id, lowercased:
+    'com.apple.speech.synthesis.voice.Albert' -> 'albert'."""
+    return voice_id.rsplit(".", 1)[-1].lower()
+
+
+def _exclude_voices(voices: list, names: set[str] | frozenset[str]) -> list:
+    """Drop voices whose name (see `_voice_name`) is in `names` (lowercase)."""
+    return [v for v in voices if _voice_name(v.id) not in names]
+
+
+def _new_engine():
     import pyttsx3
 
-    engine = pyttsx3.init()
+    return pyttsx3.init()
+
+
+def _get_tts_voices(voice_filter: str | None):
+    engine = _new_engine()
     voices = engine.getProperty("voices")
     if not voices:
         raise RuntimeError(
@@ -53,26 +116,114 @@ def _get_tts_voices(voice_filter: str | None):
             "(e.g. `apt install espeak-ng`) and retry."
         )
     if voice_filter:
-        voices = [v for v in voices if voice_filter.lower() in v.id.lower()]
+        voices = [v for v in voices if _voice_lang_matches(v, voice_filter)]
         if not voices:
             raise RuntimeError(f"No voices matched --voice-filter {voice_filter!r}. "
                                 f"Run without --voice-filter to see all installed voice ids.")
-    return engine, voices
+    return voices
 
 
-def _synthesize(engine, voice_id: str, rate: int, text: str, out_wav: Path) -> None:
-    """Render one utterance to `out_wav` at SAMPLE_RATE mono via pyttsx3."""
-    engine.setProperty("voice", voice_id)
-    engine.setProperty("rate", rate)
-    # pyttsx3 writes whatever the OS engine produces (rate/format varies by
-    # platform); resample/convert with soundfile+librosa after saving.
-    tmp = out_wav.with_suffix(".raw.wav")
-    try:
-        engine.save_to_file(text, str(tmp))
-        engine.runAndWait()
-        _resample_to_target(tmp, out_wav)
-    finally:
-        tmp.unlink(missing_ok=True)
+def _probe_voices(voices: list, out_dir: Path, test_phrases: list[str] | None = None) -> list:
+    """Drop voices that fail on any of a few representative synths, before the
+    full phrase sweep.
+
+    Some installed voices fail to render via pyttsx3's save-to-file path on
+    some systems -- in testing, this was every locale of macOS's Eloquence
+    family, not just the ones a bad filter let through. Without this check,
+    every one of those voices fails identically on every single phrase in
+    every class, which is slow and produces a wall of duplicate warnings.
+
+    A single generic test phrase isn't enough, though: on this project's own
+    test machine, macOS's old "Albert" (legacy Speech Synthesis Manager)
+    voice rendered a short throwaway phrase fine but then failed on *every*
+    real vocabulary phrase in the main loop -- so the probe now checks a
+    handful of phrases sampled from the real phrase table (short and long)
+    instead of one toy sentence, to actually catch that.
+    """
+    if test_phrases is None:
+        table = vocab.build_phrase_table()
+        # A handful of real phrases, picked for a spread of lengths rather
+        # than every class (that's what the main loop is for) -- enough to
+        # catch a voice that only breaks on longer/more complex text.
+        pool = [p for phrases in table.values() for p in phrases]
+        pool.sort(key=len)
+        test_phrases = [pool[0], pool[len(pool) // 2], pool[-1]] if pool else ["testing one two three"]
+
+    scratch = out_dir / ".voice_probe.wav"
+    good: list = []
+    bad: list[tuple[str, str]] = []
+    for voice in voices:
+        failure = None
+        for phrase in test_phrases:
+            try:
+                _synthesize(voice.id, 175, phrase, scratch)
+            except Exception as exc:  # noqa: BLE001
+                failure = f"{exc} (phrase={phrase!r})"
+                break
+        if failure is not None:
+            bad.append((voice.id, failure))
+        else:
+            good.append(voice)
+    scratch.unlink(missing_ok=True)
+    if bad:
+        print(f"  skipping {len(bad)} voice(s) that failed a quick audio check:",
+              file=sys.stderr)
+        for voice_id, reason in bad:
+            print(f"    {voice_id}: {reason}", file=sys.stderr)
+    return good
+
+
+def _synthesize(voice_id: str, rate: int, text: str, out_wav: Path,
+                 engine_factory=_new_engine, max_attempts: int = 3,
+                 retry_delay: float = 0.2) -> None:
+    """Render one utterance to `out_wav` at SAMPLE_RATE mono via pyttsx3.
+
+    Retries a few times, with a short pause, specifically on a zero-sample
+    result: pyttsx3's macOS driver has documented cases of `runAndWait()`
+    returning before the OS has actually finished flushing the saved file,
+    which reads back as empty audio even though nothing was really wrong with
+    the synthesis itself. A brand-new engine per call is separate insurance
+    against a *different*, now-ruled-out theory (one engine instance
+    degrading after heavy reuse) -- testing showed a fresh-engine-per-call
+    version fail identically to the shared-engine version, so that wasn't the
+    (or wasn't the only) cause. It's kept anyway for resource hygiene: this
+    script has already once run a process out of file descriptors, and
+    `gc.collect()` below releases each outgoing engine's native handles
+    immediately rather than letting them pile up.
+    """
+    import gc
+    import time
+
+    for attempt in range(1, max_attempts + 1):
+        engine = engine_factory()
+        try:
+            engine.setProperty("voice", voice_id)
+            engine.setProperty("rate", rate)
+            # The temp filename is a global counter, not derived from
+            # `out_wav`: `out_wav` reuses the same clip index for every
+            # failed attempt (the caller only advances it on success), so
+            # deriving the temp name from it made every failed attempt
+            # collide on one shared temp file, which made retries and
+            # concurrent-looking failures hard to tell apart in the logs.
+            tmp = out_wav.parent / f".tmp_{next(_tmp_counter):08d}.raw.wav"
+            try:
+                engine.save_to_file(text, str(tmp))
+                engine.runAndWait()
+                _resample_to_target(tmp, out_wav)
+                return
+            except EmptyAudioError:
+                if attempt == max_attempts:
+                    raise
+                time.sleep(retry_delay)
+            finally:
+                tmp.unlink(missing_ok=True)
+        finally:
+            try:
+                engine.stop()
+            except Exception as exc:  # noqa: BLE001
+                print(f"  [warn] failed to stop TTS engine cleanly: {exc}", file=sys.stderr)
+            del engine
+            gc.collect()
 
 
 class EmptyAudioError(RuntimeError):
@@ -117,14 +268,27 @@ def _augment(audio: np.ndarray, rng: np.random.Generator) -> np.ndarray:
 
 def generate_synthetic(out_dir: Path, variants_per_voice: int, augment: int,
                         limit_per_class: int | None, voice_filter: str | None = "en",
-                        seed: int = 0) -> list[tuple[Path, str, str]]:
+                        seed: int = 0,
+                        exclude_voices: set[str] | frozenset[str] = frozenset()
+                        ) -> list[tuple[Path, str, str, str, str]]:
     import soundfile as sf
 
-    engine, voices = _get_tts_voices(voice_filter)
+    voices = _get_tts_voices(voice_filter)
+    if exclude_voices:
+        before = len(voices)
+        voices = _exclude_voices(voices, exclude_voices)
+        print(f"  excluded {before - len(voices)} voice(s) by name")
+    voices = _probe_voices(voices, out_dir)
+    if not voices:
+        raise RuntimeError(
+            "Every installed voice failed a quick audio check -- none can "
+            "actually render text on this machine. See the [warn] lines "
+            "above for why each one failed."
+        )
     print(f"  using {len(voices)} voice(s): {[v.id for v in voices]}")
     rng = np.random.default_rng(seed)
     table = vocab.build_phrase_table()
-    rows: list[tuple[Path, str, str]] = []
+    rows: list[tuple[Path, str, str, str, str]] = []
     audio_root = out_dir / "audio"
 
     for label, phrases in table.items():
@@ -139,13 +303,13 @@ def generate_synthetic(out_dir: Path, variants_per_voice: int, augment: int,
                     rate = int(rng.integers(150, 200))
                     base_path = label_dir / f"{clip_idx:05d}_tts.wav"
                     try:
-                        _synthesize(engine, voice.id, rate, phrase, base_path)
+                        _synthesize(voice.id, rate, phrase, base_path)
                     except Exception as exc:  # noqa: BLE001
                         print(f"  [warn] TTS failed for voice={voice.id!r} "
                               f"phrase={phrase!r}: {exc}", file=sys.stderr)
                         base_path.unlink(missing_ok=True)
                         continue
-                    rows.append((base_path, label, "synth_tts"))
+                    rows.append((base_path, label, "synth_tts", voice.id, phrase))
                     clip_idx += 1
 
                     audio, _ = sf.read(str(base_path), dtype="float32")
@@ -157,14 +321,23 @@ def generate_synthetic(out_dir: Path, variants_per_voice: int, augment: int,
                                   f"audio, skipping this augmented copy", file=sys.stderr)
                             continue
                         sf.write(str(aug_path), aug_audio, SAMPLE_RATE, subtype="PCM_16")
-                        rows.append((aug_path, label, "synth_aug"))
+                        rows.append((aug_path, label, "synth_aug", voice.id, phrase))
                         clip_idx += 1
         print(f"  {label:16s} -> {clip_idx} clips")
     return rows
 
 
-def merge_real(real_dir: Path, out_dir: Path) -> list[tuple[Path, str, str]]:
-    rows: list[tuple[Path, str, str]] = []
+_REAL_SPEAKER = re.compile(r"^(?P<name>.+?)_\d+$")
+
+
+def _real_speaker(stem: str) -> str:
+    """'ananya_007' -> 'ananya'; anything not shaped like <name>_<take> -> 'real'."""
+    m = _REAL_SPEAKER.match(stem)
+    return m.group("name").lower() if m else "real"
+
+
+def merge_real(real_dir: Path, out_dir: Path) -> list[tuple[Path, str, str, str, str]]:
+    rows: list[tuple[Path, str, str, str, str]] = []
     audio_root = out_dir / "audio"
     for label_dir in sorted(real_dir.iterdir()):
         if not label_dir.is_dir():
@@ -179,20 +352,20 @@ def merge_real(real_dir: Path, out_dir: Path) -> list[tuple[Path, str, str]]:
         for i, wav in enumerate(sorted(label_dir.glob("*.wav"))):
             dest = dest_dir / f"real_{i:05d}_{wav.stem}.wav"
             _resample_to_target(wav, dest)
-            rows.append((dest, label, "real"))
+            rows.append((dest, label, "real", _real_speaker(wav.stem), ""))
     return rows
 
 
-def write_manifest(rows: list[tuple[Path, str, str]], out_dir: Path) -> None:
+def write_manifest(rows: list[tuple[Path, str, str, str, str]], out_dir: Path) -> None:
     manifest = out_dir / "manifest.csv"
     with manifest.open("w", newline="") as f:
         w = csv.writer(f)
-        w.writerow(["path", "label", "source"])
-        for path, label, source in rows:
-            w.writerow([str(path.relative_to(out_dir)), label, source])
+        w.writerow(["path", "label", "source", "speaker", "phrase"])
+        for path, label, source, speaker, phrase in rows:
+            w.writerow([str(path.relative_to(out_dir)), label, source, speaker, phrase])
     print(f"\nWrote {len(rows)} rows to {manifest}")
     by_label: dict[str, int] = {}
-    for _, label, _ in rows:
+    for _, label, *_rest in rows:
         by_label[label] = by_label.get(label, 0) + 1
     for label in vocab.CLASSES:
         n = by_label.get(label, 0)
@@ -212,19 +385,32 @@ def main() -> None:
     ap.add_argument("--limit-per-class", type=int, default=None,
                      help="cap template phrases per class, for a quick smoke-test run")
     ap.add_argument("--voice-filter", type=str, default="en",
-                     help="substring to filter installed TTS voice ids by (default 'en' for "
-                          "English variants only; pass '' to use every installed voice/language)")
+                     help="locale prefix to filter installed TTS voices by (default 'en' for "
+                          "English variants only; pass '' to use every installed voice/language). "
+                          "Matched against each voice's actual language tag/locale, not a raw "
+                          "substring of its id")
+    ap.add_argument("--exclude-voices", type=str, default="",
+                     help="comma-separated voice NAMES to skip (e.g. 'Fred,Ralph'); the name is "
+                          "the last dotted part of the voice id")
+    ap.add_argument("--no-novelty-voices", action="store_true",
+                     help="skip macOS novelty voices (Albert, Bells, Zarvox, Organ, ... -- they "
+                          "sing/hum/distort rather than speak)")
     ap.add_argument("--skip-synth", action="store_true",
                      help="only merge --real-dir, skip TTS generation (e.g. re-running after adding recordings)")
     args = ap.parse_args()
 
+    exclude = {n.strip().lower() for n in args.exclude_voices.split(",") if n.strip()}
+    if args.no_novelty_voices:
+        exclude |= NOVELTY_VOICE_NAMES
+
     args.out.mkdir(parents=True, exist_ok=True)
-    rows: list[tuple[Path, str, str]] = []
+    rows: list[tuple[Path, str, str, str, str]] = []
 
     if not args.skip_synth:
         print("Generating synthetic (TTS) data...")
         rows += generate_synthetic(args.out, args.variants_per_voice, args.augment,
-                                    args.limit_per_class, args.voice_filter or None)
+                                    args.limit_per_class, args.voice_filter or None,
+                                    exclude_voices=exclude)
 
     if args.real_dir is not None:
         print(f"Merging real recordings from {args.real_dir}...")
