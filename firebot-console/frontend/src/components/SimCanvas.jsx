@@ -5,23 +5,21 @@ import { HFOV } from "../lib/simEngine.js";
 // "instrument screen" (matches the camera/thermal viewport's `scope` color), a tactical
 // plot rather than a lit floor plan.
 const COLORS = {
-  bg: "#0A0C0F",
-  floor: "#14181C",
-  fog: "#050607",
-  border: "rgba(232,236,239,0.55)",
-  wall: "#3B434C",
-  wallEdge: "#7C8794",
-  grid: "rgba(232,236,239,0.05)",
-  gridMajor: "rgba(232,236,239,0.13)",
-  axis: "rgba(232,236,239,0.6)",
-  robot: "#3FA7D6",
-  fireTrue: "#E14A3A",
-  fireEst: "#D69A3C",
-  ellipse: "rgba(214,154,60,0.25)",
-  path: "#4CAF6D",
-  tree: "rgba(63,167,214,0.22)",
-  cone: "rgba(63,167,214,0.08)",
+  bg: "#0E0919", floor: "#1E1533", fog: "#0A0612",
+  border: "rgba(241,236,250,0.5)",
+  wall: "#3A2A5C", wallEdge: "#8E78C2",
+  grid: "rgba(241,236,250,0.045)", gridMajor: "rgba(241,236,250,0.12)", axis: "rgba(241,236,250,0.6)",
+  robot: "#7DE3B0", fireTrue: "#FF6A2B", fireEst: "#F0559B",
+  ellipse: "rgba(240,85,155,0.22)", path: "#7DE3B0",
+  tree: "rgba(196,160,255,0.2)", cone: "rgba(125,227,176,0.10)",
 };
+// ironbow ramp shared with the thermal camera view: t in 0..1 -> rgb
+const RAMP = [[27,10,60],[90,26,134],[196,40,111],[255,138,42],[255,242,201]];
+function ironbow(t, a = 1) {
+  const v = Math.max(0, Math.min(1, t)) * (RAMP.length - 1), i = Math.min(RAMP.length - 2, Math.floor(v)), f = v - i;
+  const c = RAMP[i].map((x, k) => Math.round(x + (RAMP[i + 1][k] - x) * f));
+  return `rgba(${c[0]},${c[1]},${c[2]},${a})`;
+}
 
 // Exploration reveal: cheap "fog of war" that only ever grows, so the floor
 // plan is *constructed* as the robot moves through it rather than shown all
@@ -145,7 +143,9 @@ export default function SimCanvas({ engineRef, showTree, showSensors, height = 5
       dctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       dctx.clearRect(0, 0, cssW, cssH);
 
-      dctx.fillStyle = COLORS.floor;
+      const fg = dctx.createLinearGradient(0, oy, 0, oy + world.height * scale);
+      fg.addColorStop(0, "#251A40"); fg.addColorStop(1, "#191029");
+      dctx.fillStyle = fg;
       dctx.fillRect(X(0), oy, world.width * scale, world.height * scale);
 
       dctx.lineWidth = 1;
@@ -161,7 +161,7 @@ export default function SimCanvas({ engineRef, showTree, showSensors, height = 5
       dctx.strokeStyle = COLORS.border;
       dctx.strokeRect(sn(gx0), sn(gy1), Math.round(gx1 - gx0), Math.round(gy0 - gy1));
 
-      dctx.fillStyle = COLORS.axis; dctx.font = "10px 'JetBrains Mono', monospace";
+      dctx.fillStyle = COLORS.axis; dctx.font = "10px 'Martian Mono', monospace";
       dctx.textAlign = "center"; dctx.textBaseline = "top";
       for (let gx = 0; gx <= world.width; gx += 5) dctx.fillText(`${gx}`, rp(X(gx)), rp(Y(0) + 5));
       dctx.textAlign = "right"; dctx.textBaseline = "middle";
@@ -176,8 +176,7 @@ export default function SimCanvas({ engineRef, showTree, showSensors, height = 5
       if (controller.visited?.length) {
         const n = controller.visited.length;
         controller.visited.forEach(([vx, vy], i) => {
-          const a = (i / n) * 0.4;
-          dctx.fillStyle = `rgba(63,167,214,${a})`;
+          dctx.fillStyle = ironbow(0.15 + (i / n) * 0.8, 0.15 + (i / n) * 0.5);
           dctx.beginPath(); dctx.arc(X(vx), Y(vy), Math.max(1.6, 0.15 * scale), 0, 7); dctx.fill();
         });
       }
@@ -194,6 +193,14 @@ export default function SimCanvas({ engineRef, showTree, showSensors, height = 5
 
       ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(detail, 0, 0); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
+      if (fire.p > 0 && fireSeenRef.current) {
+        const fxp = X(fire.x), fyp = Y(fire.y), gr = (2.2 + 3.2 * fire.p) * scale * (1 + 0.04 * Math.sin(t * 5));
+        const hg = ctx.createRadialGradient(fxp, fyp, 0, fxp, fyp, gr);
+        hg.addColorStop(0, ironbow(1, 0.55 * fire.p + 0.15)); hg.addColorStop(0.35, ironbow(0.62, 0.3 * fire.p));
+        hg.addColorStop(0.7, ironbow(0.3, 0.14 * fire.p)); hg.addColorStop(1, ironbow(0.1, 0));
+        ctx.fillStyle = hg; ctx.beginPath(); ctx.arc(fxp, fyp, gr, 0, 7); ctx.fill();
+      }
+
       // ---- overlays that ride on top of the map regardless of fog ----
       if (showTree && controller.tree?.length) {
         ctx.strokeStyle = COLORS.tree; ctx.lineWidth = 1;
@@ -202,11 +209,11 @@ export default function SimCanvas({ engineRef, showTree, showSensors, height = 5
         ctx.stroke();
       }
       if (controller.path?.length > 1) {
-        ctx.strokeStyle = COLORS.path; ctx.lineWidth = 2; ctx.lineJoin = "round"; ctx.lineCap = "round"; ctx.setLineDash([]);
+        ctx.strokeStyle = COLORS.path; ctx.lineWidth = 2.5; ctx.lineJoin = "round"; ctx.lineCap = "round"; ctx.setLineDash([9, 7]); ctx.lineDashOffset = -t * 26; ctx.shadowColor = COLORS.path; ctx.shadowBlur = 8;
         ctx.beginPath();
         ctx.moveTo(X(controller.path[0][0]), Y(controller.path[0][1]));
         for (const p of controller.path.slice(1)) ctx.lineTo(X(p[0]), Y(p[1]));
-        ctx.stroke();
+        ctx.stroke(); ctx.setLineDash([]); ctx.shadowBlur = 0;
         if (controller.goal) {
           const gx = X(controller.goal[0]), gy = Y(controller.goal[1]);
           ctx.strokeStyle = COLORS.path; ctx.lineWidth = 1.5;
@@ -227,9 +234,9 @@ export default function SimCanvas({ engineRef, showTree, showSensors, height = 5
         ctx.beginPath(); ctx.ellipse(ex, ey, Math.max(4, erx), Math.max(4, ery), 0, 0, 7); ctx.stroke();
         ctx.setLineDash([]); ctx.lineWidth = 1.5;
         ctx.beginPath(); ctx.moveTo(ex - 7, ey); ctx.lineTo(ex + 7, ey); ctx.moveTo(ex, ey - 7); ctx.lineTo(ex, ey + 7); ctx.stroke();
-        ctx.fillStyle = COLORS.fireEst; ctx.font = "10px 'JetBrains Mono', monospace";
+        ctx.fillStyle = COLORS.fireEst; ctx.font = "10px 'Martian Mono', monospace";
         ctx.textAlign = "left"; ctx.textBaseline = "bottom";
-        ctx.fillText("EST", rp(ex + 9), rp(ey - 5));
+        ctx.fillText("estimate", rp(ex + 9), rp(ey - 5));
       }
 
       // true fire — withheld until the swept sensors have actually covered that cell
@@ -238,11 +245,13 @@ export default function SimCanvas({ engineRef, showTree, showSensors, height = 5
       }
 
       if (showSensors) {
-        ctx.fillStyle = COLORS.cone;
+        const cg = ctx.createRadialGradient(X(rx0), Y(ry0), 0, X(rx0), Y(ry0), REVEAL_FAR * scale);
+        cg.addColorStop(0, "rgba(125,227,176,0.30)"); cg.addColorStop(1, "rgba(125,227,176,0.02)");
+        ctx.fillStyle = cg;
         ctx.beginPath(); ctx.moveTo(X(rx0), Y(ry0));
         ctx.arc(X(rx0), Y(ry0), REVEAL_FAR * scale, -th - HFOV / 2, -th + HFOV / 2);  // -th: screen y is flipped
         ctx.closePath(); ctx.fill();
-        ctx.strokeStyle = "rgba(63,167,214,0.35)"; ctx.lineWidth = 1; ctx.stroke();
+        ctx.strokeStyle = "rgba(125,227,176,0.4)"; ctx.lineWidth = 1; ctx.stroke();
       }
       drawSonarPing(ctx, X(rx0), Y(ry0), scale, t);
       drawCar(ctx, X(rx0), Y(ry0), -th, scale, controller.mode, controller.pumpOn, t);
@@ -254,13 +263,13 @@ export default function SimCanvas({ engineRef, showTree, showSensors, height = 5
       ctx.beginPath();
       ctx.moveTo(bx, by - 4); ctx.lineTo(bx, by); ctx.lineTo(bx + barPx, by); ctx.lineTo(bx + barPx, by - 4);
       ctx.stroke();
-      ctx.fillStyle = COLORS.axis; ctx.font = "10px 'JetBrains Mono', monospace";
+      ctx.fillStyle = COLORS.axis; ctx.font = "10px 'Martian Mono', monospace";
       ctx.textAlign = "center"; ctx.textBaseline = "bottom";
       ctx.fillText(`${barM} m`, rp(bx + barPx / 2), rp(by - 6));
 
       // coverage readout, bottom-left
       ctx.textAlign = "left"; ctx.textBaseline = "bottom";
-      ctx.fillText(`MAP COVERAGE ${coverageRef.current}%`, rp(X(0)), rp(cssH - 6));
+      ctx.fillText(`Explored ${coverageRef.current}%`, rp(X(0)), rp(cssH - 6));
       // north arrow, top-left (+y is north, drawn up)
       const nx = rp(14), ny = rp(24);
       ctx.strokeStyle = COLORS.axis; ctx.fillStyle = COLORS.axis; ctx.lineWidth = 1.5;
@@ -299,9 +308,13 @@ function snapRect(px, py, pw, ph) {
 
 function drawWall(ctx, px, py, pw, ph) {
   const [x, y, w, h] = snapRect(px, py, pw, ph);
+  ctx.save();
+  ctx.shadowColor = "rgba(0,0,0,0.55)"; ctx.shadowBlur = 10; ctx.shadowOffsetX = 3; ctx.shadowOffsetY = 4;
   ctx.fillStyle = COLORS.wall; ctx.fillRect(x, y, w, h);
-  ctx.strokeStyle = COLORS.wallEdge; ctx.lineWidth = 1;
-  ctx.strokeRect(x + 0.5, y + 0.5, Math.max(0, w - 1), Math.max(0, h - 1));
+  ctx.restore();
+  ctx.fillStyle = COLORS.wall; ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = COLORS.wallEdge; ctx.fillRect(x, y, w, 2);
+  ctx.fillStyle = "rgba(255,255,255,0.05)"; ctx.fillRect(x, y + 2, Math.min(w, 2), Math.max(0, h - 2));
 }
 
 // Loose obstacle: flat dark block, amber outline and a cross so it reads as "obstacle", not wall.
@@ -318,18 +331,29 @@ function drawCrate(ctx, px, py, pw, ph) {
 // Fire (ground truth): solid red marker sized by remaining intensity `p`, a pulsing ring and
 // a label. Deliberately a clean symbol rather than a rendered flame.
 function drawFlame(ctx, x, y, p, t) {
-  const r = 5 + 7 * p;
-  const ph = (t * 1.1) % 1;
-  ctx.strokeStyle = `rgba(225,74,58,${(1 - ph) * 0.6})`; ctx.lineWidth = 1.5;
-  ctx.beginPath(); ctx.arc(x, y, r + 3 + ph * 12, 0, 7); ctx.stroke();
-  ctx.fillStyle = COLORS.fireTrue;
-  ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
-  ctx.strokeStyle = "rgba(255,255,255,0.9)"; ctx.lineWidth = 1.5; ctx.stroke();
-  ctx.fillStyle = "#FFE3B0";
-  ctx.beginPath(); ctx.arc(x, y, r * 0.4, 0, 7); ctx.fill();
-  ctx.fillStyle = "#FF8A78"; ctx.font = "10px 'JetBrains Mono', monospace";
-  ctx.textAlign = "center"; ctx.textBaseline = "bottom";
-  ctx.fillText("FIRE", Math.round(x), Math.round(y - r - 6));
+  const r = 8 + 14 * p;
+  const tongue = (k, scale, col, sway) => {
+    const h = r * scale * (1 + 0.14 * Math.sin(t * 9 + k * 2));
+    const w = r * 0.62 * scale, dx = Math.sin(t * 6 + k * 3) * r * sway;
+    ctx.fillStyle = col; ctx.beginPath();
+    ctx.moveTo(x - w, y + r * 0.3);
+    ctx.quadraticCurveTo(x - w * 1.1, y - h * 0.4, x + dx, y - h * 1.6);
+    ctx.quadraticCurveTo(x + w * 1.1, y - h * 0.4, x + w, y + r * 0.3);
+    ctx.quadraticCurveTo(x, y + r * 0.8, x - w, y + r * 0.3);
+    ctx.fill();
+  };
+  ctx.save(); ctx.shadowColor = "rgba(255,120,40,0.9)"; ctx.shadowBlur = 18;
+  tongue(0, 1.0, "#E0341F", 0.25);
+  ctx.restore();
+  tongue(1, 0.78, "#FF8A2A", 0.18);
+  tongue(2, 0.5, "#FFF2C9", 0.1);
+  for (let i = 0; i < 7; i++) {
+    const ph = (t * 0.7 + i / 7) % 1, ex = x + Math.sin(t * 3 + i * 5) * r * 0.9 * ph, ey = y - r * 0.5 - ph * r * 3.4;
+    ctx.fillStyle = `rgba(255,190,90,${(1 - ph) * 0.9})`; ctx.beginPath(); ctx.arc(ex, ey, 1.6 * (1 - ph) + 0.4, 0, 7); ctx.fill();
+  }
+  ctx.fillStyle = "#FFB99A"; ctx.font = "10px 'Martian Mono', monospace";
+  ctx.textAlign = "center"; ctx.textBaseline = "top";
+  ctx.fillText(`fire ${Math.round(p * 100)}%`, Math.round(x), Math.round(y + r + 6));
 }
 
 // One thin ring expanding from the robot: a quiet cue that it is actively sensing.
@@ -337,7 +361,7 @@ function drawSonarPing(ctx, x, y, scale, t) {
   const phase = (t % 2.4) / 2.4;
   const alpha = (1 - phase) * 0.28;
   if (alpha <= 0.01) return;
-  ctx.strokeStyle = `rgba(63,167,214,${alpha})`; ctx.lineWidth = 1;
+  ctx.strokeStyle = `rgba(125,227,176,${alpha})`; ctx.lineWidth = 1;
   ctx.beginPath(); ctx.arc(x, y, Math.max(1, phase * scale * 2.6), 0, 7); ctx.stroke();
 }
 
@@ -347,7 +371,7 @@ function drawCar(ctx, x, y, th, scale, mode, pumpOn, t) {
   const rr = Math.max(8, 0.22 * scale);
   const len = rr * 2.2, wid = rr * 1.5;
   const stopped = mode === "STOPPED";
-  const col = stopped ? "#E1584A" : "#3FA7D6";
+  const col = stopped ? "#FF4A2B" : "#7DE3B0";
 
   ctx.save();
   ctx.translate(x, y);
@@ -358,7 +382,7 @@ function drawCar(ctx, x, y, th, scale, mode, pumpOn, t) {
     for (const wx of [-len * 0.3, len * 0.3 - rr * 0.5]) ctx.fillRect(wx - rr * 0.1, wy, rr * 0.6, 3);
   }
   roundedRectPath(ctx, -len / 2, -wid / 2, len, wid, 2.5);
-  ctx.fillStyle = stopped ? "#3A1512" : "#0E2836"; ctx.fill();
+  ctx.fillStyle = stopped ? "#3A1512" : "#F1ECFA"; ctx.fill();
   ctx.strokeStyle = col; ctx.lineWidth = 1.5; ctx.stroke();
 
   ctx.fillStyle = col;

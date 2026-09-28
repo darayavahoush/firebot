@@ -416,9 +416,10 @@ function TelemetryTab({ t, sigma }) {
         <Metric label="Sim Time" value={t.t.toFixed(0)} unit="s" />
         <Metric label="Distance" value={t.distanceTravelled.toFixed(1)} unit="m" />
       </div>
-      <div className="grid grid-cols-2 divide-x divide-line border-t border-line">
-        <Metric label="Tank" value={(t.tank * 100).toFixed(0)} unit="%" alarm={t.tank < 0.2} />
-        <Metric label="Battery" value={(t.battery * 100).toFixed(0)} unit="%" alarm={t.battery < 0.2} />
+      <div className="flex justify-around py-5 border-t border-line">
+        <Ring label="Water tank" value={t.tank} low={t.tank < 0.2} />
+        <Ring label="Battery" value={t.battery} low={t.battery < 0.2} />
+        <Ring label="Fire out" value={1 - t.fire.p} good />
       </div>
       <div className="grid grid-cols-2 divide-x divide-line border-t border-line">
         <Metric label="Water Used" value={t.waterUsed.toFixed(2)} unit="L-eq" />
@@ -436,6 +437,22 @@ function TelemetryTab({ t, sigma }) {
         <Row k="Position" v={`${t.robot.x.toFixed(2)}, ${t.robot.y.toFixed(2)}`} />
         <Row k="Heading" v={`${((t.robot.th * 180) / Math.PI).toFixed(0)}\u00b0`} />
       </div>
+    </div>
+  );
+}
+
+function Ring({ label, value, low, good }) {
+  const R = 30, C = 2 * Math.PI * R, v = Math.max(0, Math.min(1, value));
+  const stroke = low ? "#FF4A2B" : good ? "#7DE3B0" : "url(#ringheat)";
+  return (
+    <div className="flex flex-col items-center gap-1.5" role="img" aria-label={`${label} ${Math.round(v * 100)} percent`}>
+      <svg width="76" height="76" viewBox="0 0 76 76">
+        <defs><linearGradient id="ringheat" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stopColor="#5a1a86" /><stop offset=".5" stopColor="#c4286f" /><stop offset="1" stopColor="#ff8a2a" /></linearGradient></defs>
+        <circle cx="38" cy="38" r={R} fill="none" stroke="rgba(241,236,250,0.10)" strokeWidth="7" />
+        <circle cx="38" cy="38" r={R} fill="none" stroke={stroke} strokeWidth="7" strokeLinecap="round" strokeDasharray={`${C * v} ${C}`} transform="rotate(-90 38 38)" style={{ transition: "stroke-dasharray .4s" }} />
+        <text x="38" y="43" textAnchor="middle" className="data" fill="#F1ECFA" fontSize="15">{Math.round(v * 100)}</text>
+      </svg>
+      <span className="text-[12px] text-muted">{label}</span>
     </div>
   );
 }
