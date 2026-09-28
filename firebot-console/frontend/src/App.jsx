@@ -6,6 +6,7 @@ import Simulator from "./pages/Simulator.jsx";
 import History from "./pages/History.jsx";
 import About from "./pages/About.jsx";
 import { connectTelemetry, sendCommand, sendEstop } from "./api/client.js";
+import { notify, notifyEnabled, setNotifyEnabled, notifySupported } from "./lib/notify.js";
 
 export default function App() {
   const [page, setPage] = useState("live");
@@ -14,6 +15,8 @@ export default function App() {
   const [mode, setModeState] = useState("auto");
   const [log, setLog] = useState([]);
   const [ack, setAck] = useState(null);
+  const [notifOn, setNotifOn] = useState(notifyEnabled);
+  const prevRef = useRef({ link: null, lowTank: false, located: false, pump: false });
   const logRef = useRef(null);
   const lastFrameAtRef = useRef(0);
   const ackTimerRef = useRef(null);
@@ -131,9 +134,30 @@ export default function App() {
     return () => window.removeEventListener("keydown", handler);
   }, [page, mode, onDrive]);
 
+  const toggleNotif = useCallback(async () => {
+    setNotifOn(await setNotifyEnabled(!notifOn));
+  }, [notifOn]);
+
+  // Alerts for the moments an operator would want to be pulled back to the tab.
+  useEffect(() => {
+    const p = prevRef.current;
+    if (frame && p.link === true && !linkOk) notify("Robot link lost", "No telemetry for over 2 seconds.", "link");
+    if (frame && p.link === false && linkOk) notify("Robot link restored", "Telemetry is flowing again.", "link");
+    if (frame) p.link = linkOk;
+    if (!frame) return;
+    const low = frame.tank != null && frame.tank < 0.2;
+    if (low && !p.lowTank) notify("Water tank low", `${Math.round(frame.tank * 100)}% left.`, "tank");
+    if (frame.tank != null && frame.tank > 0.3) p.lowTank = false; else if (low) p.lowTank = true;
+    const located = frame.est_sigma != null && frame.est_sigma < 0.5;
+    if (located && !p.located) notify("Fire located", `Position known to within ${frame.est_sigma.toFixed(2)} m.`, "fire");
+    if (frame.est_sigma != null && frame.est_sigma > 2) p.located = false; else if (located) p.located = true;
+    if (frame.cmd_pump && !p.pump) notify("Spraying water", "The pump just switched on.", "pump");
+    p.pump = !!frame.cmd_pump;
+  }, [frame, linkOk]);
+
   return (
     <div className="min-h-full flex">
-      <Sidebar page={page} setPage={setPage} linkOk={frame ? linkOk : true} />
+      <Sidebar page={page} setPage={setPage} linkOk={frame ? linkOk : true} notifOn={notifOn} onToggleNotif={notifySupported() ? toggleNotif : null} />
 
       <div className="flex-1 flex flex-col min-w-0 relative">
         <TopBar page={page} mode={mode} onEstop={onEstop} />

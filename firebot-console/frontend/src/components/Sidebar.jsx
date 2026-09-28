@@ -7,7 +7,7 @@ const NAV = [
   { id: "about", label: "About" },
 ];
 
-export default function Sidebar({ page, setPage, linkOk }) {
+export default function Sidebar({ page, setPage, linkOk, notifOn, onToggleNotif }) {
   return (
     <aside className="w-[76px] shrink-0 bg-panel border-r border-line flex flex-col items-center py-5 gap-6">
       <div
@@ -37,6 +37,20 @@ export default function Sidebar({ page, setPage, linkOk }) {
           );
         })}
       </nav>
+      {onToggleNotif && (
+        <button
+          onClick={onToggleNotif}
+          aria-pressed={!!notifOn}
+          aria-label={notifOn ? "Turn off alerts" : "Turn on alerts"}
+          title={notifOn ? "Alerts on: you'll be notified when this tab is in the background" : "Turn on alerts"}
+          className={`h-9 w-9 rounded-full flex items-center justify-center border transition-colors ${notifOn ? "border-telemetry text-telemetry bg-telemetry/15" : "border-line text-faint hover:text-ink"}`}
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3.5 11.5h9l-1.2-1.6V7a3.3 3.3 0 0 0-6.6 0v2.9L3.5 11.5Z" /><path d="M6.6 13.4a1.5 1.5 0 0 0 2.8 0" />
+            {!notifOn && <path d="M2.5 2.5l11 11" />}
+          </svg>
+        </button>
+      )}
       <div
         title={linkOk ? "Robot link up" : "Robot link lost"}
         className={`h-2.5 w-2.5 rounded-full ${linkOk ? "bg-ok" : "bg-alarm pulse-dot"}`}
