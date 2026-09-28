@@ -183,3 +183,42 @@ def test_transcribe_falls_back_to_groq_when_no_local_prediction(server, monkeypa
 
     result = _run(server.transcribe(_FakeUploadFile(b"clip-bytes")))
     assert result == {"text": "go to home"}
+
+
+# ---- /api/voice/status + recorded failure reason ----
+
+def test_voice_status_local_when_checkpoint_present(server, monkeypatch, tmp_path):
+    ckpt = tmp_path / "intent_head.pt"
+    ckpt.write_bytes(b"x")
+    monkeypatch.setattr(server, "VOICE_INTENT_CHECKPOINT", str(ckpt))
+    monkeypatch.setattr(server, "_voice_last_error", None)
+    st = asyncio.run(server.voice_status())
+    assert st["mode"] == "local" and st["local_checkpoint_found"] is True
+    assert st["last_error"] is None
+
+
+def test_voice_status_reports_missing_checkpoint_and_falls_back(server, monkeypatch):
+    monkeypatch.setattr(server, "VOICE_INTENT_CHECKPOINT", "/nope/intent_head.pt")
+    monkeypatch.setattr(server, "GROQ_API_KEY", "k")
+    st = asyncio.run(server.voice_status())
+    assert st["mode"] == "groq" and st["local_configured"] and not st["local_checkpoint_found"]
+
+    monkeypatch.setattr(server, "GROQ_API_KEY", "")
+    assert asyncio.run(server.voice_status())["mode"] == "unavailable"
+
+
+def test_local_failure_is_recorded_not_silent(server, monkeypatch, tmp_path):
+    ckpt = tmp_path / "intent_head.pt"
+    ckpt.write_bytes(b"x")
+    monkeypatch.setattr(server, "VOICE_INTENT_CHECKPOINT", str(ckpt))
+
+    def boom():
+        raise ModuleNotFoundError("No module named 'transformers'")
+    monkeypatch.setattr(server, "_get_voice_classifier", boom)
+    import types
+    monkeypatch.setitem(sys.modules, "librosa",
+                        types.SimpleNamespace(load=lambda *a, **k: ([0.0], 16_000)))
+    assert server._local_intent_phrase(b"clip") is None
+    st = asyncio.run(server.voice_status())
+    assert st["mode"] == "local-degraded"
+    assert "transformers" in st["last_error"]
