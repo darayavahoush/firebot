@@ -4,6 +4,7 @@ import ThermalFrame from "../components/ThermalFrame.jsx";
 import { PanelHeader } from "../components/TelemetryGauges.jsx";
 import { SimController } from "../lib/simController.js";
 import { US_ANGLES, FLAME_ANGLES } from "../lib/simEngine.js";
+import { blobToWav16k } from "../lib/wav";
 
 const SPEEDS = [0.5, 1, 2, 4];
 
@@ -232,8 +233,12 @@ export default function Simulator() {
       if (blob.size === 0) { setAsrStatus("idle"); return; }
       setAsrStatus("transcribing");
       try {
+        // Upload 16 kHz mono WAV: the server's decoder handles it without ffmpeg. If the
+        // browser can't decode its own recording, send the raw clip and let the server try.
+        let upload = blob, uploadName = "clip.webm";
+        try { upload = await blobToWav16k(blob); uploadName = "clip.wav"; } catch { /* raw fallback */ }
         const form = new FormData();
-        form.append("file", blob, "clip.webm");
+        form.append("file", upload, uploadName);
         const res = await fetch("/api/transcribe", { method: "POST", body: form });
         if (!res.ok) {
           const detail = await res.json().catch(() => null);
@@ -607,8 +612,8 @@ function VoiceTab({
         {voiceMode && (
           <div className="font-mono text-[10px] tracking-wide text-faint text-center">
             SPEECH{" "}
-            <span className={voiceMode.mode === "local" ? "text-ok" : voiceMode.mode === "unavailable" ? "text-alarm" : "text-warn"}>
-              {{ local: "LOCAL MODEL", "local-degraded": "LOCAL MODEL FAILING \u2192 GROQ", groq: "GROQ", unavailable: "UNAVAILABLE" }[voiceMode.mode] || voiceMode.mode}
+            <span className={voiceMode.mode === "local" || voiceMode.mode === "vosk" ? "text-ok" : voiceMode.mode === "unavailable" ? "text-alarm" : "text-warn"}>
+              {{ local: "LOCAL MODEL", "local-degraded": "LOCAL MODEL FAILING \u2192 FALLBACK", vosk: "VOSK (OFFLINE)", "vosk-degraded": "VOSK FAILING \u2192 GROQ", groq: "GROQ", unavailable: "UNAVAILABLE" }[voiceMode.mode] || voiceMode.mode}
             </span>
             {voiceMode.last_error && <div className="text-warn normal-case tracking-normal mt-0.5">{voiceMode.last_error}</div>}
           </div>

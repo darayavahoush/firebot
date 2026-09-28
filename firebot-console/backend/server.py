@@ -37,6 +37,8 @@ from fastapi import FastAPI, File, HTTPException, UploadFile, WebSocket, WebSock
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from firebot.db.summary import narrate, summarize_run
+from firebot.fusion.anomaly import detect_anomalies
 from firebot.link.protocol import THERM_COLS, THERM_ROWS
 from firebot.voice_intent.router import ShadowRouter
 from firebot.voice_intent.vocab import canonical_phrase
@@ -63,6 +65,11 @@ GROQ_TRANSCRIBE_URL = "https://api.groq.com/openai/v1/audio/transcriptions"
 # and the checkpoint itself are only loaded lazily, on first use, and only if this is set,
 # so a console deployed without the voice_intent extras installed is completely unaffected.
 VOICE_INTENT_CHECKPOINT = os.environ.get("FIREBOT_VOICE_INTENT_CHECKPOINT", "")
+# Offline Vosk tier (grammar-restricted, no internet/key needed): path to an unpacked Vosk
+# model dir. Optional Silero VAD trims non-speech from each clip first (FIREBOT_VAD=1).
+VOSK_MODEL = os.environ.get("FIREBOT_VOSK_MODEL", "")
+VAD_ENABLED = os.environ.get("FIREBOT_VAD", "") not in ("", "0", "false")
+VAD_THRESHOLD = float(os.environ.get("FIREBOT_VAD_THRESHOLD", "0.5"))
 VOICE_INTENT_MIN_CONFIDENCE = float(os.environ.get("FIREBOT_VOICE_INTENT_MIN_CONFIDENCE", "0.6"))
 # Where the ShadowRouter persists its learned per-confidence-decile trust state between
 # server restarts. A missing/corrupt file just starts fresh (see ShadowRouter.load).
@@ -169,6 +176,66 @@ async def run_detail(run_id: str) -> dict[str, Any]:
     return {"id": run_id, "points": points}
 
 
+async def _load_run_frames(run_id: str) -> list[dict[str, Any]]:
+    """Frames for anomaly/summary analysis -- everything except the (large) thermal arrays."""
+    query = """
+        SELECT seq, t, x, y, speed, tank, sensors, mode, cmd_pump, compute_ms
+        FROM frames WHERE session_id = $1 ORDER BY seq ASC
+    """
+    async with _pool.acquire() as conn:
+        rows = await conn.fetch(query, run_id)
+    frames = []
+    for r in rows:
+        d = dict(r)
+        sensors = d.get("sensors")
+        d["sensors"] = json.loads(sensors) if isinstance(sensors, str) else (sensors or {})
+        frames.append(d)
+    return frames
+
+
+@app.get("/api/runs/{run_id}/anomalies")
+async def run_anomalies(run_id: str) -> dict[str, Any]:
+    """Explainable telemetry findings for one run: stuck/spiking sensors, pump not draining the
+    tank, tank leaks, slow brain compute, link dropouts. See firebot.fusion.anomaly."""
+    frames = await _load_run_frames(run_id)
+    return {"id": run_id, "frames": len(frames), "anomalies": detect_anomalies(frames)}
+
+
+def _slm_generate() -> Any:
+    """Optional local-model callable for `?narrate=1`, from FIREBOT_SLM_CMD (the same shell
+    wrapper contract as `firebot-brain --slm-cmd`). None when unset."""
+    cmd = os.environ.get("FIREBOT_SLM_CMD", "")
+    if not cmd:
+        return None
+    import subprocess
+
+    def generate(prompt: str) -> str:
+        return subprocess.run(cmd, shell=True, input=prompt, capture_output=True, text=True,
+                              timeout=30, check=False).stdout
+    return generate
+
+
+@app.get("/api/runs/{run_id}/summary")
+async def run_summary(run_id: str, narrate_text: bool = False) -> dict[str, Any]:
+    """Plain-English incident summary computed from the stored frames and operator commands.
+    With `narrate_text=true` and FIREBOT_SLM_CMD set, a local model re-words it (numbers are
+    verified against the facts; on any mismatch the deterministic text is returned)."""
+    frames = await _load_run_frames(run_id)
+    async with _pool.acquire() as conn:
+        cmd_rows = await conn.fetch(
+            "SELECT at, text, valid, message FROM operator_commands "
+            "WHERE session_id = $1 ORDER BY id ASC", run_id)
+    commands = [dict(r) for r in cmd_rows]
+    summary = summarize_run(frames, commands, detect_anomalies(frames))
+    text, narrated = summary["text"], False
+    if narrate_text:
+        gen = _slm_generate()
+        if gen is not None:
+            text = narrate(summary, gen)
+            narrated = text != summary["text"]
+    return {"id": run_id, "facts": summary["facts"], "text": text, "narrated": narrated}
+
+
 # ---- REST: command forwarding to the brain ----
 
 class Command(BaseModel):
@@ -261,6 +328,93 @@ async def _call_groq(audio_bytes: bytes, filename: str, content_type: str) -> st
     return (r.json().get("text") or "").strip()
 
 
+_vosk_rec: Any = None
+_vad_gate: Any = None
+_vosk_last_error: str | None = None
+_vad_last_error: str | None = None
+
+
+def _get_vosk() -> Any:
+    global _vosk_rec
+    if _vosk_rec is None:
+        from firebot.speech.recognizer import VoskRecognizer
+        _vosk_rec = VoskRecognizer(VOSK_MODEL)
+    return _vosk_rec
+
+
+def _get_vad_gate() -> Any:
+    global _vad_gate
+    if _vad_gate is None:
+        from firebot.speech.vad import SileroGate
+        _vad_gate = SileroGate(threshold=VAD_THRESHOLD)
+    return _vad_gate
+
+
+def _vosk_text(audio_bytes: bytes) -> str | None:
+    """Offline Vosk transcript of an uploaded clip, or None for *any* reason it can't help
+    (not configured, missing vosk/model, undecodable clip, nothing recognised). Never raises:
+    like the local classifier, this tier is an optimisation ahead of the Groq fallback."""
+    global _vosk_last_error, _vad_last_error
+    if not VOSK_MODEL:
+        return None
+    try:
+        from firebot.speech import offline
+
+        pcm = offline.float_to_pcm16(_decode_audio_16k(audio_bytes))
+        gate = None
+        if VAD_ENABLED:
+            try:
+                gate = _get_vad_gate()
+                _vad_last_error = None
+            except Exception as e:  # noqa: BLE001 -- VAD is best-effort: fall back to the untrimmed clip
+                msg = f"{type(e).__name__}: {e}"
+                if msg != _vad_last_error:
+                    logging.getLogger("firebot.console").warning("VAD unavailable: %s", msg)
+                _vad_last_error = msg
+        text = offline.transcribe_pcm(pcm, _get_vosk(), gate=gate)
+        _vosk_last_error = None
+        return text or None
+    except Exception as e:  # noqa: BLE001 -- any failure just skips this tier
+        msg = f"{type(e).__name__}: {e}"
+        if msg != _vosk_last_error:
+            logging.getLogger("firebot.console").warning("offline Vosk unavailable: %s", msg)
+        _vosk_last_error = msg
+        return None
+
+
+def _decode_audio_16k(audio_bytes: bytes):
+    """Decode an uploaded clip to 16 kHz mono float32.
+
+    WAV (what the console now uploads) goes through librosa. Anything else -- browsers'
+    native MediaRecorder output is webm/opus or mp4 -- is transcoded by calling ffmpeg
+    directly: librosa >= 1.0 dropped its own ffmpeg fallback, so librosa.load() on a raw
+    webm stream fails.
+    """
+    import io
+    import shutil
+    import subprocess
+
+    import numpy as np
+
+    if audio_bytes[:4] == b"RIFF":
+        import librosa
+
+        audio, _ = librosa.load(io.BytesIO(audio_bytes), sr=16_000, mono=True)
+        return audio
+
+    ffmpeg = shutil.which("ffmpeg")
+    if ffmpeg is None:
+        raise RuntimeError("clip isn't WAV and ffmpeg isn't installed on the server to convert it")
+    proc = subprocess.run(
+        [ffmpeg, "-nostdin", "-loglevel", "error", "-i", "pipe:0",
+         "-f", "f32le", "-ac", "1", "-ar", "16000", "pipe:1"],
+        input=audio_bytes, capture_output=True, timeout=20, check=False,
+    )
+    if proc.returncode != 0 or not proc.stdout:
+        raise RuntimeError(f"ffmpeg couldn't decode the clip: {proc.stderr.decode(errors='replace').strip()[:200]}")
+    return np.frombuffer(proc.stdout, dtype=np.float32).copy()
+
+
 def _local_intent_phrase(audio_bytes: bytes) -> tuple[str, float] | None:
     """Try the local classifier on a raw uploaded clip. Returns (canonical_phrase,
     confidence) on a usable prediction, or None -- for *any* reason the local path isn't
@@ -273,11 +427,7 @@ def _local_intent_phrase(audio_bytes: bytes) -> tuple[str, float] | None:
     if not VOICE_INTENT_CHECKPOINT:
         return None
     try:
-        import io
-
-        import librosa
-
-        audio, _ = librosa.load(io.BytesIO(audio_bytes), sr=16_000, mono=True)
+        audio = _decode_audio_16k(audio_bytes)
         clf = _get_voice_classifier()
         payload = clf.predict_intent_payload_array(audio, sample_rate=16_000,
                                                     min_confidence=VOICE_INTENT_MIN_CONFIDENCE)
@@ -302,8 +452,11 @@ async def voice_status() -> dict[str, Any]:
     trained local model is actually active rather than silently falling back to Groq."""
     configured = bool(VOICE_INTENT_CHECKPOINT)
     exists = configured and os.path.isfile(VOICE_INTENT_CHECKPOINT)
+    vosk_found = bool(VOSK_MODEL) and os.path.isdir(VOSK_MODEL)
     if configured and exists:
         mode = "local" if _voice_last_error is None else "local-degraded"
+    elif vosk_found:
+        mode = "vosk" if _vosk_last_error is None else "vosk-degraded"
     elif GROQ_API_KEY:
         mode = "groq"
     else:
@@ -314,8 +467,14 @@ async def voice_status() -> dict[str, Any]:
         "local_checkpoint_found": exists,
         "local_loaded": _voice_classifier is not None,
         "local_min_confidence": VOICE_INTENT_MIN_CONFIDENCE,
+        "vosk_configured": bool(VOSK_MODEL),
+        "vosk_model_found": vosk_found,
+        "vosk_loaded": _vosk_rec is not None,
+        "vosk_last_error": _vosk_last_error,
+        "vad_enabled": VAD_ENABLED,
+        "vad_last_error": _vad_last_error,
         "groq_available": bool(GROQ_API_KEY),
-        "last_error": _voice_last_error,
+        "last_error": _voice_last_error or _vosk_last_error,
     }
 
 
@@ -327,6 +486,18 @@ async def transcribe(file: UploadFile = File(...)) -> dict[str, str]:
 
     local = _local_intent_phrase(audio_bytes)
     if local is None:
+        offline_text = _vosk_text(audio_bytes)
+        if offline_text:
+            return {"text": offline_text}
+        if not GROQ_API_KEY:
+            reasons = [f"{name}: {err}" for name, err in
+                       (("local model", _voice_last_error if VOICE_INTENT_CHECKPOINT else None),
+                        ("Vosk", _vosk_last_error if VOSK_MODEL else None)) if err]
+            if reasons:
+                raise HTTPException(503, "Offline speech failed (" + "; ".join(reasons)
+                                    + ") and no GROQ_API_KEY is set for fallback")
+            if VOICE_INTENT_CHECKPOINT or VOSK_MODEL:
+                raise HTTPException(422, "Didn't recognise that as a command -- try again, closer to the mic, or type it")
         return {"text": await _call_groq(audio_bytes, filename, content_type)}
 
     phrase, confidence = local

@@ -64,8 +64,29 @@ else
   echo "-> voice: no checkpoint at $VI_CKPT -- using Groq only"
   echo "     (train one: see src/firebot/voice_intent/README.md, or set FIREBOT_VOICE_INTENT_CHECKPOINT)"
 fi
-if [ -z "${GROQ_API_KEY:-}" ] && [ -z "${FIREBOT_VOICE_INTENT_CHECKPOINT:-}" ]; then
-  echo "   warning: no local model and no GROQ_API_KEY -- /api/transcribe will return 503" >&2
+# ---- offline Vosk tier (optional) ----------------------------------------------------
+# An unpacked Vosk model dir: $FIREBOT_VOSK_MODEL, else the first models/vosk-model* under the
+# repo root. Sits between the local intent model and Groq, so voice works with no API key.
+# Set FIREBOT_VAD=1 to also trim non-speech from each clip with Silero VAD (needs the `vad` extra).
+VK_DIR="${FIREBOT_VOSK_MODEL:-}"
+if [ -z "$VK_DIR" ]; then
+  for d in "$REPO_ROOT"/models/vosk-model*; do [ -d "$d" ] && VK_DIR="$d" && break; done
+fi
+if [ -n "$VK_DIR" ] && [ -d "$VK_DIR" ]; then
+  if python3 -c "import vosk" 2>/dev/null; then
+    export FIREBOT_VOSK_MODEL="$VK_DIR"
+    echo "-> voice: offline Vosk ON ($VK_DIR)"
+    [ -n "${FIREBOT_VAD:-}" ] && echo "-> voice: Silero VAD trimming ON"
+  else
+    unset FIREBOT_VOSK_MODEL
+    echo "-> voice: Vosk model found but 'vosk' isn't installed -- run: pip install -e \".[speech]\"" >&2
+  fi
+else
+  unset FIREBOT_VOSK_MODEL
+  echo "-> voice: no Vosk model (put one in $REPO_ROOT/models/ or set FIREBOT_VOSK_MODEL for offline speech)"
+fi
+if [ -z "${GROQ_API_KEY:-}" ] && [ -z "${FIREBOT_VOICE_INTENT_CHECKPOINT:-}" ] && [ -z "${FIREBOT_VOSK_MODEL:-}" ]; then
+  echo "   warning: no local model, no Vosk model and no GROQ_API_KEY -- /api/transcribe will return 503" >&2
 fi
 
 PIDS=()
