@@ -8,10 +8,12 @@ const COLORS = {
   bg: "#0A0C0F",
   floor: "#14181C",
   fog: "#050607",
-  fogHatch: "rgba(232,236,239,0.025)",
-  grid: "rgba(232,236,239,0.035)",
-  gridMajor: "rgba(232,236,239,0.09)",
-  axis: "rgba(232,236,239,0.45)",
+  border: "rgba(232,236,239,0.55)",
+  wall: "#3B434C",
+  wallEdge: "#7C8794",
+  grid: "rgba(232,236,239,0.05)",
+  gridMajor: "rgba(232,236,239,0.13)",
+  axis: "rgba(232,236,239,0.6)",
   robot: "#3FA7D6",
   fireTrue: "#E14A3A",
   fireEst: "#D69A3C",
@@ -26,7 +28,7 @@ const COLORS = {
 // at once. Mirrors what a real SLAM stack would actually have observed —
 // a close all-around ring (ultrasonic range) plus a longer forward wedge
 // (camera FOV) — so the shape of the revealed area tells its own story.
-const MASK_RES = 12;       // mask-canvas px per world metre, independent of view zoom
+const MASK_RES = 24;       // mask-canvas px per world metre, independent of view zoom
 const REVEAL_NEAR = 2.1;   // m, all-around proximity reveal
 const REVEAL_FAR = 6.0;    // m, forward camera-cone reveal
 
@@ -65,9 +67,12 @@ export default function SimCanvas({ engineRef, showTree, showSensors, height = 5
       tickRef.current++;
       const dpr = window.devicePixelRatio || 1;
       const cssW = canvas.clientWidth, cssH = height;
-      if (canvas.width !== cssW * dpr || canvas.height !== cssH * dpr) {
-        canvas.width = cssW * dpr; canvas.height = cssH * dpr;
-      }
+      const bw = Math.round(cssW * dpr), bh = Math.round(cssH * dpr);
+      if (canvas.width !== bw || canvas.height !== bh) { canvas.width = bw; canvas.height = bh; }
+      // sn: snap a CSS coordinate so a 1px stroke lands on exactly one device pixel row/column
+      // (otherwise it straddles two and renders as a soft 2px smear). rp: snap for text/shapes.
+      const sn = (v) => (Math.round(v * dpr - 0.5) + 0.5) / dpr;
+      const rp = (v) => Math.round(v * dpr) / dpr;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, cssW, cssH);
       ctx.fillStyle = COLORS.bg;
@@ -90,13 +95,14 @@ export default function SimCanvas({ engineRef, showTree, showSensors, height = 5
       const mask = ensureMask(world);
       const mctx = mask.getContext("2d");
       const mx = rx0 * MASK_RES, my = ry0 * MASK_RES;
-      let rg = mctx.createRadialGradient(mx, my, REVEAL_NEAR * MASK_RES * 0.25, mx, my, REVEAL_NEAR * MASK_RES);
-      rg.addColorStop(0, "rgba(255,255,255,0.85)");
+      let rg = mctx.createRadialGradient(mx, my, 0, mx, my, REVEAL_NEAR * MASK_RES);
+      rg.addColorStop(0, "rgba(255,255,255,1)");
+      rg.addColorStop(0.86, "rgba(255,255,255,1)");
       rg.addColorStop(1, "rgba(255,255,255,0)");
       mctx.fillStyle = rg;
       mctx.beginPath(); mctx.arc(mx, my, REVEAL_NEAR * MASK_RES, 0, Math.PI * 2); mctx.fill();
       if (showSensors) {
-        mctx.globalAlpha = 0.3;
+        mctx.globalAlpha = 0.9;
         mctx.fillStyle = "#fff";
         mctx.beginPath();
         mctx.moveTo(mx, my);
@@ -126,16 +132,9 @@ export default function SimCanvas({ engineRef, showTree, showSensors, height = 5
       // ---- fog backdrop across the whole floor footprint ----
       ctx.fillStyle = COLORS.fog;
       ctx.fillRect(X(0), oy, world.width * scale, world.height * scale);
-      ctx.save();
-      ctx.beginPath(); ctx.rect(X(0), oy, world.width * scale, world.height * scale); ctx.clip();
-      ctx.strokeStyle = COLORS.fogHatch; ctx.lineWidth = 1;
-      ctx.beginPath();
-      for (let d = -world.height * scale; d < world.width * scale; d += 10) {
-        ctx.moveTo(X(0) + d, oy + world.height * scale);
-        ctx.lineTo(X(0) + d + world.height * scale, oy);
-      }
-      ctx.stroke();
-      ctx.restore();
+      // arena footprint outline, always visible so the map's extent is unambiguous
+      ctx.strokeStyle = "rgba(232,236,239,0.22)"; ctx.lineWidth = 1;
+      ctx.strokeRect(sn(X(0)), sn(oy), Math.round(world.width * scale), Math.round(world.height * scale));
 
       // ---- known-map layer, built offscreen then clipped to what's been explored ----
       const detail = detailRef.current;
@@ -150,20 +149,23 @@ export default function SimCanvas({ engineRef, showTree, showSensors, height = 5
       dctx.fillRect(X(0), oy, world.width * scale, world.height * scale);
 
       dctx.lineWidth = 1;
-      dctx.beginPath(); dctx.strokeStyle = COLORS.grid;
-      for (let gx = 0; gx <= world.width; gx++) { if (gx % 5 === 0) continue; dctx.moveTo(X(gx), Y(0)); dctx.lineTo(X(gx), Y(world.height)); }
-      for (let gy = 0; gy <= world.height; gy++) { if (gy % 5 === 0) continue; dctx.moveTo(X(0), Y(gy)); dctx.lineTo(X(world.width), Y(gy)); }
-      dctx.stroke();
-      dctx.beginPath(); dctx.strokeStyle = COLORS.gridMajor;
-      for (let gx = 0; gx <= world.width; gx += 5) { dctx.moveTo(X(gx), Y(0)); dctx.lineTo(X(gx), Y(world.height)); }
-      for (let gy = 0; gy <= world.height; gy += 5) { dctx.moveTo(X(0), Y(gy)); dctx.lineTo(X(world.width), Y(gy)); }
-      dctx.stroke();
+      const gx0 = X(0), gx1 = X(world.width), gy0 = Y(0), gy1 = Y(world.height);
+      const gridPass = (major, color) => {
+        dctx.beginPath(); dctx.strokeStyle = color;
+        for (let gx = 0; gx <= world.width; gx++) { if ((gx % 5 === 0) !== major) continue; const x = sn(X(gx)); dctx.moveTo(x, gy1); dctx.lineTo(x, gy0); }
+        for (let gy = 0; gy <= world.height; gy++) { if ((gy % 5 === 0) !== major) continue; const y = sn(Y(gy)); dctx.moveTo(gx0, y); dctx.lineTo(gx1, y); }
+        dctx.stroke();
+      };
+      gridPass(false, COLORS.grid);
+      gridPass(true, COLORS.gridMajor);
+      dctx.strokeStyle = COLORS.border;
+      dctx.strokeRect(sn(gx0), sn(gy1), Math.round(gx1 - gx0), Math.round(gy0 - gy1));
 
-      dctx.fillStyle = COLORS.axis; dctx.font = "9px 'JetBrains Mono', monospace";
+      dctx.fillStyle = COLORS.axis; dctx.font = "10px 'JetBrains Mono', monospace";
       dctx.textAlign = "center"; dctx.textBaseline = "top";
-      for (let gx = 0; gx <= world.width; gx += 5) dctx.fillText(`${gx}m`, X(gx), Y(0) + 4);
+      for (let gx = 0; gx <= world.width; gx += 5) dctx.fillText(`${gx}`, rp(X(gx)), rp(Y(0) + 5));
       dctx.textAlign = "right"; dctx.textBaseline = "middle";
-      for (let gy = 0; gy <= world.height; gy += 5) dctx.fillText(`${gy}m`, X(0) - 5, Y(gy));
+      for (let gy = 0; gy <= world.height; gy += 5) dctx.fillText(`${gy}`, rp(X(0) - 6), rp(Y(gy)));
 
       for (const w of world.walls) {
         const px = X(w.x), py = Y(w.y + w.h), pw = w.w * scale, ph = w.h * scale;  // Y() is flipped: top edge = y + h
@@ -190,7 +192,7 @@ export default function SimCanvas({ engineRef, showTree, showSensors, height = 5
       dctx.restore();
       dctx.globalCompositeOperation = "source-over";
 
-      ctx.drawImage(detail, 0, 0, cssW, cssH);
+      ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(detail, 0, 0); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
       // ---- overlays that ride on top of the map regardless of fog ----
       if (showTree && controller.tree?.length) {
@@ -200,14 +202,16 @@ export default function SimCanvas({ engineRef, showTree, showSensors, height = 5
         ctx.stroke();
       }
       if (controller.path?.length > 1) {
-        ctx.strokeStyle = COLORS.path; ctx.lineWidth = 2.5; ctx.setLineDash([]);
+        ctx.strokeStyle = COLORS.path; ctx.lineWidth = 2; ctx.lineJoin = "round"; ctx.lineCap = "round"; ctx.setLineDash([]);
         ctx.beginPath();
         ctx.moveTo(X(controller.path[0][0]), Y(controller.path[0][1]));
         for (const p of controller.path.slice(1)) ctx.lineTo(X(p[0]), Y(p[1]));
         ctx.stroke();
         if (controller.goal) {
-          ctx.fillStyle = COLORS.path;
-          ctx.beginPath(); ctx.arc(X(controller.goal[0]), Y(controller.goal[1]), 4, 0, 7); ctx.fill();
+          const gx = X(controller.goal[0]), gy = Y(controller.goal[1]);
+          ctx.strokeStyle = COLORS.path; ctx.lineWidth = 1.5;
+          ctx.beginPath(); ctx.arc(gx, gy, 7, 0, 7); ctx.stroke();
+          ctx.fillStyle = COLORS.path; ctx.beginPath(); ctx.arc(gx, gy, 2.5, 0, 7); ctx.fill();
         }
       }
 
@@ -216,11 +220,16 @@ export default function SimCanvas({ engineRef, showTree, showSensors, height = 5
       if (sigma < 20 && est.x > -2 && est.x < world.width + 2 && est.y > -2 && est.y < world.height + 2) {
         const erx = Math.min(Math.sqrt(Math.max(est.P[0][0], 1e-6)) * scale * 2, cssW);
         const ery = Math.min(Math.sqrt(Math.max(est.P[1][1], 1e-6)) * scale * 2, cssH);
+        const ex = X(est.x), ey = Y(est.y);
         ctx.fillStyle = COLORS.ellipse;
-        ctx.beginPath(); ctx.ellipse(X(est.x), Y(est.y), Math.max(4, erx), Math.max(4, ery), 0, 0, 7); ctx.fill();
-        ctx.strokeStyle = COLORS.fireEst; ctx.lineWidth = 1.5;
-        ctx.beginPath(); ctx.moveTo(X(est.x) - 6, Y(est.y)); ctx.lineTo(X(est.x) + 6, Y(est.y));
-        ctx.moveTo(X(est.x), Y(est.y) - 6); ctx.lineTo(X(est.x), Y(est.y) + 6); ctx.stroke();
+        ctx.beginPath(); ctx.ellipse(ex, ey, Math.max(4, erx), Math.max(4, ery), 0, 0, 7); ctx.fill();
+        ctx.strokeStyle = COLORS.fireEst; ctx.lineWidth = 1; ctx.setLineDash([4, 3]);
+        ctx.beginPath(); ctx.ellipse(ex, ey, Math.max(4, erx), Math.max(4, ery), 0, 0, 7); ctx.stroke();
+        ctx.setLineDash([]); ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(ex - 7, ey); ctx.lineTo(ex + 7, ey); ctx.moveTo(ex, ey - 7); ctx.lineTo(ex, ey + 7); ctx.stroke();
+        ctx.fillStyle = COLORS.fireEst; ctx.font = "10px 'JetBrains Mono', monospace";
+        ctx.textAlign = "left"; ctx.textBaseline = "bottom";
+        ctx.fillText("EST", rp(ex + 9), rp(ey - 5));
       }
 
       // true fire — withheld until the swept sensors have actually covered that cell
@@ -233,6 +242,7 @@ export default function SimCanvas({ engineRef, showTree, showSensors, height = 5
         ctx.beginPath(); ctx.moveTo(X(rx0), Y(ry0));
         ctx.arc(X(rx0), Y(ry0), REVEAL_FAR * scale, -th - HFOV / 2, -th + HFOV / 2);  // -th: screen y is flipped
         ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = "rgba(63,167,214,0.35)"; ctx.lineWidth = 1; ctx.stroke();
       }
       drawSonarPing(ctx, X(rx0), Y(ry0), scale, t);
       drawCar(ctx, X(rx0), Y(ry0), -th, scale, controller.mode, controller.pumpOn, t);
@@ -244,13 +254,19 @@ export default function SimCanvas({ engineRef, showTree, showSensors, height = 5
       ctx.beginPath();
       ctx.moveTo(bx, by - 4); ctx.lineTo(bx, by); ctx.lineTo(bx + barPx, by); ctx.lineTo(bx + barPx, by - 4);
       ctx.stroke();
-      ctx.fillStyle = COLORS.axis; ctx.font = "9px 'JetBrains Mono', monospace";
+      ctx.fillStyle = COLORS.axis; ctx.font = "10px 'JetBrains Mono', monospace";
       ctx.textAlign = "center"; ctx.textBaseline = "bottom";
-      ctx.fillText(`${barM} m`, bx + barPx / 2, by - 6);
+      ctx.fillText(`${barM} m`, rp(bx + barPx / 2), rp(by - 6));
 
       // coverage readout, bottom-left
       ctx.textAlign = "left"; ctx.textBaseline = "bottom";
-      ctx.fillText(`MAP COVERAGE ${coverageRef.current}%`, X(0), cssH - 6);
+      ctx.fillText(`MAP COVERAGE ${coverageRef.current}%`, rp(X(0)), rp(cssH - 6));
+      // north arrow, top-left (+y is north, drawn up)
+      const nx = rp(14), ny = rp(24);
+      ctx.strokeStyle = COLORS.axis; ctx.fillStyle = COLORS.axis; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(nx, ny + 10); ctx.lineTo(nx, ny - 6); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(nx, ny - 10); ctx.lineTo(nx - 4, ny - 3); ctx.lineTo(nx + 4, ny - 3); ctx.closePath(); ctx.fill();
+      ctx.textAlign = "center"; ctx.textBaseline = "top"; ctx.fillText("N", nx, ny + 13);
     }
     rafRef.current = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(rafRef.current);
@@ -274,180 +290,94 @@ function roundedRectPath(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
-// Structural wall segment: beveled slab with a directional light edge so
-// corridors read as solid built geometry, not flat colour blocks.
+// Flat, pixel-aligned geometry: solid fill + 1px edge, no gradients or drop shadows, so
+// every element has a hard, unambiguous boundary like a CAD/plan drawing.
+function snapRect(px, py, pw, ph) {
+  const x0 = Math.round(px), y0 = Math.round(py);
+  return [x0, y0, Math.max(1, Math.round(px + pw) - x0), Math.max(1, Math.round(py + ph) - y0)];
+}
+
 function drawWall(ctx, px, py, pw, ph) {
-  ctx.fillStyle = "rgba(0,0,0,0.22)";
-  ctx.fillRect(px, py + ph, pw, Math.min(4, Math.max(1, ph * 0.12)));
-
-  const grad = ctx.createLinearGradient(px, py, px, py + ph);
-  grad.addColorStop(0, "#4A5058");
-  grad.addColorStop(1, "#1E2226");
-  ctx.fillStyle = grad;
-  ctx.fillRect(px, py, pw, ph);
-
-  ctx.strokeStyle = "rgba(232,236,239,0.20)"; ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(px, py + ph); ctx.lineTo(px, py); ctx.lineTo(px + pw, py); ctx.stroke();
-  ctx.strokeStyle = "rgba(0,0,0,0.45)";
-  ctx.beginPath(); ctx.moveTo(px + pw, py); ctx.lineTo(px + pw, py + ph); ctx.lineTo(px, py + ph); ctx.stroke();
+  const [x, y, w, h] = snapRect(px, py, pw, ph);
+  ctx.fillStyle = COLORS.wall; ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = COLORS.wallEdge; ctx.lineWidth = 1;
+  ctx.strokeRect(x + 0.5, y + 0.5, Math.max(0, w - 1), Math.max(0, h - 1));
 }
 
-// Loose furniture/obstacle: a grounded crate with a hazard-dashed rim,
-// corner rivets and a fold line — reads unmistakably as "obstacle", not wall.
+// Loose obstacle: flat dark block, amber outline and a cross so it reads as "obstacle", not wall.
 function drawCrate(ctx, px, py, pw, ph) {
-  const r = Math.min(pw, ph) * 0.2;
-
-  ctx.fillStyle = "rgba(0,0,0,0.4)";
-  ctx.beginPath();
-  ctx.ellipse(px + pw / 2, py + ph + 1.5, Math.max(0, pw * 0.55), Math.max(1.5, ph * 0.16), 0, 0, 7);
-  ctx.fill();
-
-  roundedRectPath(ctx, px, py, pw, ph, r);
-  const grad = ctx.createLinearGradient(px, py, px + pw, py + ph);
-  grad.addColorStop(0, "#454A52");
-  grad.addColorStop(1, "#181B1F");
-  ctx.fillStyle = grad;
-  ctx.fill();
-
-  ctx.strokeStyle = "rgba(232,236,239,0.15)"; ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(px, py + ph / 2); ctx.lineTo(px + pw, py + ph / 2); ctx.stroke();
-
-  ctx.fillStyle = "rgba(232,236,239,0.3)";
-  for (const [cx, cy] of [[px + 3, py + 3], [px + pw - 3, py + 3], [px + 3, py + ph - 3], [px + pw - 3, py + ph - 3]]) {
-    if (cx > px + pw || cy > py + ph) continue;
-    ctx.beginPath(); ctx.arc(cx, cy, 1, 0, 7); ctx.fill();
-  }
-
-  ctx.save();
-  roundedRectPath(ctx, px + 1, py + 1, Math.max(0, pw - 2), Math.max(0, ph - 2), r);
-  ctx.setLineDash([4, 3]);
+  const [x, y, w, h] = snapRect(px, py, pw, ph);
+  ctx.fillStyle = "#23282E"; ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = "rgba(255,176,0,0.35)"; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(x + 1, y + 1); ctx.lineTo(x + w - 1, y + h - 1);
+  ctx.moveTo(x + w - 1, y + 1); ctx.lineTo(x + 1, y + h - 1); ctx.stroke();
   ctx.strokeStyle = "#FFB000"; ctx.lineWidth = 1.5;
-  ctx.stroke();
-  ctx.setLineDash([]);
-  ctx.restore();
+  ctx.strokeRect(x + 0.75, y + 0.75, Math.max(0, w - 1.5), Math.max(0, h - 1.5));
 }
 
-// Layered, flickering flame with a glow halo and rising embers — sized by
-// remaining fire intensity `p` (1 → freshly caught, 0 → fully suppressed).
+// Fire (ground truth): solid red marker sized by remaining intensity `p`, a pulsing ring and
+// a label. Deliberately a clean symbol rather than a rendered flame.
 function drawFlame(ctx, x, y, p, t) {
-  const baseH = 15 + 22 * p;
-  const baseW = baseH * 0.62;
-  const flicker = 1 + Math.sin(t * 9) * 0.06 + Math.sin(t * 5.3 + 1) * 0.04;
-
-  const glowR = baseH * 1.9;
-  const glow = ctx.createRadialGradient(x, y - baseH * 0.3, 0, x, y - baseH * 0.3, glowR);
-  glow.addColorStop(0, "rgba(225,74,58,0.45)");
-  glow.addColorStop(1, "rgba(225,74,58,0)");
-  ctx.fillStyle = glow;
-  ctx.beginPath(); ctx.arc(x, y - baseH * 0.3, glowR, 0, 7); ctx.fill();
-
-  function layer(hMul, wMul, colorA, colorB, skew) {
-    const h = baseH * hMul * flicker, w = baseW * wMul;
-    ctx.beginPath();
-    ctx.moveTo(x, y + h * 0.12);
-    ctx.bezierCurveTo(x - w, y - h * 0.15 + skew, x - w * 0.55, y - h * 0.85, x, y - h);
-    ctx.bezierCurveTo(x + w * 0.55, y - h * 0.85, x + w, y - h * 0.15 - skew, x, y + h * 0.12);
-    ctx.closePath();
-    const g = ctx.createLinearGradient(x, y + h * 0.12, x, y - h);
-    g.addColorStop(0, colorA); g.addColorStop(1, colorB);
-    ctx.fillStyle = g; ctx.fill();
-  }
-  layer(1.0, 1.0, "#E14A3A", "#8B1F16", Math.sin(t * 6) * 2);
-  layer(0.72, 0.68, "#F4B942", "#E85A2A", Math.sin(t * 7 + 1) * 2);
-  layer(0.42, 0.4, "#FFE9A8", "#F4B942", Math.sin(t * 8 + 2) * 1.5);
-
-  for (let i = 0; i < 5; i++) {
-    const ph = (t * 0.6 + i / 5) % 1;
-    const ex = x + Math.sin(t * 3 + i * 2) * baseW * 0.5;
-    const ey = y - baseH * 0.4 - ph * baseH * 1.6;
-    ctx.fillStyle = `rgba(244,185,66,${(1 - ph) * 0.8})`;
-    ctx.beginPath(); ctx.arc(ex, ey, 1.3 * (1 - ph * 0.5), 0, 7); ctx.fill();
-  }
+  const r = 5 + 7 * p;
+  const ph = (t * 1.1) % 1;
+  ctx.strokeStyle = `rgba(225,74,58,${(1 - ph) * 0.6})`; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.arc(x, y, r + 3 + ph * 12, 0, 7); ctx.stroke();
+  ctx.fillStyle = COLORS.fireTrue;
+  ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
+  ctx.strokeStyle = "rgba(255,255,255,0.9)"; ctx.lineWidth = 1.5; ctx.stroke();
+  ctx.fillStyle = "#FFE3B0";
+  ctx.beginPath(); ctx.arc(x, y, r * 0.4, 0, 7); ctx.fill();
+  ctx.fillStyle = "#FF8A78"; ctx.font = "10px 'JetBrains Mono', monospace";
+  ctx.textAlign = "center"; ctx.textBaseline = "bottom";
+  ctx.fillText("FIRE", Math.round(x), Math.round(y - r - 6));
 }
 
-// Expanding sonar-style rings from the robot — a quiet, continuous reminder
-// that it's actively sweeping/mapping, not just a static icon on the floor.
+// One thin ring expanding from the robot: a quiet cue that it is actively sensing.
 function drawSonarPing(ctx, x, y, scale, t) {
-  const period = 2.4;
-  for (let i = 0; i < 2; i++) {
-    const phase = ((t + i * (period / 2)) % period) / period;
-    const alpha = (1 - phase) * 0.3;
-    if (alpha <= 0.01) continue;
-    ctx.strokeStyle = `rgba(63,167,214,${alpha})`;
-    ctx.lineWidth = 1.4;
-    ctx.beginPath(); ctx.arc(x, y, Math.max(1, phase * scale * 3.0), 0, 7); ctx.stroke();
-  }
+  const phase = (t % 2.4) / 2.4;
+  const alpha = (1 - phase) * 0.28;
+  if (alpha <= 0.01) return;
+  ctx.strokeStyle = `rgba(63,167,214,${alpha})`; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.arc(x, y, Math.max(1, phase * scale * 2.6), 0, 7); ctx.stroke();
 }
 
-// The robot itself, drawn as a small car: chassis, wheels, sensor turret,
-// headlight beam and — when the pump is running — a spray of droplets.
+// Robot: flat top-down glyph -- outlined body, four wheel blocks and a solid heading chevron,
+// so orientation is readable at a glance. Red when STOPPED.
 function drawCar(ctx, x, y, th, scale, mode, pumpOn, t) {
-  const rr = Math.max(7, 0.22 * scale);
-  const len = rr * 2.6, wid = rr * 1.6;
+  const rr = Math.max(8, 0.22 * scale);
+  const len = rr * 2.2, wid = rr * 1.5;
   const stopped = mode === "STOPPED";
-  const bodyLight = stopped ? "#FF9C8C" : "#8AD4F0";
-  const bodyMain = stopped ? "#E1584A" : "#3FA7D6";
-  const bodyDark = stopped ? "#7A241C" : "#1E5A78";
+  const col = stopped ? "#E1584A" : "#3FA7D6";
 
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(th);
 
-  const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, len * 1.4);
-  glow.addColorStop(0, stopped ? "rgba(225,74,58,0.32)" : "rgba(63,167,214,0.28)");
-  glow.addColorStop(1, "rgba(0,0,0,0)");
-  ctx.fillStyle = glow;
-  ctx.beginPath(); ctx.arc(0, 0, len * 1.4, 0, 7); ctx.fill();
-
-  ctx.fillStyle = "rgba(0,0,0,0.35)";
-  ctx.beginPath(); ctx.ellipse(0, wid * 0.2, len * 0.55, wid * 0.38, 0, 0, 7); ctx.fill();
-
-  ctx.fillStyle = "#17150F";
-  for (const wy of [-wid / 2, wid / 2]) {
-    for (const wx of [-len * 0.26, len * 0.26]) {
-      roundedRectPath(ctx, wx - rr * 0.32, wy - rr * 0.13, rr * 0.64, rr * 0.26, rr * 0.08);
-      ctx.fill();
-    }
+  ctx.fillStyle = "#06090B";
+  for (const wy of [-wid / 2 - 1.5, wid / 2 - 1.5]) {
+    for (const wx of [-len * 0.3, len * 0.3 - rr * 0.5]) ctx.fillRect(wx - rr * 0.1, wy, rr * 0.6, 3);
   }
+  roundedRectPath(ctx, -len / 2, -wid / 2, len, wid, 2.5);
+  ctx.fillStyle = stopped ? "#3A1512" : "#0E2836"; ctx.fill();
+  ctx.strokeStyle = col; ctx.lineWidth = 1.5; ctx.stroke();
 
-  roundedRectPath(ctx, -len / 2, -wid / 2, len, wid, wid * 0.32);
-  const bodyGrad = ctx.createLinearGradient(0, -wid / 2, 0, wid / 2);
-  bodyGrad.addColorStop(0, bodyLight);
-  bodyGrad.addColorStop(0.5, bodyMain);
-  bodyGrad.addColorStop(1, bodyDark);
-  ctx.fillStyle = bodyGrad; ctx.fill();
-  ctx.strokeStyle = "rgba(255,255,255,0.35)"; ctx.lineWidth = 1; ctx.stroke();
-
-  ctx.beginPath(); ctx.arc(len * 0.06, 0, wid * 0.34, 0, 7);
-  const cabGrad = ctx.createRadialGradient(len * 0.06 - 2, -2, 0, len * 0.06, 0, wid * 0.34);
-  cabGrad.addColorStop(0, "#EAF6FA"); cabGrad.addColorStop(1, "#9FC9DA");
-  ctx.fillStyle = cabGrad; ctx.fill();
-  ctx.strokeStyle = "rgba(0,0,0,0.25)"; ctx.lineWidth = 1; ctx.stroke();
-
-  ctx.fillStyle = "#FFF3C4";
-  ctx.beginPath(); ctx.arc(len / 2 - 1, -wid * 0.28, rr * 0.14, 0, 7); ctx.fill();
-  ctx.beginPath(); ctx.arc(len / 2 - 1, wid * 0.28, rr * 0.14, 0, 7); ctx.fill();
-
-  const beam = ctx.createLinearGradient(len / 2, 0, len / 2 + rr * 2.2, 0);
-  beam.addColorStop(0, "rgba(255,243,196,0.22)");
-  beam.addColorStop(1, "rgba(255,243,196,0)");
-  ctx.fillStyle = beam;
+  ctx.fillStyle = col;
   ctx.beginPath();
-  ctx.moveTo(len / 2, -wid * 0.4); ctx.lineTo(len / 2 + rr * 2.2, -wid * 0.9);
-  ctx.lineTo(len / 2 + rr * 2.2, wid * 0.9); ctx.lineTo(len / 2, wid * 0.4); ctx.closePath(); ctx.fill();
+  ctx.moveTo(len / 2 + rr * 0.55, 0);
+  ctx.lineTo(len / 2 - rr * 0.25, -wid * 0.34);
+  ctx.lineTo(len / 2 - rr * 0.25, wid * 0.34);
+  ctx.closePath(); ctx.fill();
 
-  ctx.fillStyle = stopped ? "#FF6B54" : "#7A241C";
-  ctx.beginPath(); ctx.arc(-len / 2 + 1, 0, rr * 0.12, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.arc(-len * 0.08, 0, rr * 0.2, 0, 7); ctx.fill();
 
   if (pumpOn) {
     for (let i = 0; i < 6; i++) {
       const ph = (t * 2 + i / 6) % 1;
-      const dx = len / 2 + ph * rr * 3.2;
+      const dx = len / 2 + rr * 0.6 + ph * rr * 3.2;
       const dy = Math.sin(t * 10 + i) * rr * 0.3 * ph;
-      ctx.fillStyle = `rgba(63,167,214,${(1 - ph) * 0.8})`;
-      ctx.beginPath(); ctx.arc(dx, dy, 1.4, 0, 7); ctx.fill();
+      ctx.fillStyle = `rgba(63,167,214,${(1 - ph) * 0.85})`;
+      ctx.beginPath(); ctx.arc(dx, dy, 1.5, 0, 7); ctx.fill();
     }
   }
-
   ctx.restore();
 }

@@ -47,6 +47,8 @@ export default function Simulator() {
   const [asrError, setAsrError] = useState("");
   // Which server speech path is live: "local" (trained model), "local-degraded", "groq", "unavailable"
   const [voiceMode, setVoiceMode] = useState(null);
+  // Who the server thinks just spoke: {name|null, score} from /api/transcribe, or null if not checked.
+  const [speakerInfo, setSpeakerInfo] = useState(null);
   useEffect(() => {
     let alive = true;
     fetch("/api/voice/status")
@@ -212,6 +214,7 @@ export default function Simulator() {
     if (asrStatus === "transcribing") return;
 
     setAsrError("");
+    setSpeakerInfo(null);
     let stream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -244,7 +247,8 @@ export default function Simulator() {
           const detail = await res.json().catch(() => null);
           throw new Error(detail?.detail || `Transcription failed (${res.status}).`);
         }
-        const { text } = await res.json();
+        const { text, speaker, speaker_score } = await res.json();
+        setSpeakerInfo(speaker === undefined ? null : { name: speaker, score: speaker_score });
         fetch("/api/voice/status").then((r) => (r.ok ? r.json() : null)).then((j) => j && setVoiceMode(j)).catch(() => {});
         setAsrStatus("idle");
         if (text) { setTextCmd(text); cmdInputRef.current?.focus(); }
@@ -384,6 +388,7 @@ export default function Simulator() {
                 fillCommand={fillCommand}
                 asrStatus={asrStatus}
                 voiceMode={voiceMode}
+                speakerInfo={speakerInfo}
                 asrError={asrError}
                 toggleRecording={toggleRecording}
               />
@@ -567,7 +572,7 @@ const COMMAND_HELP = [
 function VoiceTab({
   t, speechSupported, speechUsable, webSpeechBroken, listening, toggleListening, transcript, voiceError, textCmd, setTextCmd,
   sendCommand, cmdInputRef, suggestions, showSuggestions, setShowSuggestions, fillCommand,
-  asrStatus, asrError, toggleRecording, voiceMode,
+  asrStatus, asrError, toggleRecording, voiceMode, speakerInfo,
 }) {
   const asrBusy = asrStatus === "transcribing";
   const asrLabel = asrStatus === "recording" ? "STOP" : asrStatus === "transcribing" ? "\u2026" : "REC";
@@ -616,6 +621,15 @@ function VoiceTab({
               {{ local: "LOCAL MODEL", "local-degraded": "LOCAL MODEL FAILING \u2192 FALLBACK", vosk: "VOSK (OFFLINE)", "vosk-degraded": "VOSK FAILING \u2192 GROQ", groq: "GROQ", unavailable: "UNAVAILABLE" }[voiceMode.mode] || voiceMode.mode}
             </span>
             {voiceMode.last_error && <div className="text-warn normal-case tracking-normal mt-0.5">{voiceMode.last_error}</div>}
+          </div>
+        )}
+        {speakerInfo && (
+          <div className="font-mono text-[10px] tracking-wide text-faint text-center">
+            SPEAKER{" "}
+            <span className={speakerInfo.name ? "text-ok uppercase" : "text-warn"}>
+              {speakerInfo.name ?? "NOT RECOGNISED"}
+            </span>
+            {speakerInfo.score != null && <span> ({Math.round(speakerInfo.score * 100)}%)</span>}
           </div>
         )}
         {speechUsable && voiceError && <div className="text-[11px] text-warn text-center">{voiceError}</div>}

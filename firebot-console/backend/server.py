@@ -149,6 +149,17 @@ _voice_router: ShadowRouter | None = None
 # undecodable clip...). Surfaced by /api/voice/status so a silent Groq fallback is diagnosable.
 _voice_last_error: str | None = None
 
+# Who is speaking (ECAPA voiceprints, `python enroll_speaker.py --speaker NAME`). Identification
+# only -- it labels a command with a speaker, it never blocks one. Off with FIREBOT_SPEAKER_ID=0.
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+SPEAKER_ID_ENABLED = os.environ.get("FIREBOT_SPEAKER_ID", "1") != "0"
+SPEAKER_THRESHOLD = float(os.environ.get("FIREBOT_SPEAKER_THRESHOLD", "0.5"))
+SPEAKER_MARGIN = float(os.environ.get("FIREBOT_SPEAKER_MARGIN", "0.05"))
+SPEAKER_VOICEPRINT_DIR = Path(os.environ.get("FIREBOT_VOICEPRINT_DIR") or _REPO_ROOT / "data" / "voiceprints")
+os.environ.setdefault("FIREBOT_SPEAKER_MODEL_DIR", str(_REPO_ROOT / "pretrained_models" / "spkrec-ecapa-voxceleb"))
+_speaker_identifier: Any = None
+_speaker_last_error: str | None = None
+
 
 def _get_voice_classifier() -> Any:
     global _voice_classifier
@@ -578,21 +589,59 @@ async def voice_status() -> dict[str, Any]:
         "vad_enabled": VAD_ENABLED,
         "vad_last_error": _vad_last_error,
         "groq_available": bool(GROQ_API_KEY),
+        "speaker_id_enabled": SPEAKER_ID_ENABLED,
+        "speaker_enrolled": sorted(p.stem for p in SPEAKER_VOICEPRINT_DIR.glob("*.npy"))
+                            if SPEAKER_VOICEPRINT_DIR.is_dir() else [],
+        "speaker_last_error": _speaker_last_error,
         "last_error": _voice_last_error or _vosk_last_error,
     }
 
 
+def _identify_speaker(audio_bytes: bytes) -> dict[str, Any] | None:
+    """Which enrolled operator is speaking? None when identification is off, nobody is
+    enrolled, or it failed for any reason (never an error for the caller -- the command
+    itself must still go through). `speaker` is None inside the dict = heard, but not
+    confidently one enrolled voice."""
+    global _speaker_identifier, _speaker_last_error
+    if not SPEAKER_ID_ENABLED or not SPEAKER_VOICEPRINT_DIR.is_dir() \
+            or not any(SPEAKER_VOICEPRINT_DIR.glob("*.npy")):
+        return None
+    try:
+        import numpy as np
+        from firebot.speech.speaker_id import SpeakerIdentifier, decide_speaker
+        if _speaker_identifier is None:
+            _speaker_identifier = SpeakerIdentifier(SPEAKER_VOICEPRINT_DIR, SPEAKER_THRESHOLD)
+        audio = _decode_audio_16k(audio_bytes)
+        pcm = (np.clip(audio, -1.0, 1.0) * 32767).astype("<i2").tobytes()
+        scores = _speaker_identifier.scores(pcm)
+        name, best = decide_speaker(scores, SPEAKER_THRESHOLD, SPEAKER_MARGIN)
+        _speaker_last_error = None
+        return {"speaker": name, "speaker_score": round(best, 3),
+                "speaker_scores": {k: round(v, 3) for k, v in scores.items()}}
+    except Exception as e:  # noqa: BLE001 -- best-effort labelling
+        msg = f"{type(e).__name__}: {e}"
+        if msg != _speaker_last_error:
+            logging.getLogger("firebot.console").warning("speaker-id unavailable: %s", msg)
+        _speaker_last_error = msg
+        return None
+
+
 @app.post("/api/transcribe")
-async def transcribe(file: UploadFile = File(...)) -> dict[str, str]:
+async def transcribe(file: UploadFile = File(...)) -> dict[str, Any]:
     audio_bytes = await file.read()
-    filename = file.filename or "clip.webm"
-    content_type = file.content_type or "audio/webm"
+    text = await _transcribe_text(audio_bytes, file.filename or "clip.webm",
+                                  file.content_type or "audio/webm")
+    who = await asyncio.to_thread(_identify_speaker, audio_bytes)
+    return {"text": text, **(who or {})}
+
+
+async def _transcribe_text(audio_bytes: bytes, filename: str, content_type: str) -> str:
 
     local = _local_intent_phrase(audio_bytes)
     if local is None:
         offline_text = _vosk_text(audio_bytes)
         if offline_text:
-            return {"text": offline_text}
+            return offline_text
         if not GROQ_API_KEY:
             reasons = [f"{name}: {err}" for name, err in
                        (("local model", _voice_last_error if VOICE_INTENT_CHECKPOINT else None),
@@ -602,22 +651,22 @@ async def transcribe(file: UploadFile = File(...)) -> dict[str, str]:
                                     + ") and no GROQ_API_KEY is set for fallback")
             if VOICE_INTENT_CHECKPOINT or VOSK_MODEL:
                 raise HTTPException(422, "Didn't recognise that as a command -- try again, closer to the mic, or type it")
-        return {"text": await _call_groq(audio_bytes, filename, content_type)}
+        return await _call_groq(audio_bytes, filename, content_type)
 
     phrase, confidence = local
     router = _get_voice_router()
     if router.should_trust(confidence) and not router.should_audit():
-        return {"text": phrase}
+        return phrase
 
     # Either not (yet) trusted for this confidence decile, or a background audit of an
     # otherwise-trusted one -- either way, ground truth from Groq updates the router.
     if not GROQ_API_KEY:
         # Can't audit without Groq; the local prediction is all we have.
-        return {"text": phrase}
+        return phrase
     groq_text = await _call_groq(audio_bytes, filename, content_type)
     router.update(confidence, agreed=_same_intent(phrase, groq_text))
     router.save(VOICE_INTENT_ROUTER_STATE)
-    return {"text": groq_text}
+    return groq_text
 
 
 # ---- WebSocket: live telemetry, polling the active session's latest frame ----

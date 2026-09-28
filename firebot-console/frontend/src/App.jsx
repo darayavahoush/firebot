@@ -4,6 +4,7 @@ import TopBar from "./components/TopBar.jsx";
 import LiveOps from "./pages/LiveOps.jsx";
 import Simulator from "./pages/Simulator.jsx";
 import History from "./pages/History.jsx";
+import About from "./pages/About.jsx";
 import { connectTelemetry, sendCommand, sendEstop } from "./api/client.js";
 
 export default function App() {
@@ -169,6 +170,9 @@ export default function App() {
         </div>
         <div className={page === "history" ? "contents" : "hidden"}>
           <History />
+        </div>
+        <div className={page === "about" ? "contents" : "hidden"}>
+          <About />
         </div>
       </div>
     </div>

@@ -4,6 +4,7 @@ const NAV = [
   { id: "live", label: "Live Ops", icon: LiveIcon },
   { id: "sim", label: "Simulator", icon: SimIcon },
   { id: "history", label: "History", icon: HistoryIcon },
+  { id: "about", label: "About", icon: AboutIcon },
 ];
 
 export default function Sidebar({ page, setPage, linkOk }) {
@@ -96,6 +97,17 @@ function HistoryIcon({ active }) {
       <path d="M2 8a6 6 0 1 1 1.8 4.3" stroke={c} strokeWidth="1.3" strokeLinecap="round" />
       <path d="M2 4v3.5h3.5" stroke={c} strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
       <path d="M8 5v3l2.2 1.3" stroke={c} strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function AboutIcon({ active }) {
+  const c = active ? "#4AC7EC" : "rgba(232,236,239,0.6)";
+  return (
+    <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
+      <circle cx="8" cy="8" r="6.2" stroke={c} strokeWidth="1.3" />
+      <path d="M8 7.2v4" stroke={c} strokeWidth="1.3" strokeLinecap="round" />
+      <circle cx="8" cy="5" r="0.8" fill={c} />
     </svg>
   );
 }

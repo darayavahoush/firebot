@@ -24,6 +24,7 @@ def server(monkeypatch, tmp_path):
     module load (they're read at import time as module-level constants) and the router
     state file pointed at a scratch path so tests never touch a real json file."""
     monkeypatch.setenv("FIREBOT_VOICE_INTENT_CHECKPOINT", "dummy_checkpoint.pt")
+    monkeypatch.setenv("FIREBOT_SPEAKER_ID", "0")   # speaker labelling has its own tests
     monkeypatch.setenv("FIREBOT_VOICE_INTENT_MIN_CONFIDENCE", "0.6")
     monkeypatch.setenv("FIREBOT_VOICE_INTENT_ROUTER_STATE", str(tmp_path / "router.json"))
     sys.modules.pop("server", None)
@@ -540,3 +541,26 @@ def test_numba_cache_dir_is_set_to_a_writable_folder(monkeypatch, tmp_path):
     d = os.environ["NUMBA_CACHE_DIR"]
     assert os.path.isdir(d) and os.access(d, os.W_OK)
     sys.modules.pop("server", None)
+
+
+def test_transcribe_adds_speaker_fields_when_identified(server, monkeypatch):
+    monkeypatch.setattr(server, "_local_intent_phrase", lambda audio_bytes: ("stop", 0.95))
+
+    class TrustingRouter:
+        def should_trust(self, confidence):
+            return True
+        def should_audit(self):
+            return False
+    monkeypatch.setattr(server, "_get_voice_router", lambda: TrustingRouter())
+    who = {"speaker": "avinandan", "speaker_score": 0.81,
+           "speaker_scores": {"ananya": 0.2, "avinandan": 0.81}}
+    monkeypatch.setattr(server, "_identify_speaker", lambda audio_bytes: who)
+    result = _run(server.transcribe(_FakeUploadFile(b"clip-bytes")))
+    assert result == {"text": "stop", **who}
+
+
+def test_identify_speaker_off_or_not_enrolled_returns_none(server, tmp_path, monkeypatch):
+    assert server._identify_speaker(b"x") is None            # disabled by the fixture
+    monkeypatch.setattr(server, "SPEAKER_ID_ENABLED", True)
+    monkeypatch.setattr(server, "SPEAKER_VOICEPRINT_DIR", tmp_path)  # empty dir: nobody enrolled
+    assert server._identify_speaker(b"x") is None

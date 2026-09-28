@@ -16,6 +16,7 @@ replace -- everything downstream of the embedding is plain, readable math.
 """
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import numpy as np
@@ -31,7 +32,7 @@ def _load_model():
         from speechbrain.inference.speaker import EncoderClassifier  # optional, heavy dependency
         _model_cache["model"] = EncoderClassifier.from_hparams(
             source="speechbrain/spkrec-ecapa-voxceleb",
-            savedir="pretrained_models/spkrec-ecapa-voxceleb",
+            savedir=os.environ.get("FIREBOT_SPEAKER_MODEL_DIR") or "pretrained_models/spkrec-ecapa-voxceleb",
         )
     return _model_cache["model"]
 
@@ -44,6 +45,22 @@ def pcm16_to_float(pcm: bytes) -> np.ndarray:
 
 def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-8))
+
+
+def decide_speaker(scores: dict[str, float], threshold: float = DEFAULT_THRESHOLD,
+                   margin: float = 0.05) -> tuple[str | None, float]:
+    """(name_or_None, best_score) from per-speaker cosine scores. Reports a name only when the
+    best score clears `threshold` AND beats the runner-up by `margin`: with just a couple of
+    enrolled voices, a near-tie means "can't tell them apart", not "the slightly higher one"."""
+    if not scores:
+        return None, 0.0
+    ranked = sorted(scores.items(), key=lambda kv: -kv[1])
+    name, best = ranked[0]
+    if best < threshold:
+        return None, best
+    if len(ranked) > 1 and best - ranked[1][1] < margin:
+        return None, best
+    return name, best
 
 
 class SpeakerIdentifier:
@@ -80,6 +97,17 @@ class SpeakerIdentifier:
         with torch.no_grad():
             embedding = model.encode_batch(audio)
         return embedding.squeeze().cpu().numpy()
+
+    def enrolled(self) -> list[str]:
+        return sorted(self._voiceprints_cached())
+
+    def scores(self, pcm: bytes) -> dict[str, float]:
+        """Cosine similarity of the clip to every enrolled voiceprint."""
+        voiceprints = self._voiceprints_cached()
+        if not voiceprints:
+            return {}
+        embedding = self.embed(pcm)
+        return {name: cosine_similarity(embedding, ref) for name, ref in voiceprints.items()}
 
     def identify(self, pcm: bytes) -> tuple[str | None, float]:
         """Returns (speaker_name_or_None, best_score). None means either no one is enrolled
