@@ -69,7 +69,7 @@ from firebot.link.protocol import THERM_COLS, THERM_ROWS
 from firebot.voice_intent.router import ShadowRouter
 from firebot.voice_intent.vocab import LABEL_TO_IDX, canonical_phrase
 
-DATABASE_URL = "postgresql://firebot:firebot@localhost:5432/firebot"
+DATABASE_URL = os.environ.get("FIREBOT_DB", "postgresql://firebot:firebot@localhost:5432/firebot")
 
 # The brain process's manual-control HTTP bridge (firebot.link.cmdhttp), not the
 # operator<->Pi link -- loopback only by design, so this only works when the console
@@ -133,7 +133,7 @@ VOICE_INTENT_ROUTER_STATE = os.environ.get("FIREBOT_VOICE_INTENT_ROUTER_STATE",
 app = FastAPI(title="firebot-api")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=os.environ.get("FIREBOT_CORS_ORIGINS", "http://localhost:5173").split(","),
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -730,3 +730,11 @@ async def ws_telemetry(ws: WebSocket) -> None:
             await asyncio.sleep(0.4)
     except WebSocketDisconnect:
         pass
+
+
+# ---- Optional: serve the built frontend from this same app (used by the Azure container) ----
+# Same origin means no CORS and wss:// just works. Must stay LAST so it never shadows /api or /ws.
+_WEB_DIR = os.environ.get("FIREBOT_WEB_DIR", "")
+if _WEB_DIR and Path(_WEB_DIR).is_dir():
+    from fastapi.staticfiles import StaticFiles
+    app.mount("/", StaticFiles(directory=_WEB_DIR, html=True), name="web")

@@ -48,7 +48,7 @@ export async function sendEstop() {
 export function connectTelemetry(onFrame, onCommand) {
   if (USE_MOCK) return mockTelemetryStream(onFrame);
 
-  const ws = new WebSocket(`ws://${window.location.hostname}:8000/ws/telemetry`);
+  const ws = new WebSocket(`${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}/ws/telemetry`);
   ws.onmessage = (evt) => {
     try {
       const msg = JSON.parse(evt.data);
