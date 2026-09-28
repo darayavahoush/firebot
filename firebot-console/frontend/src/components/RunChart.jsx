@@ -7,10 +7,11 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
+  ReferenceLine,
 } from "recharts";
 import { PanelHeader } from "./TelemetryGauges.jsx";
 
-export default function RunChart({ runId, detail }) {
+export default function RunChart({ runId, detail, cursorT }) {
   if (!runId) {
     return (
       <div className="panel h-full flex items-center justify-center min-h-[280px]">
@@ -75,6 +76,7 @@ export default function RunChart({ runId, detail }) {
               dot={false}
               name="Tank"
             />
+          {cursorT != null && <ReferenceLine x={cursorT} stroke="#fff2c9" strokeDasharray="3 3" />}
           </LineChart>
         </ResponsiveContainer>
       </div>

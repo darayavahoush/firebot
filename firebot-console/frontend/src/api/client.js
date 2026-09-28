@@ -18,6 +18,20 @@ export async function fetchRunDetail(runId) {
   return res.json();
 }
 
+export async function fetchRunSummary(runId) {
+  try {
+    const res = await fetch(`/api/runs/${runId}/summary`);
+    return res.ok ? res.json() : null;
+  } catch { return null; }
+}
+
+export async function fetchRunAnomalies(runId) {
+  try {
+    const res = await fetch(`/api/runs/${runId}/anomalies`);
+    return res.ok ? res.json() : null;
+  } catch { return null; }
+}
+
 export async function sendCommand(command) {
   if (USE_MOCK) {
     console.info("[mock] command sent", command);

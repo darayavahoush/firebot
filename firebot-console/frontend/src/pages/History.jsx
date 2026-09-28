@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import RunChart from "../components/RunChart.jsx";
-import { fetchRuns, fetchRunDetail } from "../api/client.js";
+import RunReplay from "../components/RunReplay.jsx";
+import RunInsights from "../components/RunInsights.jsx";
+import { fetchRuns, fetchRunDetail, fetchRunSummary, fetchRunAnomalies } from "../api/client.js";
 
 const SORTS = {
   newest: { label: "Newest", fn: (a, b) => new Date(b.started_at) - new Date(a.started_at) },
@@ -15,12 +17,18 @@ export default function History() {
   const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(true);
   const [sort, setSort] = useState("newest");
+  const [summary, setSummary] = useState(null);
+  const [anoms, setAnoms] = useState([]);
+  const [cursorT, setCursorT] = useState(null);
+  const [seek, setSeek] = useState(null);
 
   useEffect(() => { fetchRuns().then(setRuns).finally(() => setLoading(false)); }, []);
   useEffect(() => {
     if (!sel) return;
-    setDetail(null);
+    setDetail(null); setSummary(null); setAnoms([]); setSeek(null);
     fetchRunDetail(sel).then(setDetail);
+    fetchRunSummary(sel).then(setSummary);
+    fetchRunAnomalies(sel).then((r) => setAnoms(r?.anomalies ?? []));
   }, [sel]);
 
   const list = useMemo(() => [...runs].sort(SORTS[sort].fn), [runs, sort]);
@@ -64,7 +72,7 @@ export default function History() {
         </ul>
       </section>
 
-      <section aria-label="Run detail" className="lg:sticky lg:top-4">
+      <section aria-label="Run detail" className="min-w-0">
         {run ? (
           <>
             <h2 className="font-display font-extrabold text-[26px] tracking-tight">{new Date(run.started_at).toLocaleDateString(undefined, { day: "numeric", month: "long" })}, {dur(run.duration_s)} on {run.robot}</h2>
@@ -75,7 +83,14 @@ export default function History() {
         ) : (
           <p className="text-muted text-[15px] max-w-[46ch] py-10">Pick a run on the left to see its tank level and fire-location certainty over time.</p>
         )}
-        <div className="h-[380px]"><RunChart runId={sel} detail={detail} /></div>
+        {run && detail && (
+          <div className="flex flex-col gap-8">
+            <RunReplay points={detail.points} anomalies={anoms} seek={seek} onT={setCursorT} />
+            <div className="h-[300px]"><RunChart runId={sel} detail={detail} cursorT={cursorT} /></div>
+            <RunInsights summary={summary} anomalies={anoms} onSeek={setSeek} />
+          </div>
+        )}
+        {run && !detail && <p className="text-muted text-[14px]">Loading the run…</p>}
       </section>
     </div>
   );
