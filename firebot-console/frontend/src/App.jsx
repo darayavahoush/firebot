@@ -93,6 +93,14 @@ export default function App() {
     [pushLog]
   );
 
+  const onAnalog = useCallback(
+    ({ v, w, log: why }) => {
+      sendCommand({ type: "DRIVE", v, w });
+      if (why) pushLog("typed", `joystick ${why}`);
+    },
+    [pushLog]
+  );
+
   const onPump = useCallback(
     (on) => {
       sendCommand({ type: "PUMP", on });
@@ -120,7 +128,6 @@ export default function App() {
       if (page !== "live" || mode !== "manual") return;
       const map = {
         ArrowUp: "fwd",
-        ArrowDown: "back",
         ArrowLeft: "left",
         ArrowRight: "right",
         " ": "stop",
@@ -184,7 +191,7 @@ export default function App() {
             mode={mode}
             setMode={setMode}
             log={log}
-            onDrive={onDrive}
+            onAnalog={onAnalog}
             onPump={onPump}
             onNozzle={onNozzle}
           />

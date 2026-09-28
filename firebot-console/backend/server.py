@@ -26,6 +26,7 @@ Run with: uvicorn server:app --reload --port 8000
 
 import asyncio
 import json
+import math
 import logging
 import os
 import tempfile
@@ -310,6 +311,8 @@ class Command(BaseModel):
     on: bool | None = None
     angle: int | None = None
     mode: str | None = None
+    v: float | None = None  # analog drive (joystick): forward speed 0..1
+    w: float | None = None  # analog drive: turn rate -1..1, + is counter-clockwise (left)
 
 
 async def _post_bridge(path: str, payload: dict) -> dict[str, Any]:
@@ -330,7 +333,7 @@ async def _post_bridge(path: str, payload: dict) -> dict[str, Any]:
 
 # dir -> (v, w) at full stick deflection; scaled by cmd.speed (0-100%).
 _DRIVE_VECTORS = {
-    "fwd": (1.0, 0.0), "left": (0.0, -MAX_TURN_RATE), "right": (0.0, MAX_TURN_RATE),
+    "fwd": (1.0, 0.0), "left": (0.0, MAX_TURN_RATE), "right": (0.0, -MAX_TURN_RATE),  # +w = counter-clockwise (left), as in the sim
     "stop": (0.0, 0.0),
 }
 
@@ -343,6 +346,12 @@ _manual_state = {"v": 0.0, "w": 0.0, "pump": False, "nozzle": 0.0}
 
 @app.post("/api/command")
 async def post_command(cmd: Command) -> dict[str, Any]:
+    if cmd.type == "DRIVE" and cmd.dir is None and cmd.v is not None:
+        v, w = float(cmd.v), float(cmd.w or 0.0)
+        if not (math.isfinite(v) and math.isfinite(w)):
+            raise HTTPException(400, "v and w must be finite numbers")
+        _manual_state["v"], _manual_state["w"] = max(0.0, min(1.0, v)), max(-1.0, min(1.0, w))
+        return await _post_bridge("/manual", dict(_manual_state))
     if cmd.type == "DRIVE":
         if cmd.dir == "back":
             # No reverse gear: the wire protocol's cmd.v is clamped to [0, 1]. Fail loudly
