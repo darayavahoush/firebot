@@ -64,3 +64,11 @@ def test_non_checkpoint_file_is_a_clear_error(tmp_path):
     torch.save({"weights": 1}, p)
     with pytest.raises(ValueError, match="state_dict"):
         IntentClassifier(p)
+
+
+def test_old_format_checkpoint_gets_a_specific_error(tmp_path):
+    p = tmp_path / "head.pt"
+    torch.save({"encoder": "whisper-tiny", "head_state_dict": {}, "label_names": ["stop", "forward"],
+                "feature_dim": 384}, p)
+    with pytest.raises(ValueError, match="OLD-format"):
+        IntentClassifier(p)

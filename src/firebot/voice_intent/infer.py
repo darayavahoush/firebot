@@ -32,6 +32,12 @@ class IntentClassifier:
         from transformers import WhisperFeatureExtractor, WhisperModel
 
         ckpt = torch.load(checkpoint_path, map_location=device, weights_only=False)
+        if isinstance(ckpt, dict) and "head_state_dict" in ckpt:
+            raise ValueError(
+                f"{checkpoint_path} is an OLD-format checkpoint from the root train_voice_intent.py "
+                f"(labels {ckpt.get('label_names')}) -- a different command set than this "
+                "console's vocab.CLASSES (STOP, GOTO_NORTH, ...), so it can't be used. Train a new "
+                "one with the firebot.voice_intent pipeline (see src/firebot/voice_intent/README.md)")
         if not isinstance(ckpt, dict) or "state_dict" not in ckpt:
             keys = list(ckpt) if isinstance(ckpt, dict) else type(ckpt).__name__
             raise ValueError(f"{checkpoint_path} isn't a firebot.voice_intent.train checkpoint "
