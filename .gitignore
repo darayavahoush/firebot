@@ -26,3 +26,4 @@ data/voice_intent/
 data/voice_intent/
 data/real_intent/
 .numba_cache/
+.azure-firebot.env
