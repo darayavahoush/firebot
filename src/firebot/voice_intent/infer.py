@@ -24,7 +24,7 @@ import torch
 
 from .features import valid_frame_count
 from .model import IntentHead
-from .vocab import goto_target
+from .vocab import confidence_threshold, goto_target
 
 
 class IntentClassifier:
@@ -79,8 +79,12 @@ class IntentClassifier:
 
     @staticmethod
     def _payload(label: str, confidence: float, scores: dict[str, float],
-                 min_confidence: float) -> dict:
-        if confidence < min_confidence:
+                 min_confidence: float,
+                 class_min_confidence: dict[str, float] | None = None) -> dict:
+        # A per-class threshold, when given, replaces the global one for that predicted
+        # label only. Costs are asymmetric: a false STOP is cheap, a missed STOP is not,
+        # while a false GOTO/EXTINGUISH moves the robot or fires the pump.
+        if confidence < confidence_threshold(label, min_confidence, class_min_confidence):
             return {"name": "UNKNOWN", "params": {}, "confidence": confidence,
                     "source": "voice_intent", "raw_label": label, "scores": scores}
         target = goto_target(label)
@@ -91,20 +95,23 @@ class IntentClassifier:
         return {"name": label, "params": {}, "confidence": confidence,
                 "source": "voice_intent", "raw_label": label, "scores": scores}
 
-    def predict_intent_payload(self, wav_path: str | Path, min_confidence: float = 0.6
+    def predict_intent_payload(self, wav_path: str | Path, min_confidence: float = 0.6,
+                                class_min_confidence: dict[str, float] | None = None
                                 ) -> dict:
         """Convenience wrapper returning something close to `command.intents.Intent`
         shape, for the backend to validate/dispatch. Confidence gate is the
         classifier's job to expose, not to enforce -- caller decides what to
         do below `min_confidence` (e.g. fall back to the Groq+regex path)."""
         label, confidence, scores = self.predict(wav_path)
-        return self._payload(label, confidence, scores, min_confidence)
+        return self._payload(label, confidence, scores, min_confidence, class_min_confidence)
 
     def predict_intent_payload_array(self, audio: np.ndarray, sample_rate: int = 16_000,
-                                      min_confidence: float = 0.6) -> dict:
+                                      min_confidence: float = 0.6,
+                                      class_min_confidence: dict[str, float] | None = None
+                                      ) -> dict:
         """`predict_intent_payload`, but for an in-memory clip -- see `predict_array`."""
         label, confidence, scores = self.predict_array(audio, sample_rate)
-        return self._payload(label, confidence, scores, min_confidence)
+        return self._payload(label, confidence, scores, min_confidence, class_min_confidence)
 
 
 def main() -> None:

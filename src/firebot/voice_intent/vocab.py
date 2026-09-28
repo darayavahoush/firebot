@@ -46,6 +46,15 @@ def goto_target(label: str) -> tuple[float, float] | None:
     return PLACES[label[len("GOTO_"):].lower()]
 
 
+def confidence_threshold(label: str, default: float,
+                         overrides: dict[str, float] | None = None) -> float:
+    """Minimum confidence to accept a prediction of `label`: its per-class override if there
+    is one, else `default`. Costs are asymmetric -- a false STOP is cheap and a missed one is
+    not, while a false GOTO or EXTINGUISH moves the robot or fires the pump -- so one global
+    number is a compromise. Kept here (torch-free) so it can be tested without a model."""
+    return (overrides or {}).get(label, default)
+
+
 # One canonical, unambiguous phrase per non-UNKNOWN class -- chosen to parse the same way
 # under both this classifier and `firebot.command.parser.RuleParser` (see build_phrase_table's
 # docstring: the two are meant to agree). Used to hand the classifier's *label* back to

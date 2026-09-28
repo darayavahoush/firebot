@@ -480,3 +480,43 @@ def test_router_is_told_agreed_for_groq_punctuated_transcript(server, monkeypatc
 
     assert _run(server.transcribe(_FakeUploadFile(b"clip"))) == {"text": "Stop."}
     assert updates == [(0.9, True)]
+
+
+# ---- per-class confidence thresholds -------------------------------------------------------
+
+def test_parse_class_thresholds(server):
+    assert server._parse_class_thresholds("STOP=0.4, extinguish=0.8") == {"STOP": 0.4,
+                                                                          "EXTINGUISH": 0.8}
+    assert server._parse_class_thresholds("") == {}
+
+
+def test_parse_class_thresholds_skips_bad_entries_instead_of_crashing(server):
+    got = server._parse_class_thresholds("STOP=0.4,NOPE=0.5,GOTO_NORTH=abc,STATUS=1.7,HOME")
+    assert got == {"STOP": 0.4}
+
+
+def test_confidence_threshold_override_applies_to_that_class_only():
+    from firebot.voice_intent.vocab import confidence_threshold as ct
+    assert ct("STOP", 0.6, {"STOP": 0.4}) == 0.4
+    assert ct("GOTO_NORTH", 0.6, {"STOP": 0.4}) == 0.6   # untouched classes keep the global bar
+    assert ct("STOP", 0.6, None) == 0.6                   # no overrides: exactly the old behaviour
+    assert ct("STOP", 0.6, {}) == 0.6
+
+
+def test_server_passes_thresholds_only_when_configured(server, monkeypatch):
+    import types
+    seen = []
+
+    class Clf:
+        def predict_intent_payload_array(self, audio, sample_rate, min_confidence, **kw):
+            seen.append(kw)
+            return {"name": "STOP", "raw_label": "STOP", "confidence": 0.9, "params": {}}
+    monkeypatch.setattr(server, "_get_voice_classifier", lambda: Clf())
+    monkeypatch.setitem(sys.modules, "librosa",
+                        types.SimpleNamespace(load=lambda *a, **k: ([0.0], 16_000)))
+
+    monkeypatch.setattr(server, "VOICE_INTENT_CLASS_THRESHOLDS", {})
+    assert server._local_intent_phrase(b"RIFFclip") == ("stop", 0.9)
+    monkeypatch.setattr(server, "VOICE_INTENT_CLASS_THRESHOLDS", {"STOP": 0.4})
+    assert server._local_intent_phrase(b"RIFFclip") == ("stop", 0.9)
+    assert seen == [{}, {"class_min_confidence": {"STOP": 0.4}}]

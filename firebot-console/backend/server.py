@@ -42,7 +42,7 @@ from firebot.db.summary import narrate, summarize_run
 from firebot.fusion.anomaly import detect_anomalies
 from firebot.link.protocol import THERM_COLS, THERM_ROWS
 from firebot.voice_intent.router import ShadowRouter
-from firebot.voice_intent.vocab import canonical_phrase
+from firebot.voice_intent.vocab import LABEL_TO_IDX, canonical_phrase
 
 DATABASE_URL = "postgresql://firebot:firebot@localhost:5432/firebot"
 
@@ -72,6 +72,34 @@ VOSK_MODEL = os.environ.get("FIREBOT_VOSK_MODEL", "")
 VAD_ENABLED = os.environ.get("FIREBOT_VAD", "") not in ("", "0", "false")
 VAD_THRESHOLD = float(os.environ.get("FIREBOT_VAD_THRESHOLD", "0.5"))
 VOICE_INTENT_MIN_CONFIDENCE = float(os.environ.get("FIREBOT_VOICE_INTENT_MIN_CONFIDENCE", "0.6"))
+
+
+def _parse_class_thresholds(raw: str) -> dict[str, float]:
+    """"STOP=0.4,EXTINGUISH=0.8" -> {"STOP": 0.4, "EXTINGUISH": 0.8}. Overrides the global
+    minimum confidence for that predicted class only. Malformed or unknown-class entries are
+    skipped with a warning rather than crashing startup. Empty (the default) means no overrides,
+    i.e. behaviour is exactly the single global threshold."""
+    out: dict[str, float] = {}
+    for part in filter(None, (p.strip() for p in raw.split(","))):
+        name, _, val = part.partition("=")
+        name = name.strip().upper()
+        try:
+            v = float(val)
+            if name not in LABEL_TO_IDX or not 0.0 <= v <= 1.0:
+                raise ValueError
+        except ValueError:
+            logging.getLogger("firebot.console").warning(
+                "ignoring bad FIREBOT_VOICE_INTENT_CLASS_THRESHOLDS entry %r", part)
+            continue
+        out[name] = v
+    return out
+
+
+# Per-class overrides, e.g. FIREBOT_VOICE_INTENT_CLASS_THRESHOLDS="STOP=0.4,EXTINGUISH=0.8".
+# Deliberately unset by default: sensible values need confidence-vs-accuracy numbers from real
+# recordings, and a guessed default would be worse than the single global threshold.
+VOICE_INTENT_CLASS_THRESHOLDS = _parse_class_thresholds(
+    os.environ.get("FIREBOT_VOICE_INTENT_CLASS_THRESHOLDS", ""))
 # Where the ShadowRouter persists its learned per-confidence-decile trust state between
 # server restarts. A missing/corrupt file just starts fresh (see ShadowRouter.load).
 VOICE_INTENT_ROUTER_STATE = os.environ.get("FIREBOT_VOICE_INTENT_ROUTER_STATE",
@@ -452,8 +480,11 @@ def _local_intent_phrase(audio_bytes: bytes) -> tuple[str, float] | None:
     try:
         audio = _decode_audio_16k(audio_bytes)
         clf = _get_voice_classifier()
+        extra = ({"class_min_confidence": VOICE_INTENT_CLASS_THRESHOLDS}
+                 if VOICE_INTENT_CLASS_THRESHOLDS else {})
         payload = clf.predict_intent_payload_array(audio, sample_rate=16_000,
-                                                    min_confidence=VOICE_INTENT_MIN_CONFIDENCE)
+                                                    min_confidence=VOICE_INTENT_MIN_CONFIDENCE,
+                                                    **extra)
         if payload["name"] == "UNKNOWN":
             return None
         _voice_last_error = None  # a clean prediction means the local path is healthy again
@@ -490,6 +521,7 @@ async def voice_status() -> dict[str, Any]:
         "local_checkpoint_found": exists,
         "local_loaded": _voice_classifier is not None,
         "local_min_confidence": VOICE_INTENT_MIN_CONFIDENCE,
+        "local_class_thresholds": VOICE_INTENT_CLASS_THRESHOLDS,
         "vosk_configured": bool(VOSK_MODEL),
         "vosk_model_found": vosk_found,
         "vosk_loaded": _vosk_rec is not None,
