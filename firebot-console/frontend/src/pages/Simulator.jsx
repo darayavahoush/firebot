@@ -292,7 +292,7 @@ export default function Simulator() {
     <main className="flex-1 flex flex-col relative">
       {ack && (
         <div
-          className={`absolute top-3 left-1/2 -translate-x-1/2 z-20 rounded-full border px-4 py-1.5 text-[12px] font-mono shadow-lg transition-opacity ${
+          className={`absolute top-3 left-1/2 -translate-x-1/2 z-20 rounded-full border px-4 py-1.5 text-[13px] shadow-lg transition-opacity ${
             ack.understood ? "border-telemetry text-telemetry bg-panel" : "border-warn text-warn bg-panel"
           }`}
         >
@@ -301,52 +301,38 @@ export default function Simulator() {
           {ack.understood && <span className="text-faint"> {"\u2192"} {ack.intent}</span>}
         </div>
       )}
-      <div className="border-b border-line bg-panel px-6 py-2.5 flex items-center gap-4 flex-wrap">
-        <span className="font-display font-extrabold text-[13px] text-ink tracking-wide">SIMULATOR</span>
-        <button onClick={newBuilding} className="rounded-[3px] border border-line px-3 py-1 text-[12px] font-mono text-ink hover:border-telemetry hover:text-telemetry transition-colors">
-          New Building
-        </button>
-        <button onClick={newFire} className="rounded-[3px] border border-line px-3 py-1 text-[12px] font-mono text-ink hover:border-telemetry hover:text-telemetry transition-colors">
-          New Fire
-        </button>
-        <button onClick={() => setPaused((p) => !p)} className="rounded-[3px] border border-line px-3 py-1 text-[12px] font-mono text-ink hover:border-telemetry hover:text-telemetry transition-colors">
-          {paused ? "Resume" : "Pause"}
-        </button>
-        <div className="flex items-center gap-1 font-mono text-[12px] text-muted">
-          Speed
+      <div className="px-6 py-3 flex items-center gap-3 flex-wrap bg-base">
+        <button onClick={newBuilding} className="btn">New building</button>
+        <button onClick={newFire} className="btn">Move the fire</button>
+        <button onClick={() => setPaused((p) => !p)} className="btn">{paused ? "Resume" : "Pause"}</button>
+        <div className="flex items-center gap-1 rounded-full bg-panel p-1" role="group" aria-label="Speed">
           {SPEEDS.map((s) => (
-            <button key={s} onClick={() => setSpeed(s)} className={`rounded-[3px] px-2 py-1 border ${speed === s ? "border-telemetry text-telemetry" : "border-line text-muted hover:text-ink"}`}>
-              {s}x
-            </button>
+            <button key={s} onClick={() => setSpeed(s)} data-on={speed === s} className="chip border-transparent">{s}x</button>
           ))}
         </div>
-        <label className="flex items-center gap-1.5 font-mono text-[12px] text-muted cursor-pointer">
-          <input type="checkbox" checked={showTree} onChange={(e) => setShowTree(e.target.checked)} /> planner tree
-        </label>
-        <label className="flex items-center gap-1.5 font-mono text-[12px] text-muted cursor-pointer">
-          <input type="checkbox" checked={showSensors} onChange={(e) => setShowSensors(e.target.checked)} /> camera FOV
-        </label>
-        <div className="ml-auto flex items-center gap-2 font-mono text-[12px]">
-          <span className={`h-[7px] w-[7px] rounded-full ${t.mode === "STOPPED" ? "bg-alarm pulse-dot" : t.state === "SAFE" ? "bg-ok" : "bg-telemetry pulse-dot"}`} />
-          <span className="text-muted">MODE</span>
-          <span className="text-ink">{t.mode}</span>
-          <span className="text-faint">/</span>
-          <span className="text-ink">{t.state}</span>
-        </div>
+        <button className="chip" data-on={showTree} onClick={() => setShowTree((v) => !v)}>Planner tree</button>
+        <button className="chip" data-on={showSensors} onClick={() => setShowSensors((v) => !v)}>Camera view</button>
         <button
           onClick={() => sendCommand("stop")}
           aria-label="Emergency stop"
-          className="h-9 w-9 shrink-0 rounded-full bg-alarm text-[#1A0605] font-mono text-[8px] font-bold tracking-tight leading-none flex items-center justify-center border-2 border-[#1A0605]/40 shadow-[0_0_14px_rgba(252,61,33,0.45)] hover:brightness-110 active:scale-95 transition"
+          className="ml-auto h-10 px-5 rounded-full bg-alarm text-[#1A0605] font-display font-extrabold hover:brightness-110 active:scale-95 transition shadow-[0_0_0_4px_rgba(255,74,43,0.22)]"
         >
-          STOP
+          Stop
         </button>
       </div>
 
-      <div className="flex-1 grid grid-cols-[1fr_360px] gap-3 bg-base overflow-hidden p-3">
+      <div className="flex-1 grid grid-cols-[1fr_340px] gap-4 bg-base overflow-hidden px-6 pb-6">
         <div className="panel flex flex-col relative">
-          <div className="ember-glow w-40 h-40 -top-10 -right-10" />
+          <div className="absolute top-3 left-3 z-10 flex flex-wrap gap-2 pointer-events-none">
+            <span className="rounded-full bg-base/80 backdrop-blur px-3 py-1.5 text-[13px] flex items-center gap-2">
+              <span className={`h-2 w-2 rounded-full ${t.mode === "STOPPED" ? "bg-alarm pulse-dot" : t.state === "SAFE" ? "bg-ok" : "bg-telemetry pulse-dot"}`} />
+              {t.mode === "STOPPED" ? "Stopped" : t.state}
+            </span>
+            <span className="rounded-full bg-base/80 backdrop-blur px-3 py-1.5 text-[13px] data">Tank {(t.tank * 100).toFixed(0)}%</span>
+            <span className="rounded-full bg-base/80 backdrop-blur px-3 py-1.5 text-[13px] data">Fire {t.fire.p > 0 ? `${(t.fire.p * 100).toFixed(0)}% left` : "out"}</span>
+          </div>
           <SimCanvas engineRef={engineRef} showTree={showTree} showSensors={showSensors} height={620} />
-          <div className="border-t border-line bg-panel px-4 py-2 flex items-center gap-4 text-[11px] font-mono text-muted flex-wrap relative">
+          <div className="border-t border-line bg-panel px-4 py-2.5 flex items-center gap-4 text-[12px] text-muted flex-wrap relative">
             <Legend swatch="#3FA7D6" label="robot" />
             <Legend swatch="#E14A3A" label="fire (ground truth)" />
             <Legend swatch="#D69A3C" label="fire estimate + \u03c3" />
@@ -359,7 +345,7 @@ export default function Simulator() {
         <div className="panel flex flex-col overflow-hidden">
           <div className="flex bg-panel2">
             {["telemetry", "sensors", "planner", "voice"].map((k) => (
-              <button key={k} onClick={() => setTab(k)} className={`flex-1 px-2 py-2.5 text-[11px] font-mono tracking-wide uppercase transition-colors ${tab === k ? "bg-panel text-telemetry" : "text-muted hover:text-ink"}`}>
+              <button key={k} onClick={() => setTab(k)} className={`flex-1 px-2 py-3 text-[14px] capitalize transition-colors ${tab === k ? "bg-panel text-ink font-bold border-b-2 border-telemetry" : "text-muted hover:text-ink border-b-2 border-transparent"}`}>
                 {k}
               </button>
             ))}

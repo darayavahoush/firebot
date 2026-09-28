@@ -14,3 +14,7 @@ body { @apply bg-base text-ink font-sans antialiased; }
 @keyframes pulse-dot { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
 :focus-visible { outline: 2px solid #ff8a2a; outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { .pulse-dot { animation: none; } }
+.btn { @apply rounded-full border border-line bg-panel2 px-3.5 py-1.5 text-[13px] text-ink transition-colors hover:border-telemetry hover:text-telemetry; }
+.chip { @apply rounded-full px-3 py-1 text-[12px] text-muted border border-line cursor-pointer select-none transition-colors; }
+.chip[data-on="true"] { @apply text-ink border-telemetry bg-telemetry/15; }
+.heatbar { background: var(--ironbow); background-size: var(--full,100%) 100%; }

@@ -162,43 +162,45 @@ const GROUPS = [
   },
 ];
 
+const slug = (t) => t.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+
 export default function About() {
   return (
-    <main className="flex-1 overflow-y-auto p-6 bg-base">
-      <div className="max-w-[980px] mx-auto space-y-8">
-        <section>
-          <h1 className="font-display text-[22px] font-extrabold tracking-tight text-ink">How NIRVANA works</h1>
-          <p className="mt-2 text-[13px] leading-relaxed text-muted max-w-[720px]">
-            An autonomous firefighting robot: it searches a building, localises a fire from sensor bearings, plans a safe
-            route to it and sprays. An operator can take over by voice, text or joystick. Below is each algorithm in the
-            system, what it is for and how it works.
-          </p>
-        </section>
-
-        {GROUPS.map((g) => (
-          <section key={g.title}>
-            <h2 className="font-mono text-[11px] tracking-[0.14em] uppercase text-telemetry mb-3">{g.title}</h2>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-              {g.items.map((it) => (
-                <article key={it.name} className="panel p-4">
-                  <div className="flex items-baseline justify-between gap-3">
-                    <h3 className="text-[14px] font-medium text-ink">{it.name}</h3>
-                    <code className="font-mono text-[10px] text-faint shrink-0">{it.where}</code>
-                  </div>
-                  <p className="mt-1.5 text-[12.5px] text-ink/90 leading-relaxed">{it.what}</p>
-                  <ul className="mt-2.5 space-y-1.5">
-                    {it.how.map((h, i) => (
-                      <li key={i} className="flex gap-2 text-[12px] leading-relaxed text-muted">
-                        <span className="mt-[7px] h-[3px] w-[3px] shrink-0 bg-telemetry" />
-                        <span>{h}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </article>
-              ))}
-            </div>
-          </section>
-        ))}
+    <main className="flex-1 overflow-y-auto bg-base">
+      <div className="max-w-[1080px] mx-auto px-6 py-10 grid gap-12 md:grid-cols-[200px_1fr]">
+        <nav aria-label="Sections" className="md:sticky md:top-6 self-start">
+          <p className="text-[13px] text-faint mb-3">On this page</p>
+          <ul className="space-y-2">
+            {GROUPS.map((g) => (
+              <li key={g.title}><a href={`#${slug(g.title)}`} className="text-[14px] text-muted hover:text-telemetry">{g.title}</a></li>
+            ))}
+          </ul>
+        </nav>
+        <div className="space-y-16 min-w-0">
+          <header>
+            <h1 className="font-display font-extrabold text-[44px] leading-[1.05] tracking-tight max-w-[16ch]">How the robot finds a fire and puts it out</h1>
+            <p className="mt-4 text-[17px] leading-relaxed text-muted max-w-[58ch]">Each part below is real code in this repo. The file next to each name tells you where to read it.</p>
+          </header>
+          {GROUPS.map((g) => (
+            <section key={g.title} id={slug(g.title)} className="scroll-mt-6">
+              <h2 className="font-display font-extrabold text-[28px] tracking-tight pb-3 mb-2 border-b-[3px]" style={{ borderImage: "linear-gradient(90deg,#5a1a86,#c4286f,#ff8a2a,#fff2c9) 1" }}>{g.title}</h2>
+              <div className="divide-y divide-line">
+                {g.items.map((it) => (
+                  <article key={it.name} className="py-7 grid gap-x-8 gap-y-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
+                    <div>
+                      <h3 className="font-display font-bold text-[20px] leading-tight">{it.name}</h3>
+                      <code className="data inline-block mt-2 px-2 py-0.5 rounded bg-panel2 text-[12px] text-muted">{it.where}</code>
+                      <p className="mt-3 text-[16px] leading-relaxed text-ink">{it.what}</p>
+                    </div>
+                    <ul className="space-y-3 text-[15px] leading-[1.65] text-muted max-w-[62ch]">
+                      {it.how.map((h, i) => <li key={i} className="pl-4 border-l-2 border-line">{h}</li>)}
+                    </ul>
+                  </article>
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
       </div>
     </main>
   );
