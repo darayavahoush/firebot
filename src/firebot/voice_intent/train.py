@@ -21,6 +21,13 @@ import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset, WeightedRandomSampler
 
 from .model import IntentHead
+from .report import (
+    finite_rows,
+    format_threshold_table,
+    is_real_slice,
+    precision_recall,
+    selection_mask,
+)
 from .split import has_speaker_info, split_by_speaker
 from .vocab import CLASSES, NUM_CLASSES
 
@@ -61,12 +68,14 @@ def print_report(cm: np.ndarray, title: str = "") -> None:
     if title:
         print(f"\n=== {title} ===")
     present = [i for i in range(NUM_CLASSES) if cm[i].sum() > 0]
-    print(f"\n{'class':16s} {'n':>4s} {'acc':>6s}")
+    precision, _ = precision_recall(cm)
+    print(f"\n{'class':16s} {'n':>4s} {'recall':>7s} {'precision':>10s}")
     for i in present:
         n = cm[i].sum()
         acc = cm[i, i] / n if n else 0.0
+        prec = "n/a" if np.isnan(precision[i]) else f"{precision[i]:.1%}"
         flag = "  <-- weak" if acc < 0.7 else ""
-        print(f"{CLASSES[i]:16s} {n:4d} {acc:6.1%}{flag}")
+        print(f"{CLASSES[i]:16s} {n:4d} {acc:7.1%} {prec:>10s}{flag}")
     overall = np.trace(cm) / cm.sum() if cm.sum() else 0.0
     print(f"\noverall val accuracy: {overall:.1%}")
     confused = [(cm[i, j], CLASSES[i], CLASSES[j]) for i in present for j in present
@@ -91,21 +100,34 @@ def main() -> None:
                     help="hold out ALL real recordings from this person as an unseen-speaker "
                          "test (e.g. train on ananya, test on avinandan). Default: with 2+ real "
                          "speakers the last alphabetically is held out automatically.")
+    ap.add_argument("--real-test-only", action="store_true",
+                    help="never train on real recordings: all of them become test data, reported "
+                         "per person. Use while real clips cover only some classes (training on "
+                         "them would teach 'real mic => those classes').")
     args = ap.parse_args()
 
     torch.manual_seed(args.seed)
     data = np.load(args.features, allow_pickle=True)
+    data = {k: data[k] for k in data.files}
+    ok = finite_rows(data["features"])
+    if not ok.all():
+        print(f"[warn] dropping {int((~ok).sum())} clip(s) whose embeddings are NaN/inf (bad "
+              f"audio); a single such row turns the training loss into NaN")
+        n_rows = len(ok)
+        data = {k: (v[ok] if getattr(v, "ndim", 0) >= 1 and len(v) == n_rows else v)
+                for k, v in data.items()}
     feats, labels = data["features"], data["labels"]
     d_model = int(data["d_model"])
     model_name = str(data["model_name"])
     print(f"Loaded {len(feats)} embeddings ({d_model}-dim, from {model_name})")
 
-    pooling = str(data["pooling"]) if "pooling" in data.files else "all_frames"
-    speakers = data["speakers"] if "speakers" in data.files else np.array([""] * len(labels))
-    sources = data["sources"] if "sources" in data.files else np.array([""] * len(labels))
+    pooling = str(data["pooling"]) if "pooling" in data else "all_frames"
+    speakers = data["speakers"] if "speakers" in data else np.array([""] * len(labels))
+    sources = data["sources"] if "sources" in data else np.array([""] * len(labels))
     if has_speaker_info(speakers):
         train_idx, val_idx, val_slice = split_by_speaker(
-            sources, speakers, labels, args.val_frac, args.seed, args.holdout_real_speaker)
+            sources, speakers, labels, args.val_frac, args.seed, args.holdout_real_speaker,
+            real_test_only=args.real_test_only)
         print("split: by speaker (validation voices/people are never seen in training)")
     else:
         print("[warn] this features file has no speaker info (generated before the manifest "
@@ -120,6 +142,13 @@ def main() -> None:
     x_val = torch.from_numpy(feats[val_idx])
     y_val = torch.from_numpy(labels[val_idx])
     print(f"train={len(train_idx)}  val={len(val_idx)}")
+    # Pick the best epoch on synthetic-voice validation only. Real recordings stay an untouched
+    # test: choosing the epoch by them would make the real numbers optimistic.
+    sel = selection_mask(val_slice)
+    if not any(not is_real_slice(s) for s in val_slice):
+        print("[warn] no synthetic validation slice; selecting the best epoch on real clips, "
+              "so treat the real numbers as optimistic")
+    print(f"checkpoint selection uses {int(sel.sum())} of {len(val_idx)} validation clips")
 
     missing = [CLASSES[c] for c in range(NUM_CLASSES) if (labels == c).sum() == 0]
     if missing:
@@ -153,18 +182,25 @@ def main() -> None:
             val_logits = head(x_val)
             val_preds = val_logits.argmax(dim=1)
             val_acc = (val_preds == y_val).float().mean().item() if len(val_idx) else float("nan")
+            sel_acc = ((val_preds == y_val)[sel].float().mean().item()
+                       if sel.any() else float("nan"))
 
-        if val_acc > best_val_acc:
-            best_val_acc = val_acc
+        if sel_acc > best_val_acc:
+            best_val_acc = sel_acc
             best_state = {k: v.clone() for k, v in head.state_dict().items()}
 
         if epoch % 5 == 0 or epoch == 1:
-            print(f"epoch {epoch:3d}  train_loss={train_loss:.4f}  val_acc={val_acc:.1%}")
+            print(f"epoch {epoch:3d}  train_loss={train_loss:.4f}  val_acc={val_acc:.1%}  "
+                  f"selection_acc={sel_acc:.1%}")
 
-    head.load_state_dict(best_state)
+    if best_state is not None:  # None only if there was no validation data at all
+        head.load_state_dict(best_state)
     head.eval()
     with torch.no_grad():
-        val_preds = head(x_val).argmax(dim=1).numpy()
+        val_probs = torch.softmax(head(x_val), dim=1).numpy()
+    val_preds = val_probs.argmax(axis=1)
+    val_conf = val_probs.max(axis=1)
+    val_correct = val_preds == y_val.numpy()
     cm = confusion_matrix(val_preds, y_val.numpy(), NUM_CLASSES)
     print_report(cm, "all validation clips")
     if len(set(val_slice.tolist())) > 1:
@@ -172,6 +208,15 @@ def main() -> None:
             m = val_slice == name
             print_report(confusion_matrix(val_preds[m], y_val.numpy()[m], NUM_CLASSES),
                          f"slice: {name}")
+    # How much to trust a confidence score: use this to choose the console's min-confidence.
+    print("\n=== confidence vs. accuracy ===")
+    groups = {"synthetic validation": sel}
+    real = ~sel if sel.any() else np.zeros(len(val_slice), dtype=bool)
+    if real.any():
+        groups["real recordings (test only)"] = real
+    for name, m in groups.items():
+        print(f"\n{name} (n={int(m.sum())}):")
+        print(format_threshold_table(val_conf[m], val_correct[m]))
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     torch.save({

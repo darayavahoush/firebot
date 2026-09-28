@@ -35,6 +35,7 @@ import csv
 import itertools
 import re
 import sys
+import zlib
 from pathlib import Path
 
 import numpy as np
@@ -241,6 +242,14 @@ def _resample_to_target(src: Path, dst: Path) -> None:
     sf.write(str(dst), audio, SAMPLE_RATE, subtype="PCM_16")
 
 
+def is_usable_audio(audio: np.ndarray, min_peak: float = 1e-3) -> bool:
+    """False for empty, NaN/inf, or (near-)silent audio. Time-stretch/pitch-shift can emit
+    NaN on degenerate input (librosa's phase vocoder raises numba "invalid value encountered
+    in cast"); PCM_16 would then store garbage or silence under a real label."""
+    a = np.asarray(audio)
+    return a.size > 0 and bool(np.isfinite(a).all()) and float(np.abs(a).max()) >= min_peak
+
+
 def _augment(audio: np.ndarray, rng: np.random.Generator) -> np.ndarray:
     """One randomized augmentation: small gain, gaussian noise, tiny
     time-stretch, applied independently so clips stay recognizable speech,
@@ -266,10 +275,67 @@ def _augment(audio: np.ndarray, rng: np.random.Generator) -> np.ndarray:
     return out.astype(np.float32)
 
 
+PARTIAL_MANIFEST = "manifest_synth.partial.csv"
+_ROW_FIELDS = ["path", "label", "source", "speaker", "phrase"]
+
+
+def _read_rows(csv_path: Path, out_dir: Path, skip_real: bool = False
+               ) -> list[tuple[Path, str, str, str, str]]:
+    if not csv_path.exists():
+        return []
+    with csv_path.open(newline="") as f:
+        return [(out_dir / r["path"], r["label"], r["source"], r.get("speaker", ""),
+                 r.get("phrase", ""))
+                for r in csv.DictReader(f) if not (skip_real and r["source"] == "real")]
+
+
+def _append_partial(out_dir: Path, rows: list[tuple[Path, str, str, str, str]]) -> None:
+    """Record a finished class. Written once per class, so an interrupted run keeps every class
+    it completed -- the real manifest.csv only exists after the whole sweep."""
+    path = out_dir / PARTIAL_MANIFEST
+    new = not path.exists()
+    with path.open("a", newline="") as f:
+        w = csv.writer(f)
+        if new:
+            w.writerow(_ROW_FIELDS)
+        for p, label, source, speaker, phrase in rows:
+            w.writerow([str(p.relative_to(out_dir)), label, source, speaker, phrase])
+
+
+def adopt_existing_class(label_dir: Path, label: str, phrases: list[str], voices: list,
+                         variants: int, augment: int) -> list[tuple[Path, str, str, str, str]] | None:
+    """Rebuild a class's manifest rows from clips already on disk, or None if they don't match.
+
+    The sweep is deterministic: for each phrase, for each voice, for each variant, one `_tts`
+    clip followed by `augment` `_aug` clips, numbered consecutively. So when the folder holds
+    exactly phrases x voices x variants x (1 + augment) files with the right `_tts`/`_aug`
+    pattern, index -> (phrase, voice) is recoverable. Any mismatch (a partial class, different
+    voices or settings, a failed synth that shifted the numbering) returns None and the class
+    is regenerated rather than guessed at."""
+    unit = ["tts"] + ["aug"] * augment
+    combos = [(ph, v) for ph in phrases for v in voices for _ in range(variants)]
+    expected = len(combos) * len(unit)
+    files = sorted(label_dir.glob("*.wav")) if label_dir.is_dir() else []
+    if not files or len(files) != expected:
+        return None
+    rows: list[tuple[Path, str, str, str, str]] = []
+    idx = 0
+    for phrase, voice in combos:
+        for kind in unit:
+            p = label_dir / f"{idx:05d}_{kind}.wav"
+            if not p.exists() or p.stat().st_size <= 44:
+                return None
+            rows.append((p, label, "synth_tts" if kind == "tts" else "synth_aug",
+                         voice.id, phrase))
+            idx += 1
+    return rows
+
+
 def generate_synthetic(out_dir: Path, variants_per_voice: int, augment: int,
                         limit_per_class: int | None, voice_filter: str | None = "en",
                         seed: int = 0,
-                        exclude_voices: set[str] | frozenset[str] = frozenset()
+                        exclude_voices: set[str] | frozenset[str] = frozenset(),
+                        resume: bool = False
                         ) -> list[tuple[Path, str, str, str, str]]:
     import soundfile as sf
 
@@ -286,16 +352,41 @@ def generate_synthetic(out_dir: Path, variants_per_voice: int, augment: int,
             "above for why each one failed."
         )
     print(f"  using {len(voices)} voice(s): {[v.id for v in voices]}")
-    rng = np.random.default_rng(seed)
     table = vocab.build_phrase_table()
     rows: list[tuple[Path, str, str, str, str]] = []
     audio_root = out_dir / "audio"
+
+    partial = out_dir / PARTIAL_MANIFEST
+    done: dict[str, list[tuple[Path, str, str, str, str]]] = {}
+    if resume:
+        for row in _read_rows(partial, out_dir):
+            done.setdefault(row[1], []).append(row)
+    else:
+        partial.unlink(missing_ok=True)
 
     for label, phrases in table.items():
         if limit_per_class is not None:
             phrases = phrases[:limit_per_class]
         label_dir = audio_root / label
+        if resume and label in done:
+            rows += done[label]
+            print(f"  {label:16s} -> {len(done[label])} clips (resumed)")
+            continue
+        if resume:
+            adopted = adopt_existing_class(label_dir, label, phrases, voices,
+                                           variants_per_voice, augment)
+            if adopted is not None:
+                _append_partial(out_dir, adopted)
+                rows += adopted
+                print(f"  {label:16s} -> {len(adopted)} clips (adopted from disk)")
+                continue
+            for stale in label_dir.glob("*.wav") if label_dir.is_dir() else []:
+                stale.unlink()  # an unfinished class: regenerate it cleanly
+        # A per-class generator, so a resumed run makes the same clips for a class as an
+        # uninterrupted one would, whichever classes were skipped before it.
+        rng = np.random.default_rng([seed, zlib.crc32(label.encode())])
         label_dir.mkdir(parents=True, exist_ok=True)
+        class_rows: list[tuple[Path, str, str, str, str]] = []
         clip_idx = 0
         for phrase in phrases:
             for voice in voices:
@@ -309,21 +400,29 @@ def generate_synthetic(out_dir: Path, variants_per_voice: int, augment: int,
                               f"phrase={phrase!r}: {exc}", file=sys.stderr)
                         base_path.unlink(missing_ok=True)
                         continue
-                    rows.append((base_path, label, "synth_tts", voice.id, phrase))
+                    audio, _ = sf.read(str(base_path), dtype="float32")
+                    if not is_usable_audio(audio):
+                        print(f"  [warn] TTS audio for voice={voice.id!r} phrase={phrase!r} "
+                              f"is silent or non-finite, dropping it", file=sys.stderr)
+                        base_path.unlink(missing_ok=True)
+                        continue
+                    class_rows.append((base_path, label, "synth_tts", voice.id, phrase))
                     clip_idx += 1
 
-                    audio, _ = sf.read(str(base_path), dtype="float32")
                     for a in range(augment):
                         aug_path = label_dir / f"{clip_idx:05d}_aug.wav"
                         aug_audio = _augment(audio, rng)
-                        if aug_audio.size == 0:
-                            print(f"  [warn] augmentation of {base_path} produced empty "
-                                  f"audio, skipping this augmented copy", file=sys.stderr)
+                        if not is_usable_audio(aug_audio):
+                            print(f"  [warn] augmentation of {base_path} produced empty, "
+                                  f"non-finite or silent audio, skipping this augmented "
+                                  f"copy", file=sys.stderr)
                             continue
                         sf.write(str(aug_path), aug_audio, SAMPLE_RATE, subtype="PCM_16")
-                        rows.append((aug_path, label, "synth_aug", voice.id, phrase))
+                        class_rows.append((aug_path, label, "synth_aug", voice.id, phrase))
                         clip_idx += 1
         print(f"  {label:16s} -> {clip_idx} clips")
+        rows += class_rows
+        _append_partial(out_dir, class_rows)
     return rows
 
 
@@ -360,13 +459,7 @@ def load_kept_rows(out_dir: Path) -> list[tuple[Path, str, str, str, str]]:
     """Rows of an existing manifest.csv minus its real-recording rows, so real clips can be
     re-merged (added, removed, relabelled) without regenerating -- or losing -- the synthetic
     rows. Returns [] when there's no manifest."""
-    manifest = out_dir / "manifest.csv"
-    if not manifest.exists():
-        return []
-    with manifest.open(newline="") as f:
-        return [(out_dir / r["path"], r["label"], r["source"], r.get("speaker", ""),
-                 r.get("phrase", ""))
-                for r in csv.DictReader(f) if r["source"] != "real"]
+    return _read_rows(out_dir / "manifest.csv", out_dir, skip_real=True)
 
 
 def clear_real_audio(out_dir: Path) -> int:
@@ -418,6 +511,10 @@ def main() -> None:
     ap.add_argument("--no-novelty-voices", action="store_true",
                      help="skip macOS novelty voices (Albert, Bells, Zarvox, Organ, ... -- they "
                           "sing/hum/distort rather than speak)")
+    ap.add_argument("--resume", action="store_true",
+                     help="continue an interrupted sweep: keep classes already finished (or "
+                          "complete on disk with the same voices/--augment/--variants-per-voice) "
+                          "and generate only the rest. Use the same flags as the original run.")
     ap.add_argument("--skip-synth", action="store_true",
                      help="only merge --real-dir, skip TTS generation (e.g. re-running after adding recordings)")
     args = ap.parse_args()
@@ -433,15 +530,18 @@ def main() -> None:
         print("Generating synthetic (TTS) data...")
         rows += generate_synthetic(args.out, args.variants_per_voice, args.augment,
                                     args.limit_per_class, args.voice_filter or None,
-                                    exclude_voices=exclude)
+                                    exclude_voices=exclude, resume=args.resume)
 
     elif args.real_dir is not None:
         # --skip-synth: keep the synthetic rows already in the manifest instead of
         # overwriting it with real-only rows.
         rows += load_kept_rows(args.out)
         if not rows:
-            print("[warn] --skip-synth but no existing manifest.csv in "
-                  f"{args.out}; the result will contain real clips only.", file=sys.stderr)
+            hint = (f" ({PARTIAL_MANIFEST} exists: the synthetic sweep didn't finish -- rerun "
+                    f"with --resume to complete it before merging real clips)"
+                    if (args.out / PARTIAL_MANIFEST).exists() else "")
+            print(f"[warn] --skip-synth but no manifest.csv in {args.out}; the result will "
+                  f"contain real clips only{hint}.", file=sys.stderr)
 
     if args.real_dir is not None:
         print(f"Merging real recordings from {args.real_dir}...")

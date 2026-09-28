@@ -18,6 +18,8 @@ bad real-speech number:
                         two or more real speakers and no explicit choice)
   real_seen_speaker     held-out takes of a real speaker who is also in training
                         (the only option when just one real speaker exists)
+  real_test_<name>      with real_test_only=True: all of that person's real clips,
+                        none of which are trained on
 
 Pure numpy on purpose: no torch import, so it is cheap to unit-test.
 """
@@ -36,6 +38,7 @@ def split_by_speaker(
     val_frac: float = 0.15,
     seed: int = 0,
     holdout_real_speaker: str | None = None,
+    real_test_only: bool = False,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Return (train_idx, val_idx, val_slice) where val_slice[i] names the slice
     of the i-th entry of val_idx."""
@@ -61,7 +64,14 @@ def split_by_speaker(
     # --- real: hold out a whole person if we can, else a few takes -----------
     is_real = sources == REAL_SOURCE
     real_speakers = sorted(set(speakers[is_real]))
-    if holdout_real_speaker is not None:
+    if real_test_only:
+        # Every real clip is test data, never training data. Needed while real recordings
+        # cover only a few classes: training on them would teach "real-mic audio => one of
+        # those classes" (a shortcut), and would leave nothing honest to measure with.
+        val_mask |= is_real
+        for spk in real_speakers:
+            slice_of[is_real & (speakers == spk)] = f"real_test_{spk}"
+    elif holdout_real_speaker is not None:
         if holdout_real_speaker not in real_speakers:
             raise ValueError(
                 f"--holdout-real-speaker {holdout_real_speaker!r} not found among "
