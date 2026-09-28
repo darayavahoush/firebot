@@ -22,3 +22,4 @@ checkpoints/
 
 # trained voice-intent router state (written by the console backend at runtime)
 voice_intent_router.json
+data/voice_intent/
