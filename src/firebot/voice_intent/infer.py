@@ -24,7 +24,7 @@ import torch
 
 from .features import valid_frame_count
 from .model import IntentHead
-from .vocab import confidence_threshold, goto_target
+from .vocab import CLASSES, confidence_threshold, goto_target
 
 
 class IntentClassifier:
@@ -32,19 +32,36 @@ class IntentClassifier:
         from transformers import WhisperFeatureExtractor, WhisperModel
 
         ckpt = torch.load(checkpoint_path, map_location=device, weights_only=False)
-        self.classes: list[str] = ckpt["classes"]
+        if not isinstance(ckpt, dict) or "state_dict" not in ckpt:
+            keys = list(ckpt) if isinstance(ckpt, dict) else type(ckpt).__name__
+            raise ValueError(f"{checkpoint_path} isn't a firebot.voice_intent.train checkpoint "
+                             f"(no 'state_dict'; found {keys}) -- re-run train.py")
+        state = ckpt["state_dict"]
+        # Head shape is recoverable from the weights themselves, so a checkpoint saved without
+        # the optional metadata keys still loads instead of KeyError-ing.
+        hidden, d_model = state["net.1.weight"].shape
+        n_out = state["net.4.weight"].shape[0]
+        classes = ckpt.get("classes")
+        if classes is None:
+            if n_out != len(CLASSES):
+                raise ValueError(f"{checkpoint_path} has no 'classes' and its head has {n_out} "
+                                 f"outputs but vocab.CLASSES has {len(CLASSES)} -- it was trained "
+                                 "against a different vocabulary; re-run train.py")
+            classes = CLASSES
+        self.classes: list[str] = list(classes)
+        model_name = ckpt.get("model_name", "openai/whisper-tiny.en")
         # Checkpoints trained before valid-frame pooling existed averaged over all
         # 1500 padded frames; pool the same way they were trained or the head sees
         # inputs from a different distribution.
         self.pooling: str = ckpt.get("pooling", "all_frames")
         self.device = device
-        self.extractor = WhisperFeatureExtractor.from_pretrained(ckpt["model_name"])
-        self.encoder = WhisperModel.from_pretrained(ckpt["model_name"]).encoder.to(device).eval()
+        self.extractor = WhisperFeatureExtractor.from_pretrained(model_name)
+        self.encoder = WhisperModel.from_pretrained(model_name).encoder.to(device).eval()
         for p in self.encoder.parameters():
             p.requires_grad_(False)
-        self.head = IntentHead(d_model=ckpt["d_model"], hidden=ckpt["hidden"],
+        self.head = IntentHead(d_model=ckpt.get("d_model", d_model), hidden=ckpt.get("hidden", hidden),
                                 num_classes=len(self.classes)).to(device)
-        self.head.load_state_dict(ckpt["state_dict"])
+        self.head.load_state_dict(state)
         self.head.eval()
 
     @torch.no_grad()

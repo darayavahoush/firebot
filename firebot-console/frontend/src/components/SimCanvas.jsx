@@ -80,7 +80,9 @@ export default function SimCanvas({ engineRef, showTree, showSensors, height = 5
       // draw, and a negative scale makes ctx.ellipse() throw on negative radii every frame.
       if (!(scale > 0)) return;
       const ox = (cssW - world.width * scale) / 2, oy = (cssH - world.height * scale) / 2;
-      const X = (x) => ox + x * scale, Y = (y) => oy + y * scale;
+      // World frame is +x east, +y NORTH (same as the Python side), but canvas y grows downward,
+      // so flip y here or "north" would be drawn at the bottom of the map.
+      const X = (x) => ox + x * scale, Y = (y) => oy + (world.height - y) * scale;
       const t = now / 1000;
       const { x: rx0, y: ry0, th } = controller.robot;
 
@@ -123,14 +125,14 @@ export default function SimCanvas({ engineRef, showTree, showSensors, height = 5
 
       // ---- fog backdrop across the whole floor footprint ----
       ctx.fillStyle = COLORS.fog;
-      ctx.fillRect(X(0), Y(0), world.width * scale, world.height * scale);
+      ctx.fillRect(X(0), oy, world.width * scale, world.height * scale);
       ctx.save();
-      ctx.beginPath(); ctx.rect(X(0), Y(0), world.width * scale, world.height * scale); ctx.clip();
+      ctx.beginPath(); ctx.rect(X(0), oy, world.width * scale, world.height * scale); ctx.clip();
       ctx.strokeStyle = COLORS.fogHatch; ctx.lineWidth = 1;
       ctx.beginPath();
       for (let d = -world.height * scale; d < world.width * scale; d += 10) {
-        ctx.moveTo(X(0) + d, Y(0) + world.height * scale);
-        ctx.lineTo(X(0) + d + world.height * scale, Y(0));
+        ctx.moveTo(X(0) + d, oy + world.height * scale);
+        ctx.lineTo(X(0) + d + world.height * scale, oy);
       }
       ctx.stroke();
       ctx.restore();
@@ -145,7 +147,7 @@ export default function SimCanvas({ engineRef, showTree, showSensors, height = 5
       dctx.clearRect(0, 0, cssW, cssH);
 
       dctx.fillStyle = COLORS.floor;
-      dctx.fillRect(X(0), Y(0), world.width * scale, world.height * scale);
+      dctx.fillRect(X(0), oy, world.width * scale, world.height * scale);
 
       dctx.lineWidth = 1;
       dctx.beginPath(); dctx.strokeStyle = COLORS.grid;
@@ -159,12 +161,12 @@ export default function SimCanvas({ engineRef, showTree, showSensors, height = 5
 
       dctx.fillStyle = COLORS.axis; dctx.font = "9px 'JetBrains Mono', monospace";
       dctx.textAlign = "center"; dctx.textBaseline = "top";
-      for (let gx = 0; gx <= world.width; gx += 5) dctx.fillText(`${gx}m`, X(gx), Y(world.height) + 4);
+      for (let gx = 0; gx <= world.width; gx += 5) dctx.fillText(`${gx}m`, X(gx), Y(0) + 4);
       dctx.textAlign = "right"; dctx.textBaseline = "middle";
       for (let gy = 0; gy <= world.height; gy += 5) dctx.fillText(`${gy}m`, X(0) - 5, Y(gy));
 
       for (const w of world.walls) {
-        const px = X(w.x), py = Y(w.y), pw = w.w * scale, ph = w.h * scale;
+        const px = X(w.x), py = Y(w.y + w.h), pw = w.w * scale, ph = w.h * scale;  // Y() is flipped: top edge = y + h
         if (w.prop) drawCrate(dctx, px, py, pw, ph);
         else drawWall(dctx, px, py, pw, ph);
       }
@@ -179,7 +181,13 @@ export default function SimCanvas({ engineRef, showTree, showSensors, height = 5
       }
 
       dctx.globalCompositeOperation = "destination-in";
-      dctx.drawImage(mask, 0, 0, mask.width, mask.height, X(0), Y(0), world.width * scale, world.height * scale);
+      // mask is stored in world coords (row 0 = y 0 = south): flip it vertically about the
+      // map's centre when compositing onto the y-flipped canvas
+      dctx.save();
+      dctx.translate(0, 2 * oy + world.height * scale);
+      dctx.scale(1, -1);
+      dctx.drawImage(mask, 0, 0, mask.width, mask.height, X(0), oy, world.width * scale, world.height * scale);
+      dctx.restore();
       dctx.globalCompositeOperation = "source-over";
 
       ctx.drawImage(detail, 0, 0, cssW, cssH);
@@ -223,11 +231,11 @@ export default function SimCanvas({ engineRef, showTree, showSensors, height = 5
       if (showSensors) {
         ctx.fillStyle = COLORS.cone;
         ctx.beginPath(); ctx.moveTo(X(rx0), Y(ry0));
-        ctx.arc(X(rx0), Y(ry0), REVEAL_FAR * scale, th - HFOV / 2, th + HFOV / 2);
+        ctx.arc(X(rx0), Y(ry0), REVEAL_FAR * scale, -th - HFOV / 2, -th + HFOV / 2);  // -th: screen y is flipped
         ctx.closePath(); ctx.fill();
       }
       drawSonarPing(ctx, X(rx0), Y(ry0), scale, t);
-      drawCar(ctx, X(rx0), Y(ry0), th, scale, controller.mode, controller.pumpOn, t);
+      drawCar(ctx, X(rx0), Y(ry0), -th, scale, controller.mode, controller.pumpOn, t);
 
       // scale bar, bottom-right
       const barM = world.width > 20 ? 5 : 1;
