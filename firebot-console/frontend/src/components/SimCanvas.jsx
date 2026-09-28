@@ -76,6 +76,9 @@ export default function SimCanvas({ engineRef, showTree, showSensors, height = 5
       const world = controller.world;
       const pad = 30;
       const scale = Math.min((cssW - pad * 2) / world.width, (cssH - pad * 2) / world.height);
+      // Canvas narrower than its padding (first layout pass, tiny window): nothing sensible to
+      // draw, and a negative scale makes ctx.ellipse() throw on negative radii every frame.
+      if (!(scale > 0)) return;
       const ox = (cssW - world.width * scale) / 2, oy = (cssH - world.height * scale) / 2;
       const X = (x) => ox + x * scale, Y = (y) => oy + y * scale;
       const t = now / 1000;
@@ -288,7 +291,7 @@ function drawCrate(ctx, px, py, pw, ph) {
 
   ctx.fillStyle = "rgba(0,0,0,0.4)";
   ctx.beginPath();
-  ctx.ellipse(px + pw / 2, py + ph + 1.5, pw * 0.55, Math.max(1.5, ph * 0.16), 0, 0, 7);
+  ctx.ellipse(px + pw / 2, py + ph + 1.5, Math.max(0, pw * 0.55), Math.max(1.5, ph * 0.16), 0, 0, 7);
   ctx.fill();
 
   roundedRectPath(ctx, px, py, pw, ph, r);

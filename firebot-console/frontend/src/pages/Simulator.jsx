@@ -378,6 +378,7 @@ export default function Simulator() {
                 setShowSuggestions={setShowSuggestions}
                 fillCommand={fillCommand}
                 asrStatus={asrStatus}
+                voiceMode={voiceMode}
                 asrError={asrError}
                 toggleRecording={toggleRecording}
               />
@@ -561,7 +562,7 @@ const COMMAND_HELP = [
 function VoiceTab({
   t, speechSupported, speechUsable, webSpeechBroken, listening, toggleListening, transcript, voiceError, textCmd, setTextCmd,
   sendCommand, cmdInputRef, suggestions, showSuggestions, setShowSuggestions, fillCommand,
-  asrStatus, asrError, toggleRecording,
+  asrStatus, asrError, toggleRecording, voiceMode,
 }) {
   const asrBusy = asrStatus === "transcribing";
   const asrLabel = asrStatus === "recording" ? "STOP" : asrStatus === "transcribing" ? "\u2026" : "REC";
