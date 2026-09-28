@@ -2,10 +2,9 @@ import React, { useEffect, useRef } from "react";
 import { THERM_ROWS, THERM_COLS } from "../lib/simEngine.js";
 
 function colorFor(t) {
-  // 22C..70C mapped near-black -> signal cyan -> caution amber -> alarm red,
-  // matching the console's telemetry/warn/alarm hues
+  // 22C..70C on the ironbow ramp (indigo -> magenta -> orange -> pale yellow)
   const stops = [
-    [0.0, [8, 10, 14]], [0.35, [74, 199, 236]], [0.65, [255, 176, 0]], [1.0, [252, 61, 33]],
+    [0.0, [14, 8, 32]], [0.25, [90, 26, 134]], [0.5, [196, 40, 111]], [0.75, [255, 138, 42]], [1.0, [255, 242, 201]],
   ];
   const v = Math.max(0, Math.min(1, (t - 22) / (70 - 22)));
   for (let i = 1; i < stops.length; i++) {

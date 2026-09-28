@@ -1,37 +1,21 @@
-/** @type {import('tailwindcss').Config} */
+/** Thermal-imager palette: the cold end of an ironbow ramp is the shell, the hot end is signal. */
 export default {
   content: ["./index.html", "./src/**/*.{js,jsx}"],
   theme: {
     extend: {
       colors: {
-        // Mission-control register: a true-black instrument shell, not a warm dark theme.
-        // Multiple accent hues are semantic, not decorative — signal/caution/alarm map to
-        // exactly the three states a flight console needs an operator to tell apart at a
-        // glance, the same convention real telemetry displays use.
-        base: "#050607",         // app shell, true black
-        panel: "#0A0D10",        // instrument surface
-        panel2: "#12171B",       // hover / secondary surface
-        line: "rgba(232,236,239,0.10)",  // hairline dividers
-        ink: "#E8ECEF",          // primary text, cool white
-        muted: "rgba(232,236,239,0.58)", // secondary text
-        faint: "rgba(232,236,239,0.34)", // tertiary / placeholder text
-        alarm: "#FC3D21",        // NASA insignia red — E-STOP / critical only
-        warn: "#FFB000",         // amber — caution states
-        telemetry: "#4AC7EC",    // signal cyan — live data, active state
-        ok: "#20D48A",           // nominal / success green
-        scope: "#000000",        // camera/video viewport, always true black
+        base: "#0E0919", panel: "#171027", panel2: "#211736",
+        line: "rgba(226,214,255,0.11)", ink: "#F1ECFA",
+        muted: "rgba(241,236,250,0.62)", faint: "rgba(241,236,250,0.36)",
+        alarm: "#FF4A2B", warn: "#FFB238", telemetry: "#F0559B", ok: "#7DE3B0", scope: "#000000",
       },
       fontFamily: {
-        sans: ["\"Public Sans\"", "system-ui", "sans-serif"],
-        mono: ["JetBrains Mono", "ui-monospace", "monospace"],
-        display: ["\"Public Sans\"", "system-ui", "sans-serif"],
+        sans: ["\"Bricolage Grotesque\"", "system-ui", "sans-serif"],
+        display: ["\"Bricolage Grotesque\"", "system-ui", "sans-serif"],
+        mono: ["\"Martian Mono\"", "ui-monospace", "monospace"],
       },
-      boxShadow: {
-        panel: "0 1px 2px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.03)",
-      },
-      borderRadius: {
-        DEFAULT: "3px",
-      },
+      borderRadius: { DEFAULT: "8px" },
+      boxShadow: { panel: "0 8px 24px -12px rgba(0,0,0,0.6)" },
     },
   },
   plugins: [],

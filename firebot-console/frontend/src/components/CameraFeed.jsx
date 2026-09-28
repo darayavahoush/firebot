@@ -117,7 +117,7 @@ export default function CameraFeed({ frame }) {
         <CornerBrackets />
 
         {/* HUD readout strip, top */}
-        <div className="absolute top-0 left-0 right-0 flex items-center justify-between px-3 py-2 font-mono text-[10px] text-[#8FE0F5]/85">
+        <div className="absolute top-0 left-0 right-0 flex items-center justify-between px-3 py-2 font-mono text-[10px] text-[#FFB3D4]/85">
           <div className="flex items-center gap-1.5">
             <span
               className={`h-[6px] w-[6px] rounded-full ${
@@ -130,7 +130,7 @@ export default function CameraFeed({ frame }) {
         </div>
 
         {/* HUD readout strip, bottom */}
-        <div className="absolute bottom-0 left-0 right-0 flex items-center justify-between px-3 py-2 font-mono text-[10px] text-[#8FE0F5]/85">
+        <div className="absolute bottom-0 left-0 right-0 flex items-center justify-between px-3 py-2 font-mono text-[10px] text-[#FFB3D4]/85">
           <span>CAM-01 / FWD</span>
           <span>
             {frame
@@ -146,7 +146,7 @@ export default function CameraFeed({ frame }) {
         )}
 
         {driving && (
-          <div className="absolute bottom-8 right-3 font-mono text-[10px] text-[#8FE0F5]">
+          <div className="absolute bottom-8 right-3 font-mono text-[10px] text-[#FFB3D4]">
             {`v ${frame.cmd_v.toFixed(2)}m/s  w ${frame.cmd_w.toFixed(2)}rad/s`}
           </div>
         )}
@@ -199,7 +199,7 @@ function drawThermalOverlay(ctx, w, h, thermal) {
 function thermalColor(norm) {
   const stops = [
     [0.0, [8, 10, 14]],
-    [0.35, [74, 199, 236]],
+    [0.35, [240, 85, 155]],
     [0.65, [255, 176, 0]],
     [1.0, [252, 61, 33]],
   ];
@@ -362,16 +362,16 @@ function CrosshairOverlay() {
       viewBox="0 0 100 100"
       preserveAspectRatio="none"
     >
-      <line x1="50" y1="0" x2="50" y2="100" stroke="#4AC7EC" strokeWidth="0.15" />
-      <line x1="0" y1="50" x2="100" y2="50" stroke="#4AC7EC" strokeWidth="0.15" />
-      <circle cx="50" cy="50" r="8" fill="none" stroke="#4AC7EC" strokeWidth="0.15" />
+      <line x1="50" y1="0" x2="50" y2="100" stroke="#F0559B" strokeWidth="0.15" />
+      <line x1="0" y1="50" x2="100" y2="50" stroke="#F0559B" strokeWidth="0.15" />
+      <circle cx="50" cy="50" r="8" fill="none" stroke="#F0559B" strokeWidth="0.15" />
     </svg>
   );
 }
 
 function CornerBrackets() {
   const size = 16;
-  const stroke = "#4AC7EC";
+  const stroke = "#F0559B";
   const positions = [
     { top: 10, left: 10, rotate: 0 },
     { top: 10, right: 10, rotate: 90 },

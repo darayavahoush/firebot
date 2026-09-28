@@ -1,63 +1,16 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-* {
-  box-sizing: border-box;
-}
-
-html,
-body,
-#root {
-  height: 100%;
-}
-
-body {
-  @apply bg-base text-ink font-sans antialiased;
-  /* Faint range-finder grid, cyan on true black — reads as an instrument
-     backplate, not a print gridline. */
-  background-image:
-    linear-gradient(rgba(74, 199, 236, 0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(74, 199, 236, 0.05) 1px, transparent 1px);
-  background-size: 32px 32px;
-}
-
-::selection {
-  background: #4ac7ec40;
-}
-
-.panel {
-  @apply bg-panel border border-line rounded-[3px] overflow-hidden;
-  /* Hairline-bordered instrument rectangle, not a soft SaaS card — flush with
-     the shell, lit from above by a single interior highlight. */
-  box-shadow:
-    0 1px 2px rgba(0, 0, 0, 0.5),
-    inset 0 1px 0 rgba(255, 255, 255, 0.03);
-}
-
-/* Single restrained glow accent, used once behind the sim canvas
-   and the brand mark — not scattered across every card. */
-.ember-glow {
-  position: absolute;
-  border-radius: 9999px;
-  background: radial-gradient(circle, rgba(74, 199, 236, 0.14), transparent 70%);
-  pointer-events: none;
-  filter: blur(2px);
-}
-
-.data {
-  @apply font-mono tabular-nums;
-}
-
-.pulse-dot {
-  animation: pulse-dot 2s ease-in-out infinite;
-}
-
-@keyframes pulse-dot {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.35; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .pulse-dot { animation: none; }
-}
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; }
+body { @apply bg-base text-ink font-sans antialiased; }
+::selection { background: #f0559b55; }
+:root { --ironbow: linear-gradient(90deg,#1b0a3c 0%,#5a1a86 24%,#c4286f 50%,#ff8a2a 76%,#fff2c9 100%); }
+.panel { @apply bg-panel border border-line rounded-[10px] overflow-hidden; box-shadow: 0 8px 24px -12px rgba(0,0,0,.6); }
+.heat-rule { height: 3px; background: var(--ironbow); }
+.data { @apply font-mono tabular-nums; font-size: .92em; }
+.ember-glow { display: none; }
+.pulse-dot { animation: pulse-dot 2s ease-in-out infinite; }
+@keyframes pulse-dot { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+:focus-visible { outline: 2px solid #ff8a2a; outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .pulse-dot { animation: none; } }

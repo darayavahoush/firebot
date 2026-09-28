@@ -586,7 +586,7 @@ function VoiceTab({
             className={`w-16 h-16 rounded-full border flex items-center justify-center font-mono text-[11px] transition-all ${
               listening
                 ? "border-alarm text-alarm pulse-dot shadow-[0_0_18px_rgba(240,96,74,0.35)]"
-                : "border-telemetry text-telemetry hover:bg-telemetry hover:text-[#050607] hover:shadow-[0_0_18px_rgba(74,199,236,0.35)]"
+                : "border-telemetry text-telemetry hover:bg-telemetry hover:text-[#050607] hover:shadow-[0_0_18px_rgba(240, 85, 155,0.35)]"
             }`}
           >
             {listening ? "LIVE" : "MIC"}
@@ -599,7 +599,7 @@ function VoiceTab({
             className={`w-16 h-16 rounded-full border flex items-center justify-center font-mono text-[11px] transition-all ${
               asrStatus === "recording"
                 ? "border-alarm text-alarm pulse-dot shadow-[0_0_18px_rgba(240,96,74,0.35)]"
-                : "border-telemetry text-telemetry hover:bg-telemetry hover:text-[#050607] hover:shadow-[0_0_18px_rgba(74,199,236,0.35)]"
+                : "border-telemetry text-telemetry hover:bg-telemetry hover:text-[#050607] hover:shadow-[0_0_18px_rgba(240, 85, 155,0.35)]"
             } ${asrBusy ? "opacity-40 cursor-wait" : ""}`}
           >
             {asrLabel}

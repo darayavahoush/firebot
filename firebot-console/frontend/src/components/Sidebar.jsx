@@ -1,113 +1,46 @@
 import React from "react";
 
 const NAV = [
-  { id: "live", label: "Live Ops", icon: LiveIcon },
-  { id: "sim", label: "Simulator", icon: SimIcon },
-  { id: "history", label: "History", icon: HistoryIcon },
-  { id: "about", label: "About", icon: AboutIcon },
+  { id: "live", label: "Live" },
+  { id: "sim", label: "Simulator" },
+  { id: "history", label: "History" },
+  { id: "about", label: "About" },
 ];
 
 export default function Sidebar({ page, setPage, linkOk }) {
   return (
-    <aside className="w-[212px] shrink-0 border-r border-line bg-panel flex flex-col">
-      <div className="h-14 flex items-center gap-2.5 px-5 border-b border-line relative">
-        <div className="ember-glow w-16 h-16 -left-4 -top-2" />
-        <BrandMark />
-        <div className="leading-tight relative">
-          <div className="font-display font-extrabold text-[15px] text-ink tracking-tight">NIRVANA</div>
-          <div className="font-mono text-[9px] text-faint tracking-wide">THE FIRE ENDS HERE · R0.1</div>
-        </div>
+    <aside className="w-[76px] shrink-0 bg-panel border-r border-line flex flex-col items-center py-5 gap-6">
+      <div
+        className="font-display font-extrabold text-[22px] tracking-tight text-ink select-none"
+        style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
+      >
+        Nirvana
       </div>
-
-      <nav className="flex-1 py-3 px-2.5 space-y-0.5">
+      <nav className="flex-1 flex flex-col items-center gap-2" aria-label="Pages">
         {NAV.map((item) => {
           const active = page === item.id;
-          const Icon = item.icon;
           return (
             <button
               key={item.id}
               onClick={() => setPage(item.id)}
-              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-[3px] text-[13px] transition-colors ${
-                active
-                  ? "text-ink bg-panel2 border-l-2 border-telemetry"
-                  : "text-muted hover:text-ink hover:bg-panel2/60 border-l-2 border-transparent"
+              aria-current={active ? "page" : undefined}
+              className={`relative w-full py-3 text-[13px] transition-colors ${
+                active ? "text-ink font-bold" : "text-faint hover:text-ink"
               }`}
+              style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
             >
-              <Icon active={active} />
+              {active && (
+                <span className="absolute right-0 top-0 bottom-0 w-[3px]" style={{ background: "linear-gradient(0deg,#5a1a86,#c4286f,#ff8a2a,#fff2c9)" }} />
+              )}
               {item.label}
             </button>
           );
         })}
       </nav>
-
-      <div className="px-5 py-4 border-t border-line">
-        <div className="flex items-center gap-2 font-mono text-[11px] text-muted">
-          <span
-            className={`h-[6px] w-[6px] rounded-full ${
-              linkOk ? "bg-ok" : "bg-alarm pulse-dot"
-            }`}
-          />
-          {linkOk ? "PI LINK OK" : "PI LINK LOST"}
-        </div>
-      </div>
-    </aside>
-  );
-}
-
-// Mission-patch roundel, not an app icon: a double hairline ring (the way a
-// flight badge or instrument bezel reads) around the flame mark, rather than
-// a rounded-square container.
-function BrandMark() {
-  return (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" className="relative">
-      <circle cx="12" cy="12" r="10.5" stroke="#4AC7EC" strokeWidth="1" opacity="0.5" />
-      <circle cx="12" cy="12" r="8.5" stroke="#4AC7EC" strokeWidth="1.1" />
-      <path
-        d="M12 6.5c1.8 2.1 2.6 3.7 2.6 5.2a2.6 2.6 0 1 1-5.2 0c0-.9.4-1.7 1-2.4-.15.75.05 1.35.6 1.55-.2-1.6.4-3 1-4.35Z"
-        fill="#FFB000"
+      <div
+        title={linkOk ? "Robot link up" : "Robot link lost"}
+        className={`h-2.5 w-2.5 rounded-full ${linkOk ? "bg-ok" : "bg-alarm pulse-dot"}`}
       />
-    </svg>
-  );
-}
-
-function LiveIcon({ active }) {
-  return (
-    <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
-      <circle cx="8" cy="8" r="3" fill={active ? "#4AC7EC" : "none"} stroke={active ? "#4AC7EC" : "rgba(232,236,239,0.6)"} strokeWidth="1.3" />
-      <circle cx="8" cy="8" r="6.5" stroke={active ? "#4AC7EC" : "rgba(232,236,239,0.6)"} strokeWidth="1" opacity="0.4" />
-    </svg>
-  );
-}
-
-function SimIcon({ active }) {
-  const c = active ? "#4AC7EC" : "rgba(232,236,239,0.6)";
-  return (
-    <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
-      <rect x="2" y="3" width="12" height="8" rx="1" stroke={c} strokeWidth="1.3" />
-      <path d="M5.5 6.5l2 1.5-2 1.5" stroke={c} strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-      <path d="M5 13h6" stroke={c} strokeWidth="1.3" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function HistoryIcon({ active }) {
-  const c = active ? "#4AC7EC" : "rgba(232,236,239,0.6)";
-  return (
-    <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
-      <path d="M2 8a6 6 0 1 1 1.8 4.3" stroke={c} strokeWidth="1.3" strokeLinecap="round" />
-      <path d="M2 4v3.5h3.5" stroke={c} strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M8 5v3l2.2 1.3" stroke={c} strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function AboutIcon({ active }) {
-  const c = active ? "#4AC7EC" : "rgba(232,236,239,0.6)";
-  return (
-    <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
-      <circle cx="8" cy="8" r="6.2" stroke={c} strokeWidth="1.3" />
-      <path d="M8 7.2v4" stroke={c} strokeWidth="1.3" strokeLinecap="round" />
-      <circle cx="8" cy="5" r="0.8" fill={c} />
-    </svg>
+    </aside>
   );
 }
