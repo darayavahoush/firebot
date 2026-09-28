@@ -153,7 +153,7 @@ _voice_last_error: str | None = None
 # only -- it labels a command with a speaker, it never blocks one. Off with FIREBOT_SPEAKER_ID=0.
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 SPEAKER_ID_ENABLED = os.environ.get("FIREBOT_SPEAKER_ID", "1") != "0"
-SPEAKER_THRESHOLD = float(os.environ.get("FIREBOT_SPEAKER_THRESHOLD", "0.5"))
+SPEAKER_THRESHOLD = float(os.environ.get("FIREBOT_SPEAKER_THRESHOLD", "0.30"))
 SPEAKER_MARGIN = float(os.environ.get("FIREBOT_SPEAKER_MARGIN", "0.05"))
 SPEAKER_VOICEPRINT_DIR = Path(os.environ.get("FIREBOT_VOICEPRINT_DIR") or _REPO_ROOT / "data" / "voiceprints")
 os.environ.setdefault("FIREBOT_SPEAKER_MODEL_DIR", str(_REPO_ROOT / "pretrained_models" / "spkrec-ecapa-voxceleb"))
@@ -608,10 +608,11 @@ def _identify_speaker(audio_bytes: bytes) -> dict[str, Any] | None:
         return None
     try:
         import numpy as np
-        from firebot.speech.speaker_id import SpeakerIdentifier, decide_speaker
+        from firebot.speech.speaker_id import SpeakerIdentifier, decide_speaker, trim_silence
         if _speaker_identifier is None:
             _speaker_identifier = SpeakerIdentifier(SPEAKER_VOICEPRINT_DIR, SPEAKER_THRESHOLD)
         audio = _decode_audio_16k(audio_bytes)
+        audio = trim_silence(audio)
         pcm = (np.clip(audio, -1.0, 1.0) * 32767).astype("<i2").tobytes()
         scores = _speaker_identifier.scores(pcm)
         name, best = decide_speaker(scores, SPEAKER_THRESHOLD, SPEAKER_MARGIN)

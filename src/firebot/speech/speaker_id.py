@@ -22,7 +22,9 @@ from pathlib import Path
 import numpy as np
 
 DEFAULT_VOICEPRINT_DIR = Path("data/voiceprints")
-DEFAULT_THRESHOLD = 0.5  # cosine similarity below this -> "unrecognized", not a guess
+DEFAULT_THRESHOLD = 0.30  # cosine similarity below this -> "unrecognized", not a guess.
+# Short command-length clips score well below the 0.5+ a long clip gets; run
+# `python calibrate_speakers.py` to pick a value from your own recordings.
 
 _model_cache: dict[str, object] = {}
 
@@ -45,6 +47,24 @@ def pcm16_to_float(pcm: bytes) -> np.ndarray:
 
 def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-8))
+
+
+def trim_silence(audio: np.ndarray, sample_rate: int = 16_000, rel_db: float = -30.0,
+                 pad_ms: int = 120, min_seconds: float = 0.4) -> np.ndarray:
+    """Cut leading/trailing silence so the voiceprint is computed on speech, not on a few
+    seconds of room noise around a one-word command (which drags the similarity down).
+    Returns the input unchanged if nothing clearly louder than the rest is found."""
+    hop = max(1, int(sample_rate * 0.02))
+    n = len(audio) // hop
+    if n < 3:
+        return audio
+    rms = np.sqrt(np.mean(np.square(audio[: n * hop].reshape(n, hop)), axis=1))
+    loud = np.flatnonzero(rms > rms.max() * 10 ** (rel_db / 20))
+    if loud.size == 0:
+        return audio
+    pad = int(sample_rate * pad_ms / 1000)
+    out = audio[max(0, loud[0] * hop - pad): (loud[-1] + 1) * hop + pad]
+    return out if len(out) >= min_seconds * sample_rate else audio
 
 
 def decide_speaker(scores: dict[str, float], threshold: float = DEFAULT_THRESHOLD,

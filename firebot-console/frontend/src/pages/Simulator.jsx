@@ -247,8 +247,8 @@ export default function Simulator() {
           const detail = await res.json().catch(() => null);
           throw new Error(detail?.detail || `Transcription failed (${res.status}).`);
         }
-        const { text, speaker, speaker_score } = await res.json();
-        setSpeakerInfo(speaker === undefined ? null : { name: speaker, score: speaker_score });
+        const { text, speaker, speaker_score, speaker_scores } = await res.json();
+        setSpeakerInfo(speaker === undefined ? null : { name: speaker, score: speaker_score, scores: speaker_scores });
         fetch("/api/voice/status").then((r) => (r.ok ? r.json() : null)).then((j) => j && setVoiceMode(j)).catch(() => {});
         setAsrStatus("idle");
         if (text) { setTextCmd(text); cmdInputRef.current?.focus(); }
@@ -629,7 +629,11 @@ function VoiceTab({
             <span className={speakerInfo.name ? "text-ok uppercase" : "text-warn"}>
               {speakerInfo.name ?? "NOT RECOGNISED"}
             </span>
-            {speakerInfo.score != null && <span> ({Math.round(speakerInfo.score * 100)}%)</span>}
+            {speakerInfo.scores && (
+              <div className="normal-case tracking-normal mt-0.5">
+                {Object.entries(speakerInfo.scores).map(([n, v]) => `${n} ${Math.round(v * 100)}%`).join(" \u00b7 ")}
+              </div>
+            )}
           </div>
         )}
         {speechUsable && voiceError && <div className="text-[11px] text-warn text-center">{voiceError}</div>}
