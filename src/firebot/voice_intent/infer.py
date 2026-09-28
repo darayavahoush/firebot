@@ -137,6 +137,16 @@ class IntentClassifier:
         return self._payload(label, confidence, scores, min_confidence, class_min_confidence)
 
 
+def load_classifier(checkpoint_path: str | Path, device: str = "cpu"):
+    """`IntentClassifier` for a current checkpoint, or `LegacyIntentClassifier` for an
+    old-format one (root train_voice_intent.py: has `head_state_dict`). Same interface."""
+    ckpt = torch.load(checkpoint_path, map_location=device, weights_only=False)
+    if isinstance(ckpt, dict) and "head_state_dict" in ckpt:
+        from .legacy import LegacyIntentClassifier
+        return LegacyIntentClassifier(ckpt, device)
+    return IntentClassifier(checkpoint_path, device)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--checkpoint", type=Path, required=True)
@@ -144,7 +154,7 @@ def main() -> None:
     ap.add_argument("--min-confidence", type=float, default=0.6)
     args = ap.parse_args()
 
-    clf = IntentClassifier(args.checkpoint)
+    clf = load_classifier(args.checkpoint)
     payload = clf.predict_intent_payload(args.wav, args.min_confidence)
     top = sorted(payload["scores"].items(), key=lambda kv: -kv[1])[:5]
     print(f"predicted: {payload['name']}  params={payload['params']}  "
