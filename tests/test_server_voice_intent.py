@@ -7,6 +7,7 @@ Postgres, no real audio or checkpoint required.
 """
 import asyncio
 import importlib
+import os
 import sys
 from pathlib import Path
 
@@ -520,3 +521,22 @@ def test_server_passes_thresholds_only_when_configured(server, monkeypatch):
     monkeypatch.setattr(server, "VOICE_INTENT_CLASS_THRESHOLDS", {"STOP": 0.4})
     assert server._local_intent_phrase(b"RIFFclip") == ("stop", 0.9)
     assert seen == [{}, {"class_min_confidence": {"STOP": 0.4}}]
+
+
+def test_decode_wav_survives_broken_librosa_import(server, monkeypatch):
+    """The reported failure: `import librosa` raises (numba: "cannot cache function '__o_fold':
+    no locator available"). WAV decode must still work via soundfile+scipy, not take the local
+    voice model down."""
+    monkeypatch.setitem(sys.modules, "librosa", None)      # `import librosa` -> ImportError
+    audio = server._decode_audio_16k(_wav_bytes(seconds=0.5, sr=44_100))
+    assert audio.ndim == 1 and audio.dtype.name == "float32"
+    assert 7_500 < len(audio) < 8_500                        # 0.5 s resampled 44.1k -> 16k
+
+
+def test_numba_cache_dir_is_set_to_a_writable_folder(monkeypatch, tmp_path):
+    monkeypatch.delenv("NUMBA_CACHE_DIR", raising=False)
+    sys.modules.pop("server", None)
+    mod = importlib.import_module("server")
+    d = os.environ["NUMBA_CACHE_DIR"]
+    assert os.path.isdir(d) and os.access(d, os.W_OK)
+    sys.modules.pop("server", None)

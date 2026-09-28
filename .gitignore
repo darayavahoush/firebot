@@ -25,3 +25,4 @@ voice_intent_router.json
 data/voice_intent/
 data/voice_intent/
 data/real_intent/
+.numba_cache/

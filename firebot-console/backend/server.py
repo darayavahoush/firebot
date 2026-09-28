@@ -28,7 +28,9 @@ import asyncio
 import json
 import logging
 import os
+import tempfile
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 import asyncpg
@@ -37,7 +39,30 @@ from fastapi import FastAPI, File, HTTPException, UploadFile, WebSocket, WebSock
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from firebot.command.parser import RuleParser
+def _ensure_numba_cache_dir() -> None:
+    """librosa JIT-compiles with numba `cache=True`; if numba can't find a writable cache folder
+    (read-only site-packages, a wiped ~/Library/Caches, a full disk) `import librosa` dies with
+    "cannot cache function '__o_fold': no locator available" and the local voice model silently
+    falls back to Groq. Point numba at a folder we know is writable, *before* numba is imported.
+    """
+    if os.environ.get("NUMBA_CACHE_DIR"):
+        return
+    for base in (Path(__file__).resolve().parents[2], Path(tempfile.gettempdir())):
+        d = base / (".numba_cache" if base != Path(tempfile.gettempdir()) else "firebot_numba_cache")
+        try:
+            d.mkdir(parents=True, exist_ok=True)
+            probe = d / ".w"
+            probe.write_text("ok")
+            probe.unlink()
+        except OSError:
+            continue
+        os.environ["NUMBA_CACHE_DIR"] = str(d)
+        return
+
+
+_ensure_numba_cache_dir()
+
+from firebot.command.parser import RuleParser  # noqa: E402
 from firebot.db.summary import narrate, summarize_run
 from firebot.fusion.anomaly import detect_anomalies
 from firebot.link.protocol import THERM_COLS, THERM_ROWS
@@ -411,6 +436,24 @@ def _vosk_text(audio_bytes: bytes) -> str | None:
         return None
 
 
+def _decode_wav_without_librosa(audio_bytes: bytes):
+    """WAV -> 16 kHz mono float32 using only soundfile + scipy (both already librosa deps), so a
+    broken numba/librosa import can't take the local voice model down with it."""
+    import io
+    from math import gcd
+
+    import numpy as np
+    import soundfile as sf
+    from scipy.signal import resample_poly
+
+    data, sr = sf.read(io.BytesIO(audio_bytes), dtype="float32", always_2d=True)
+    mono = data.mean(axis=1)
+    if sr != 16_000:
+        g = gcd(int(sr), 16_000)
+        mono = resample_poly(mono, 16_000 // g, int(sr) // g)
+    return np.ascontiguousarray(mono, dtype="float32")
+
+
 def _decode_audio_16k(audio_bytes: bytes):
     """Decode an uploaded clip to 16 kHz mono float32.
 
@@ -426,10 +469,16 @@ def _decode_audio_16k(audio_bytes: bytes):
     import numpy as np
 
     if audio_bytes[:4] == b"RIFF":
-        import librosa
+        try:
+            import librosa
 
-        audio, _ = librosa.load(io.BytesIO(audio_bytes), sr=16_000, mono=True)
-        return audio
+            audio, _ = librosa.load(io.BytesIO(audio_bytes), sr=16_000, mono=True)
+            return audio
+        except Exception as e:  # noqa: BLE001 -- numba cache/JIT trouble on import, etc.
+            logging.getLogger("firebot.console").warning(
+                "librosa unavailable for WAV decode (%s: %s); using soundfile+scipy",
+                type(e).__name__, e)
+            return _decode_wav_without_librosa(audio_bytes)
 
     ffmpeg = shutil.which("ffmpeg")
     if ffmpeg is None:

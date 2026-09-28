@@ -18,6 +18,10 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 export FIREBOT_TOKEN="${FIREBOT_TOKEN:-dev-secret}"
+# librosa (local voice model) JIT-caches via numba; if numba can't find a writable cache dir,
+# `import librosa` fails with "cannot cache function ... no locator available". Give it one.
+export NUMBA_CACHE_DIR="${NUMBA_CACHE_DIR:-$(cd ../.. && pwd)/.numba_cache}"
+mkdir -p "$NUMBA_CACHE_DIR"
 # Must match server.py's DATABASE_URL -- that one's hardcoded, not read from the environment,
 # so if you override this, go update the constant at the top of server.py to match.
 DB_URL="${FIREBOT_DB:-postgresql://firebot:firebot@localhost:5432/firebot}"
