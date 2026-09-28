@@ -356,6 +356,29 @@ def merge_real(real_dir: Path, out_dir: Path) -> list[tuple[Path, str, str, str,
     return rows
 
 
+def load_kept_rows(out_dir: Path) -> list[tuple[Path, str, str, str, str]]:
+    """Rows of an existing manifest.csv minus its real-recording rows, so real clips can be
+    re-merged (added, removed, relabelled) without regenerating -- or losing -- the synthetic
+    rows. Returns [] when there's no manifest."""
+    manifest = out_dir / "manifest.csv"
+    if not manifest.exists():
+        return []
+    with manifest.open(newline="") as f:
+        return [(out_dir / r["path"], r["label"], r["source"], r.get("speaker", ""),
+                 r.get("phrase", ""))
+                for r in csv.DictReader(f) if r["source"] != "real"]
+
+
+def clear_real_audio(out_dir: Path) -> int:
+    """Delete previously merged real clips (`real_*.wav`) so a re-merge leaves no orphans
+    (merge_real names files by position, so adding clips can shift the names)."""
+    n = 0
+    for wav in (out_dir / "audio").glob("*/real_*.wav"):
+        wav.unlink()
+        n += 1
+    return n
+
+
 def write_manifest(rows: list[tuple[Path, str, str, str, str]], out_dir: Path) -> None:
     manifest = out_dir / "manifest.csv"
     with manifest.open("w", newline="") as f:
@@ -412,8 +435,17 @@ def main() -> None:
                                     args.limit_per_class, args.voice_filter or None,
                                     exclude_voices=exclude)
 
+    elif args.real_dir is not None:
+        # --skip-synth: keep the synthetic rows already in the manifest instead of
+        # overwriting it with real-only rows.
+        rows += load_kept_rows(args.out)
+        if not rows:
+            print("[warn] --skip-synth but no existing manifest.csv in "
+                  f"{args.out}; the result will contain real clips only.", file=sys.stderr)
+
     if args.real_dir is not None:
         print(f"Merging real recordings from {args.real_dir}...")
+        clear_real_audio(args.out)
         rows += merge_real(args.real_dir, args.out)
 
     if not rows:
