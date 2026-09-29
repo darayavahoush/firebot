@@ -69,6 +69,7 @@ from firebot.fusion.anomaly import detect_anomalies
 from firebot.link.protocol import THERM_COLS, THERM_ROWS
 from firebot.voice_intent.router import ShadowRouter
 from firebot.voice_intent.vocab import LABEL_TO_IDX, canonical_phrase
+from mujoco_stream import router as mujoco_router  # noqa: E402
 
 DATABASE_URL = os.environ.get("FIREBOT_DB", "postgresql://firebot:firebot@localhost:5432/firebot")
 
@@ -132,6 +133,7 @@ VOICE_INTENT_ROUTER_STATE = os.environ.get("FIREBOT_VOICE_INTENT_ROUTER_STATE",
                                           "voice_intent_router.json")
 
 app = FastAPI(title="firebot-api")
+app.include_router(mujoco_router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=os.environ.get("FIREBOT_CORS_ORIGINS", "http://localhost:5173").split(","),

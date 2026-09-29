@@ -3,6 +3,7 @@ import Sidebar from "./components/Sidebar.jsx";
 import TopBar from "./components/TopBar.jsx";
 import LiveOps from "./pages/LiveOps.jsx";
 import Simulator from "./pages/Simulator.jsx";
+import MuJoCo from "./pages/MuJoCo.jsx";
 import History from "./pages/History.jsx";
 import About from "./pages/About.jsx";
 import { connectTelemetry, sendCommand, sendEstop } from "./api/client.js";
@@ -198,6 +199,9 @@ export default function App() {
         </div>
         <div className={page === "sim" ? "contents" : "hidden"}>
           <Simulator />
+        </div>
+        <div className={page === "mujoco" ? "contents" : "hidden"}>
+          <MuJoCo />
         </div>
         <div className={page === "history" ? "contents" : "hidden"}>
           <History />

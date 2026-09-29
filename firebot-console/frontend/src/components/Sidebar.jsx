@@ -3,6 +3,7 @@ import React from "react";
 const NAV = [
   { id: "live", label: "Live" },
   { id: "sim", label: "Simulator" },
+  { id: "mujoco", label: "MuJoCo" },
   { id: "history", label: "History" },
   { id: "about", label: "About" },
 ];
