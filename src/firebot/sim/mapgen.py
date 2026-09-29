@@ -32,14 +32,14 @@ def _split(rng: np.random.Generator, rect: tuple[float, float, float, float],
     return _split(rng, a, depth - 1) + _split(rng, b, depth - 1)
 
 
-def generate_building(rng: np.random.Generator, width_range=(15.0, 22.0),
-                       height_range=(11.0, 16.0),
-                       split_depth_range=(3, 4)) -> tuple[float, float, list[tuple]]:
-    """Return `(width, height, walls)` for a fresh, randomly laid-out building.
+def _generate(rng: np.random.Generator, width_range, height_range, split_depth_range,
+              enclosed: bool = False):
+    """Core generator: `(width, height, walls, rooms)`; rooms are `(x, y, w, h)` leaf cells.
 
-    Bigger than the fixed 12x8 default map on purpose -- more rooms to search, longer corridors
-    to route around, a different topology every time so a planner/controller can't memorise one
-    floor plan.
+    `enclosed=False` keeps the original (historical) behaviour byte-for-byte: interior edges
+    that touch the outer boundary are skipped, so many rooms open onto each other. With
+    `enclosed=True` every room is walled in and each shared boundary gets exactly one wall
+    (owned by the room to its right/above) with its own doorway.
     """
     width = float(rng.uniform(*width_range))
     height = float(rng.uniform(*height_range))
@@ -55,9 +55,14 @@ def generate_building(rng: np.random.Generator, width_range=(15.0, 22.0),
     for rx, ry, rw, rh in rooms:
         edges = [(rx, ry, rw, WALL_T), (rx, ry + rh - WALL_T, rw, WALL_T),
                  (rx, ry, WALL_T, rh), (rx + rw - WALL_T, ry, WALL_T, rh)]
+        if enclosed:      # own only the left + bottom edge, and only if interior
+            edges = [e for e in (edges[0], edges[2]) if (e[1] > 0 if e[2] > e[3] else e[0] > 0)]
         for ex, ey, ew, eh in edges:
             key = (round(ex, 2), round(ey, 2), round(ew, 2), round(eh, 2))
-            if key in seen or ex <= 0 or ey <= 0 or ex + ew >= width or ey + eh >= height:
+            if enclosed:
+                if key in seen:
+                    continue
+            elif key in seen or ex <= 0 or ey <= 0 or ex + ew >= width or ey + eh >= height:
                 continue
             seen.add(key)
             if ew > eh:  # horizontal partition: cut a doorway out of the middle
@@ -81,7 +86,101 @@ def generate_building(rng: np.random.Generator, width_range=(15.0, 22.0),
         px = rng.uniform(1.5, width - 1.5 - pw)
         py = rng.uniform(1.5, height - 1.5 - ph)
         walls.append((px, py, pw, ph))
+    return width, height, walls, rooms
+
+
+def generate_building(rng: np.random.Generator, width_range=(15.0, 22.0),
+                       height_range=(11.0, 16.0),
+                       split_depth_range=(3, 4)) -> tuple[float, float, list[tuple]]:
+    """Return `(width, height, walls)` for a fresh, randomly laid-out building.
+
+    Bigger than the fixed 12x8 default map on purpose -- more rooms to search, longer corridors
+    to route around, a different topology every time so a planner/controller can't memorise one
+    floor plan.
+    """
+    width, height, walls, _ = _generate(rng, width_range, height_range, split_depth_range)
     return width, height, walls
+
+
+# ---- typed rooms + reachability ---------------------------------------------------------------
+# Each room gets a purpose; the purpose decides the floor finish (renderer) and which props
+# furnish it (generate_props), so the map reads like a building instead of random clutter.
+ROOM_KINDS = {
+    # kind: (floor style, {prop kind: weight}, prop density multiplier)
+    "office":   ("wood",     {"table": 4, "shrub": 2, "shelf": 1, "crate": 1}, 0.8),
+    "storage":  ("concrete", {"shelf": 4, "crate": 4, "barrel": 3}, 1.3),
+    "workshop": ("tile",     {"barrel": 3, "crate": 2, "table": 3, "shelf": 1}, 1.0),
+    "atrium":   ("grass",    {"tree": 4, "shrub": 4, "barrel": 0.3}, 1.2),
+}
+_KIND_ORDER = ("office", "storage", "workshop", "atrium")
+
+
+def generate_layout(rng: np.random.Generator, width_range=(15.0, 22.0),
+                    height_range=(11.0, 16.0), split_depth_range=(3, 4),
+                    max_tries: int = 40) -> tuple[float, float, list[tuple], list[dict]]:
+    """Like `generate_building` but also returns typed rooms and *guarantees* every room is
+    reachable (a robot-sized body can drive between all of them); layouts that seal a room off
+    are redrawn. Returns `(width, height, walls, rooms)` with rooms as
+    `{"x", "y", "w", "h", "kind"}` dicts."""
+    for _ in range(max_tries):
+        width, height, walls, cells = _generate(rng, width_range, height_range,
+                                                split_depth_range, enclosed=True)
+        if is_connected(width, height, walls):
+            break
+    kinds = _assign_kinds(rng, len(cells))
+    rooms = [{"x": float(x), "y": float(y), "w": float(w), "h": float(h), "kind": k}
+             for (x, y, w, h), k in zip(cells, kinds)]
+    return width, height, walls, rooms
+
+
+def _assign_kinds(rng: np.random.Generator, n: int) -> list[str]:
+    """Cycle through kinds in random order so a building has variety, not five storerooms."""
+    out: list[str] = []
+    while len(out) < n:
+        out += [str(k) for k in rng.permutation(_KIND_ORDER)]
+    return out[:n]
+
+
+def is_connected(width: float, height: float, walls: list, res: float = 0.1,
+                 robot_r: float = 0.25, min_fraction: float = 0.97) -> bool:
+    """True if (almost) all robot-reachable free space is one connected region.
+
+    Walls are inflated by the robot radius on a coarse grid, then flood-filled from the largest
+    free region; anything sealed off (or a doorway too narrow for the robot) shows up as free
+    space outside that region.
+    """
+    ny, nx = int(height / res), int(width / res)
+    occ = np.zeros((ny, nx), dtype=bool)
+    for x, y, w, h in walls:
+        occ[int(y / res):int(np.ceil((y + h) / res)), int(x / res):int(np.ceil((x + w) / res))] = True
+    for _ in range(int(np.ceil(robot_r / res))):   # dilate by the robot radius
+        d = occ.copy()
+        d[1:] |= occ[:-1]
+        d[:-1] |= occ[1:]
+        d[:, 1:] |= occ[:, :-1]
+        d[:, :-1] |= occ[:, 1:]
+        occ = d
+    free = ~occ
+    total = int(free.sum())
+    if total == 0:
+        return False
+    label = np.zeros((ny, nx), dtype=np.int32)
+    best, n_lab = 0, 0
+    for si, sj in zip(*np.nonzero(free)):
+        if label[si, sj]:
+            continue
+        n_lab += 1
+        label[si, sj] = n_lab
+        stack, size = [(si, sj)], 0
+        while stack:
+            i, j = stack.pop()
+            size += 1
+            for a, b in ((i + 1, j), (i - 1, j), (i, j + 1), (i, j - 1)):
+                if 0 <= a < ny and 0 <= b < nx and free[a, b] and not label[a, b]:
+                    label[a, b] = n_lab
+                    stack.append((a, b))
+        best = max(best, size)
+    return best >= min_fraction * total
 
 
 # ---- freestanding scenery (trees, shrubs, barrels, shelves, tables, crates) -------------------
@@ -105,20 +204,40 @@ def _dist_to_rect(px: float, py: float, rect: tuple) -> float:
 
 
 def generate_props(rng: np.random.Generator, width: float, height: float, walls: list,
-                   area_per_prop: float = 9.0, max_tries: int = 60) -> list[dict]:
+                   area_per_prop: float = 9.0, max_tries: int = 60,
+                   rooms: list[dict] | None = None) -> list[dict]:
     """Scatter clutter through a building, roughly one prop per `area_per_prop` m^2.
 
     Every prop keeps `PROP_CLEARANCE` of free space to every wall and to every other prop, so
     a doorway (1.1 m) can never be plugged and the map stays fully navigable however dense it
     gets. Round props carry a radius `r` (trunk radius for trees, plus a visual canopy radius
     `canopy`); box props carry `w`, `h` and a `yaw`.
+
+    With `rooms` (from `generate_layout`) each room is furnished by its purpose -- shelves and
+    crates in storage, trees and shrubs in an atrium, tables in an office -- shelves are
+    aligned to the room's axes, and each prop is tagged with its `room` index.
     """
-    kinds = list(_KIND_WEIGHTS)
-    probs = np.array([_KIND_WEIGHTS[k] for k in kinds], dtype=float)
-    probs /= probs.sum()
-    target = int(width * height / area_per_prop)
     props: list[dict] = []
-    for _ in range(target):
+    if rooms:
+        plan = []          # (room index, count) -- density scales with room area and purpose
+        for k, r in enumerate(rooms):
+            n = r["w"] * r["h"] / area_per_prop * ROOM_KINDS[r["kind"]][2]
+            plan.append((k, int(n) + int(rng.random() < n - int(n))))
+        jobs = [k for k, n in plan for _ in range(n)]
+    else:
+        jobs = [None] * int(width * height / area_per_prop)
+    for room_k in jobs:
+        if room_k is None:
+            kinds = list(_KIND_WEIGHTS)
+            probs = np.array([_KIND_WEIGHTS[k] for k in kinds], dtype=float)
+            rx0, ry0, rx1, ry1 = 1.0, 1.0, width - 1.0, height - 1.0
+        else:
+            room = rooms[room_k]
+            wts = ROOM_KINDS[room["kind"]][1]
+            kinds, probs = list(wts), np.array(list(wts.values()), dtype=float)
+            rx0, ry0 = room["x"] + 0.5, room["y"] + 0.5
+            rx1, ry1 = room["x"] + room["w"] - 0.5, room["y"] + room["h"] - 0.5
+        probs = probs / probs.sum()
         for _try in range(max_tries):
             kind = str(rng.choice(kinds, p=probs))
             if kind in _ROUND:
@@ -134,13 +253,19 @@ def generate_props(rng: np.random.Generator, width: float, height: float, walls:
                         "h": float(rng.uniform(hl, hh)), "height": z,
                         "yaw": float(rng.uniform(0, np.pi))}
                 bound = _bound_radius(prop)
-            px, py = float(rng.uniform(1.0, width - 1.0)), float(rng.uniform(1.0, height - 1.0))
+            if rx1 <= rx0 or ry1 <= ry0:
+                break
+            if room_k is not None and kind in ("shelf", "crate"):
+                prop["yaw"] = float(rng.choice([0.0, np.pi / 2]))   # square to the room
+            px, py = float(rng.uniform(rx0, rx1)), float(rng.uniform(ry0, ry1))
             if any(_dist_to_rect(px, py, w) < bound + PROP_CLEARANCE for w in walls):
                 continue
             if any(np.hypot(px - q["x"], py - q["y"]) < bound + q["_b"] + PROP_CLEARANCE
                    for q in props):
                 continue
             prop.update(x=px, y=py, _b=bound)
+            if room_k is not None:
+                prop["room"] = room_k
             props.append(prop)
             break
     for q in props:

@@ -11,8 +11,8 @@ differs is where the truth comes from:
 * the planning `grid` is *derived from the scene* by casting rays down through every solid
   geom's footprint, so planners and physics can never disagree about what is solid;
 * `robot_collides()` is a real narrow-phase contact query with a robot-sized cylinder;
-* `render()` writes a top-down PNG (pure numpy, works headless); `view()` opens MuJoCo's
-  interactive viewer.
+* `render()` writes a polished top-down PNG (pure numpy, works headless); `view()` opens
+  MuJoCo's interactive viewer with textured floors, sky and lighting.
 
 Trees are modelled the way a 2-D lidar sees them: a thin trunk is the solid geom, the canopy
 is visual-only (it sits above the scan plane).
@@ -20,8 +20,6 @@ is visual-only (it sits above the scan plane).
 from __future__ import annotations
 
 import json
-import struct
-import zlib
 
 import numpy as np
 
@@ -37,6 +35,8 @@ LIDAR_Z = 0.15            # height of the simulated scan plane, m
 ROBOT_RADIUS, ROBOT_HEIGHT = 0.22, 0.25
 SOLID, VISUAL, PROBE = 0, 1, 2   # geom groups; rays only see SOLID
 _SOLID_MASK = None
+_FLOOR_RGBA = {"office": (0.80, 0.65, 0.47), "storage": (0.68, 0.68, 0.66),
+               "workshop": (0.80, 0.83, 0.85), "atrium": (0.41, 0.61, 0.33)}
 _RGBA = {"wall": (0.72, 0.70, 0.66), "tree": (0.36, 0.24, 0.14), "canopy": (0.16, 0.5, 0.2),
          "shrub": (0.2, 0.55, 0.25), "barrel": (0.75, 0.3, 0.2), "shelf": (0.55, 0.42, 0.3),
          "table": (0.65, 0.5, 0.35), "crate": (0.8, 0.6, 0.25)}
@@ -61,10 +61,12 @@ def _rgb(name: str) -> str:
 
 class MuJoCoWorld(World):
     def __init__(self, walls=None, width: float = 12.0, height: float = 8.0,
-                 props: list[dict] | None = None, wall_height: float = WALL_HEIGHT) -> None:
+                 props: list[dict] | None = None, wall_height: float = WALL_HEIGHT,
+                 rooms: list[dict] | None = None) -> None:
         _require()
         super().__init__(walls=walls, width=width, height=height)  # analytic grid, replaced below
         self.props = [dict(q) for q in (props or [])]
+        self.rooms = [dict(r) for r in (rooms or [])]
         self.wall_height = float(wall_height)
         self.model = mujoco.MjModel.from_xml_string(self._mjcf())
         self.data = mujoco.MjData(self.model)
@@ -80,11 +82,12 @@ class MuJoCoWorld(World):
                area_per_prop: float = 9.0) -> MuJoCoWorld:
         """A fresh procedurally generated building, filled with clutter (denser = smaller
         `area_per_prop`)."""
-        from .mapgen import generate_building, generate_props
+        from .mapgen import generate_layout, generate_props
         rng = rng if rng is not None else np.random.default_rng(seed)
-        width, height, walls = generate_building(rng)
-        props = generate_props(rng, width, height, walls, area_per_prop=area_per_prop)
-        return cls(walls=walls, width=width, height=height, props=props)
+        width, height, walls, rooms = generate_layout(rng)   # typed rooms, all reachable
+        props = generate_props(rng, width, height, walls, area_per_prop=area_per_prop,
+                               rooms=rooms)
+        return cls(walls=walls, width=width, height=height, props=props, rooms=rooms)
 
     def _mjcf(self) -> str:
         g: list[str] = []
@@ -99,20 +102,47 @@ class MuJoCoWorld(World):
                          f'size="{q["r"]} {z / 2}" rgba="{_rgb(kind)}"/>')
                 if kind == "tree":  # visual-only canopy above the scan plane
                     c = float(q.get("canopy", 0.6))
-                    g.append(f'<geom type="sphere" group="{VISUAL}" contype="0" conaffinity="0" '
-                             f'pos="{q["x"]} {q["y"]} {z + c * .6}" size="{c}" '
-                             f'rgba="{_rgb("canopy")}"/>')
+                    for k, (dx, dy, dz, f) in enumerate(
+                            ((0, 0, .6, 1.0), (.5, .2, .35, .65), (-.45, .3, .4, .6),
+                             (.1, -.5, .3, .62), (-.2, .05, 1.0, .55))):
+                        shade = 0.85 + 0.12 * (k % 3)
+                        rgb = " ".join(f"{v * shade:.3f}" for v in _RGBA["canopy"])
+                        g.append(f'<geom type="sphere" group="{VISUAL}" contype="0" '
+                                 f'conaffinity="0" pos="{q["x"] + dx * c} {q["y"] + dy * c} '
+                                 f'{z + c * dz}" size="{c * f}" rgba="{rgb} 1"/>')
             else:
                 g.append(f'<geom type="box" group="{SOLID}" pos="{q["x"]} {q["y"]} {z / 2}" '
                          f'euler="0 0 {q.get("yaw", 0.0)}" '
                          f'size="{q["w"] / 2} {q["h"] / 2} {z / 2}" rgba="{_rgb(kind)}"/>')
         cx, cy = self.width / 2, self.height / 2
+        floors = [f'<geom type="box" group="{VISUAL}" contype="0" conaffinity="0" '
+                  f'pos="{r["x"] + r["w"] / 2} {r["y"] + r["h"] / 2} -0.01" '
+                  f'size="{r["w"] / 2} {r["h"] / 2} 0.01" material="floor" '
+                  f'rgba="{" ".join(f"{c:.3f}" for c in _FLOOR_RGBA.get(r["kind"], (.7, .7, .7)))} 1"/>'
+                  for r in self.rooms]
         return f"""<mujoco model="firebot">
   <compiler angle="radian"/>
   <option gravity="0 0 0"/>
+  <visual>
+    <headlight ambient=".45 .45 .48" diffuse=".5 .5 .5" specular="0 0 0"/>
+    <quality shadowsize="4096"/>
+    <global azimuth="-60" elevation="-55"/>
+    <rgba haze=".7 .78 .9 1"/>
+  </visual>
+  <asset>
+    <texture type="skybox" builtin="gradient" rgb1=".55 .68 .85" rgb2=".95 .96 .98"
+             width="256" height="256"/>
+    <texture name="grid" type="2d" builtin="checker" rgb1=".93 .93 .93" rgb2=".86 .86 .86"
+             width="128" height="128" mark="edge" markrgb=".7 .7 .7"/>
+    <material name="floor" texture="grid" texrepeat="{max(self.width, 1) / 1.2:.1f} {max(self.height, 1) / 1.2:.1f}"
+              reflectance=".08" specular=".1"/>
+  </asset>
   <worldbody>
+    <light pos="{cx - self.width * .3} {cy - self.height * .3} 12" dir=".3 .3 -1" castshadow="true"
+           diffuse=".7 .68 .62" directional="true"/>
     <geom name="floor" type="plane" group="{VISUAL}" contype="0" conaffinity="0"
-          pos="{cx} {cy} 0" size="{cx} {cy} .1" rgba=".82 .8 .75 1"/>
+          pos="{cx} {cy} -0.03" size="{cx + 1} {cy + 1} .1" rgba=".16 .17 .2 1"/>
+    {chr(10).join(floors)}
     {chr(10).join(g)}
     <body name="probe" pos="{cx} {cy} 100">
       <freejoint/>
@@ -189,7 +219,8 @@ class MuJoCoWorld(World):
     # ---- export / viewing -----------------------------------------------------------------
     def to_dict(self) -> dict:
         return {"width": self.width, "height": self.height,
-                "walls": [list(w) for w in self.walls], "props": self.props}
+                "walls": [list(w) for w in self.walls], "props": self.props,
+                "rooms": self.rooms}
 
     def export_map(self, path: str) -> None:
         """Dump walls + props as JSON so other tools (e.g. the web console) can load the map."""
@@ -205,30 +236,11 @@ class MuJoCoWorld(World):
         import mujoco.viewer
         mujoco.viewer.launch(self.model, self.data)
 
-    def render(self, path: str, px_per_m: int = 50) -> None:
-        """Top-down PNG of the scene (pure numpy, works headless -- no OpenGL needed)."""
-        w, h = int(self.width * px_per_m), int(self.height * px_per_m)
-        img = np.empty((h, w, 3), dtype=np.uint8)
-        img[:] = (209, 204, 191)
-        yy, xx = (np.mgrid[0:h, 0:w] + .5) / px_per_m
-        yy = self.height - yy  # image row 0 is the top of the map (max y)
-
-        def col(name):
-            return tuple(int(c * 255) for c in _RGBA[name])
-
-        for x, y, ww, hh in self.walls:
-            img[(xx >= x) & (xx <= x + ww) & (yy >= y) & (yy <= y + hh)] = col("wall")
-        for q in self.props:
-            if q["kind"] == "tree":  # canopy first, then trunk on top
-                img[np.hypot(xx - q["x"], yy - q["y"]) <= q["canopy"]] = col("canopy")
-            if "r" in q:
-                img[np.hypot(xx - q["x"], yy - q["y"]) <= q["r"]] = col(q["kind"])
-            else:
-                c, s = np.cos(q["yaw"]), np.sin(q["yaw"])
-                u = (xx - q["x"]) * c + (yy - q["y"]) * s
-                v = -(xx - q["x"]) * s + (yy - q["y"]) * c
-                img[(np.abs(u) <= q["w"] / 2) & (np.abs(v) <= q["h"] / 2)] = col(q["kind"])
-        _write_png(path, img)
+    def render(self, path: str, px_per_m: int = 60, supersample: int = 2) -> None:
+        """Top-down PNG of the scene (pure numpy, headless): textured room floors, cast
+        shadows, extruded walls and detailed props. See `firebot.sim.render`."""
+        from .render import render_world
+        render_world(self, path, px_per_m=px_per_m, supersample=supersample)
 
     # ---- lifecycle (no global client in MuJoCo; kept so FireEnv can release worlds) -------
     def close(self) -> None:
@@ -236,21 +248,7 @@ class MuJoCoWorld(World):
 
     def __getstate__(self) -> dict:  # MjModel/MjData aren't picklable: ship the recipe instead
         return {"walls": self.walls, "width": self.width, "height": self.height,
-                "props": self.props, "wall_height": self.wall_height}
+                "props": self.props, "wall_height": self.wall_height, "rooms": self.rooms}
 
     def __setstate__(self, s: dict) -> None:
         self.__init__(**s)
-
-
-def _write_png(path: str, rgb: np.ndarray) -> None:
-    """Minimal PNG writer (no PIL/matplotlib dependency)."""
-    h, w, _ = rgb.shape
-    raw = b"".join(b"\x00" + rgb[i].tobytes() for i in range(h))
-
-    def chunk(tag: bytes, data: bytes) -> bytes:
-        body = tag + data
-        return struct.pack(">I", len(data)) + body + struct.pack(">I", zlib.crc32(body))
-
-    with open(path, "wb") as f:
-        f.write(b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0))
-                + chunk(b"IDAT", zlib.compress(raw, 6)) + chunk(b"IEND", b""))

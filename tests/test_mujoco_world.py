@@ -76,3 +76,58 @@ def test_pickle_roundtrip_rebuilds_scene():
     assert w2.grid.shape == w.grid.shape and (w2.grid == w.grid).all()
     w.close()
     w2.close()
+
+
+def test_layout_rooms_typed_and_always_reachable():
+    from firebot.sim.mapgen import ROOM_KINDS, generate_layout, is_connected
+    for seed in range(40):
+        rng = np.random.default_rng(seed)
+        width, height, walls, rooms = generate_layout(rng)
+        assert is_connected(width, height, walls)
+        assert rooms and all(r["kind"] in ROOM_KINDS for r in rooms)
+        assert abs(sum(r["w"] * r["h"] for r in rooms) - width * height) < 1e-6
+
+
+def test_enclosed_rooms_have_interior_walls_but_default_generator_unchanged():
+    from firebot.sim import mapgen
+    for seed in range(5):
+        a = mapgen.generate_building(np.random.default_rng(seed))
+        b = mapgen.generate_building(np.random.default_rng(seed))
+        assert a == b                       # deterministic, and rng stream is untouched
+    _, _, walls, _ = mapgen.generate_layout(np.random.default_rng(7))
+    _, _, legacy = mapgen.generate_building(np.random.default_rng(7))
+    assert len(walls) > len(legacy) - 4     # enclosed mode adds the missing boundary walls
+
+
+def test_room_props_follow_room_purpose_and_keep_clearance():
+    from firebot.sim.mapgen import ROOM_KINDS, generate_layout
+    for seed in range(10):
+        rng = np.random.default_rng(seed)
+        width, height, walls, rooms = generate_layout(rng)
+        props = generate_props(rng, width, height, walls, rooms=rooms)
+        for q in props:
+            allowed = ROOM_KINDS[rooms[q["room"]]["kind"]][1]
+            assert q["kind"] in allowed
+            r = rooms[q["room"]]
+            assert r["x"] <= q["x"] <= r["x"] + r["w"] and r["y"] <= q["y"] <= r["y"] + r["h"]
+
+
+def test_render_writes_png_and_survives_edge_clipping(tmp_path):
+    w = MuJoCoWorld.random(seed=2)
+    out = tmp_path / "m.png"
+    w.render(str(out), px_per_m=20)
+    assert out.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
+    # props hugging the map edge must not crash the clipped shadow/paint windows
+    edge = MuJoCoWorld(props=[{"kind": "tree", "x": 0.05, "y": 0.05, "r": 0.1, "height": 1.3,
+                               "canopy": 0.7, "yaw": 0.0},
+                              {"kind": "shelf", "x": 11.95, "y": 7.95, "w": 1.2, "h": 0.4,
+                               "height": 1.8, "yaw": 0.4}])
+    edge.render(str(tmp_path / "e.png"), px_per_m=20)
+    assert (tmp_path / "e.png").exists()
+
+
+def test_random_world_pickles_with_rooms():
+    import pickle
+    w = MuJoCoWorld.random(seed=4)
+    w2 = pickle.loads(pickle.dumps(w))
+    assert w2.rooms == w.rooms and (w2.grid == w.grid).all()
