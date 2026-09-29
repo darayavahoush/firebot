@@ -54,6 +54,10 @@ class World:
         hits = self.occupied(x + np.cos(a) * d, y + np.sin(a) * d)
         return float(d[np.argmax(hits)]) if hits.any() else float(max_range)
 
+    def rays(self, x: float, y: float, angles, max_range: float) -> np.ndarray:
+        """Lidar sweep: `ray()` for each absolute angle in `angles`."""
+        return np.array([self.ray(x, y, float(a), max_range) for a in np.asarray(angles)])
+
     def line_of_sight(self, x0, y0, x1, y1) -> bool:
         d = float(np.hypot(x1 - x0, y1 - y0))
         return self.ray(x0, y0, float(np.arctan2(y1 - y0, x1 - x0)), d) >= d - 0.2

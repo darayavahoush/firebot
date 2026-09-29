@@ -16,11 +16,32 @@ def _wrap(a: float) -> float:
 
 
 class RuleController:
+    # A fire being put out cools, so its thermal peak falls below the 140 C SPRAY gate and the
+    # controller can't re-engage it. With sticky_spray, once spraying has started the robot keeps
+    # aiming (thermal bearing, else the EIF estimate) and re-enters SPRAY on any sighting.
+    sticky_spray = False
+
     def __init__(self) -> None:
         self.state, self.t, self.lost, self.spray_lost = "EXPLORE", 0.0, 0.0, 0.0
         self.avoid = 0
+        self.engaged = False
         self.gas_scan, self.gas_cool = 0.0, 0.0
         self.last_v, self.stuck, self.rec, self.rdir = 0.0, 0.0, 0.0, 1
+
+    def _avoid(self, v: float, w: float, us: np.ndarray) -> tuple[float, float]:
+        """Obstacle avoidance from the four ultrasonic ranges (metres). Returns (v, w)."""
+        front = min(us[0], us[1])
+        if self.avoid and front > .8:
+            self.avoid = 0
+        if front < .6 or self.avoid:
+            if not self.avoid:
+                self.avoid = 1 if us[0] + us[2] >= us[1] + us[3] else -1
+            return (0.0 if front < .4 else .1), 1.7 * self.avoid
+        if us[2] < .35:
+            w -= .6
+        if us[3] < .35:
+            w += .6
+        return v, w
 
     def act(self, obs: np.ndarray, dt: float = 0.1) -> np.ndarray:
         self.t += dt
@@ -50,35 +71,25 @@ class RuleController:
                 v = .1 if abs(tgt) > .7 else .7
             else:
                 v, w = .1, .9
-            if seen and peak > 140:
-                self.state = "SPRAY"
+            if seen and (peak > 140 or (self.sticky_spray and self.engaged)):
+                self.state, self.engaged = "SPRAY", True
             elif self.lost > 3:
                 self.state = "EXPLORE"
         if self.state == "SPRAY":
             # Hold the chassis still and let the pan servo do the aiming: nozzle-relative
             # bearing error, not body-relative, drives both the turret rate and the pump gate.
             v, w = 0.0, 0.0
-            err = _wrap(zt - turret)
+            aim = zt if (seen or not self.sticky_spray) else eb
+            err = _wrap(aim - turret)
             turret_cmd = _c(err * 3, -1, 1)
             pump = float(abs(err) < .2 and tank > 0)
             self.spray_lost = 0.0 if seen else self.spray_lost + dt
-            if self.spray_lost > 2:
+            if self.spray_lost > (6 if self.sticky_spray else 2):
                 self.state, self.lost, self.spray_lost = "TRACK", 0.0, 0.0
         else:
             turret_cmd = _c(-turret * 2, -1, 1)  # recentre when not actively aiming to spray
         if self.state != "SPRAY":
-            front = min(us[0], us[1])
-            if self.avoid and front > .8:
-                self.avoid = 0
-            if front < .6 or self.avoid:
-                if not self.avoid:
-                    self.avoid = 1 if us[0] + us[2] >= us[1] + us[3] else -1
-                v, w = (0.0 if front < .4 else .1), 1.7 * self.avoid
-            else:
-                if us[2] < .35:
-                    w -= .6
-                if us[3] < .35:
-                    w += .6
+            v, w = self._avoid(v, w, us)
         # stuck recovery: commanded forward but wheel odometry says we are not moving
         self.stuck = self.stuck + dt if self.last_v > .05 and meas < .3 * self.last_v else 0.0
         if self.state != "SPRAY":

@@ -15,6 +15,8 @@ from firebot.db.training import TrainingStore
 
 from .controller import RuleController
 from .env import DT, FireEnv
+from .frontier_controller import FrontierController
+from .scan_controller import ScanController
 
 SCALARS = ("us_front_left", "us_front_right", "us_left", "us_right", "flame_left",
            "flame_center", "flame_right", "mq2_front", "mq2_rear")
@@ -28,10 +30,22 @@ def _git_commit() -> str | None:
         return None
 
 
+CONTROLLERS = {"rule": RuleController, "scan": ScanController, "frontier": FrontierController}
+
+
+def _act(env: FireEnv, ctrl: RuleController, obs: np.ndarray) -> np.ndarray:
+    """Call `ctrl.act`, handing scan-aware controllers the lidar sweep (and pose, if they map)."""
+    if isinstance(ctrl, FrontierController):
+        return ctrl.act(obs, DT, scan=env.scan(), pose=env.robot)
+    if isinstance(ctrl, ScanController):
+        return ctrl.act(obs, DT, scan=env.scan())
+    return ctrl.act(obs, DT)
+
+
 def run_episode(env: FireEnv, ctrl: RuleController, ops: Store, seed: int) -> dict:
     """Play one episode, logging telemetry/events to `ops`. Returns arrays and stats."""
     obs, _ = env.reset(seed=seed)
-    sid = ops.start_session("sim", f"rule baseline, seed {seed}")
+    sid = ops.start_session("sim", f"{type(ctrl).__name__}, seed {seed}")
     base = time.time()
     O, A, R, TE, TR = [], [], [], [], []
     readings: list[tuple[float, str, float]] = []
@@ -39,7 +53,7 @@ def run_episode(env: FireEnv, ctrl: RuleController, ops: Store, seed: int) -> di
     localised = False
     info: dict = {}
     while True:
-        a = ctrl.act(obs, DT)
+        a = _act(env, ctrl, obs)
         ts = base + env.t * DT
         O.append(obs)
         A.append(a)
@@ -88,16 +102,16 @@ def make_env(world: str = "default") -> FireEnv:
 
 
 def run_baseline(episodes: int, seed: int, ops_path: str, train_path: str,
-                 world: str = "default") -> list[dict]:
+                 world: str = "default", controller: str = "rule") -> list[dict]:
     env = make_env(world)
     results = []
     with Store(ops_path) as ops, TrainingStore(train_path) as train:
         ops.seed_default_devices()
-        run = train.start_run("rule", {"controller": "RuleController"},
+        run = train.start_run("rule", {"controller": CONTROLLERS[controller].__name__},
                               git_commit=_git_commit(), env_version="sim-0.1")
         for i in range(episodes):
             s = seed + i
-            ep = run_episode(env, RuleController(), ops, s)
+            ep = run_episode(env, CONTROLLERS[controller](), ops, s)
             name = "default-room" if world == "default" else f"{world}-world"
             scen = train.add_scenario(name, env.config(), seed=s)
             split = "val" if i % 10 == 8 else "test" if i % 10 == 9 else "train"
@@ -120,8 +134,11 @@ def main() -> None:
     p.add_argument("--train-db", default="training.db")
     p.add_argument("--world", choices=["default", "random", "mujoco"], default="default",
                    help="map source (mujoco needs `pip install 'firebot[mujoco]'`)")
+    p.add_argument("--controller", choices=sorted(CONTROLLERS), default="rule",
+                   help="rule = ultrasonic baseline; scan = lidar avoidance; frontier = scan + "
+                        "map-based exploration and fire approach")
     a = p.parse_args()
-    res = run_baseline(a.episodes, a.seed, a.ops_db, a.train_db, a.world)
+    res = run_baseline(a.episodes, a.seed, a.ops_db, a.train_db, a.world, a.controller)
     ok = [r for r in res if r["success"]]
     t = [r["time_to_extinguish"] for r in ok]
     print(f"{len(ok)}/{len(res)} extinguished"

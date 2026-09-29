@@ -111,6 +111,13 @@ class FireEnv:
         self.last = read_sensors(self.world, self.fire, *self.robot, self.rng)
         return self._obs(), {}
 
+    def scan(self, n: int = 36, max_range: float = 4.0) -> np.ndarray:
+        """Planar lidar sweep in the chassis frame: `n` ranges (m), ray k at angle
+        ``-pi + 2*pi*k/n`` relative to heading. Not part of `obs` (its size is fixed for the
+        DRL policy) -- scan-aware controllers ask for it explicitly."""
+        rel = -np.pi + 2 * np.pi * np.arange(n) / n
+        return self.world.rays(self.robot[0], self.robot[1], self.robot[2] + rel, max_range)
+
     def _obs(self) -> np.ndarray:
         obs = self.perception.update(self.last, self.robot, self.tank, self.meas_speed)
         self.est, self.eif = self.perception.est, self.perception.eif
