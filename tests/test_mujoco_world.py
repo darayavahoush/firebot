@@ -131,3 +131,29 @@ def test_random_world_pickles_with_rooms():
     w = MuJoCoWorld.random(seed=4)
     w2 = pickle.loads(pickle.dumps(w))
     assert w2.rooms == w.rooms and (w2.grid == w.grid).all()
+
+
+def test_rover_scene_compiles_with_every_sensor_at_sim_angles():
+    import re
+
+    from firebot.sensing import FLAME, US
+    from firebot.sim.mujoco_world import SENSOR_LEGEND, _rover_mjcf
+    xml = _rover_mjcf(1.0, 2.0, 0.3, turret=0.4)
+    for a in list(US.values()) + list(FLAME.values()):   # each sensor body uses its sim angle
+        assert re.search(rf'euler="0 0 {a}"', xml)
+    assert len(SENSOR_LEGEND) == 6
+    w = MuJoCoWorld.random(seed=1)
+    import mujoco
+    mujoco.MjModel.from_xml_string(w._mjcf("neon", rover=(3.0, 3.0, 0.0, 0.2), probe=False))
+    mujoco.MjModel.from_xml_string(w._mjcf("neon", rover=(3.0, 3.0, 0.0), beams=False, probe=False))
+
+
+def test_render3d_writes_png_when_gl_available(tmp_path, monkeypatch):
+    import os
+    if not os.environ.get("MUJOCO_GL"):
+        pytest.skip("set MUJOCO_GL=egl|osmesa to exercise the real 3-D renderer")
+    w = MuJoCoWorld.random(seed=3)
+    for shot in ("hero", "sensors", "overview"):
+        out = tmp_path / f"{shot}.png"
+        w.render3d(str(out), shot, width=320, height=200)
+        assert out.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
