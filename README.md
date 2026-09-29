@@ -2,7 +2,9 @@
 
 > **The fire ends here.**
 
-NIRVANA is an autonomous firefighting robot: simulation, EIF sensor fusion, motion planning, fire-event database.
+NIRVANA is an autonomous firefighting robot: simulation (including a physics-backed MuJoCo 3-D
+world), EIF sensor fusion, lidar exploration and motion planning, a fire-event database and a web
+console.
 
 ## Setup (macOS)
 ```bash
@@ -16,6 +18,9 @@ pytest -q && ruff check .
 firebot-sim --episodes 20   # runs the baseline, writes firebot.db + training.db
 
 firebot-plan --episodes 30   # RRT* planning controller vs. the rule baseline
+
+# MuJoCo 3-D world + lidar controllers (needs the `mujoco` extra: pip install -e ".[pc,mujoco]")
+firebot-sim --episodes 10 --world mujoco --controller frontier   # rule | scan | frontier
 # voice (needs the `speech` extra + a Vosk model directory)
 firebot-listen --model ~/models/vosk-model-small-en-us-0.15
 firebot-cmd --script "go to the east side; put out the fire; status"   # operator commands
@@ -41,13 +46,28 @@ firebot-eval --model runs/curriculum/model_final.zip --episodes 30 --train-db tr
 
 ## Web console
 A React + FastAPI console sits on top of the brain: **Live** (thermal view, rings, joystick, pump
-and nozzle), **Simulator** (a browser-only demo), **History** (run replay, plain-English summary,
-fault list) and **About**. Two terminals:
+and nozzle), **Simulator** (a browser-only demo), **MuJoCo** (a live 3-D episode from the
+physics-backed sim, drawn in the browser with three.js; optionally logged to History),
+**History** (run replay, plain-English summary, fault list) and **About**. Two terminals:
 ```bash
 cd firebot-console/backend  && ./run.sh   # FastAPI bridge + simulated robot + firebot-brain
 cd firebot-console/frontend && ./run.sh   # Vite dev server on http://localhost:5173
 ```
 Full setup, configuration and troubleshooting: [`firebot-console/README.md`](firebot-console/README.md).
+
+### MuJoCo tab
+Install the extra first (`pip install -e ".[pc,mujoco]"`), start both terminals above, open
+http://localhost:5173 and pick **MuJoCo**. Choose a map seed and a controller (Frontier, Scan or
+Rule baseline), press **Run**, and watch the rover explore and put out the fire. Orbit, top-down and
+follow cameras, 0.5x to 8x speed, and toggles for the lidar rays and the planned path. **Log this
+run** saves the episode to PostgreSQL so it shows up in History (and on Live while it plays).
+
+Outside the console, the same world has an interactive viewer and renderers. On macOS the viewer
+needs `mjpython` (installed with `mujoco`), not plain `python`:
+```bash
+mjpython -c "from firebot.sim.mujoco_world import MuJoCoWorld; MuJoCoWorld.random(seed=3).view()"
+python -c "from firebot.sim.mujoco_world import MuJoCoWorld; MuJoCoWorld.random(seed=3).render3d('out.png', 'hero')"   # also 'sensors', 'overview'
+```
 
 ## Configuration
 | Variable | Used by | Purpose |
@@ -68,7 +88,10 @@ database named after your macOS user and fails with `database "<you>" does not e
 ## Layout
 - `src/firebot/db/` operational DB (`Store`), training DB (`TrainingStore`), migrations, device registry
 - `src/firebot/fusion/` bearing-only Extended Information Filter
-- `src/firebot/sim/` world, sensor models, `FireEnv` (Gymnasium-style), rule-based baseline, `firebot-sim` CLI
+- `src/firebot/sim/` world, sensor models, `FireEnv` (Gymnasium-style), rule-based baseline, `firebot-sim` CLI;
+  `mujoco_world.py` (3-D MJCF world, `mj_ray` lidar, contact queries), `mapgen.py` (procedural rooms),
+  `scan_controller.py` / `frontier_controller.py` (lidar avoidance and frontier exploration),
+  `stream.py` (`EpisodeStream`: steps an episode frame by frame for the console)
 - `src/firebot/drl/` `FireGymEnv` (real `gymnasium.Env` wrapper for SB3), `firebot-train` (PPO),
   `firebot-eval` (compares a checkpoint against the rule baseline via `v_run_summary`)
 - `src/firebot/planning/` numpy RRT* (`RRTStar`, `Planner` interface), `PlanningController`
@@ -83,8 +106,8 @@ database named after your macOS user and fails with `database "<you>" does not e
   telemetry findings and run summaries used by the console's History page)
 - `src/firebot/speech/` also holds `speaker_id.py` (who spoke, via SpeechBrain ECAPA) and `vad.py`
 - `src/firebot/voice_intent/` trained offline voice-intent classifier and router (own README)
-- `firebot-console/` the web console: `frontend/` (React + Vite + Tailwind), `backend/server.py`
-  (FastAPI), `deploy/` (Azure scripts)
+- `firebot-console/` the web console: `frontend/` (React + Vite + Tailwind + three.js), `backend/server.py`
+  (FastAPI) and `backend/mujoco_stream.py` (the MuJoCo tab's WebSocket), `deploy/` (Azure scripts)
 - `src/firebot/perception.py` sensor frame -> observation (fusion), shared by the sim and the brain
 - `web/firebot-sim.html` standalone browser visualiser (open in any browser)
 - `docs/ARCHITECTURE.md`, `docs/DATABASE.md` design, roadmap, schema reference (the single source;

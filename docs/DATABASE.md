@@ -22,6 +22,12 @@ Migrations live in `db/pg_migrations/` and are applied by the brain on connect
 | `operator_commands` | Typed / voice / backstop / manual commands with parsed intent (JSONB, includes `channel`), `valid` and the reply |
 | `v_session_summary` (view) | Frames, duration, minimum tank, whether the pump ran, command count per session |
 
+**Simulated runs.** The console's MuJoCo tab writes sessions with `robot = 'mujoco-sim'` and
+`meta = {source, seed, controller, success}`. `frames.sensors` carries the nine real sensor names
+plus a `lidar` array (36 ranges in metres, ray `k` at angle `-pi + 2*pi*k/36` from heading; the
+real robot has no lidar). `thermal` is always `NULL` for these. `mq2_rear` repeats `mq2_front`
+because the sim has one gas channel. Filter with `WHERE robot = 'mujoco-sim'`.
+
 **Thermal grids are sparse.** `frames.thermal` is a flattened 768-value `REAL[]` (24 x 32,
 row-major) stored only when `seq % thermal_every == 0` (`firebot-brain --thermal-every`, default
 10; `0` = never). The other frames have `thermal = NULL`. Anything that needs "the current thermal

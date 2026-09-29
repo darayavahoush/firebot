@@ -2,6 +2,18 @@
 
 Newest first. Commit messages carry the detail; this is the readable summary.
 
+## MuJoCo tab
+- New page: a live 3-D episode from the MuJoCo-backed sim, streamed over `/ws/mujoco` and drawn
+  with three.js. Seed and controller pickers, speed, pause, orbit / top-down / follow cameras,
+  lidar rays and planned-path toggles, and a side panel with state, fire %, tank, collisions, pump.
+- **Log this run** saves the episode to PostgreSQL (`mujoco-sim` sessions) so it shows in History
+  and on Live while playing. Frames use the real robot's sensor names plus a 36-beam `lidar` list.
+- Backend: `backend/mujoco_stream.py`, `firebot.sim.stream.EpisodeStream`,
+  `GET /api/mujoco/status`. Needs the `mujoco` extra; the tab says so if it is missing.
+- Simulator-side: `ScanController` and `FrontierController` (lidar avoidance and exploration),
+  `firebot-sim --world mujoco --controller ...`. The lidar is sim-only.
+- Bundle is about 1.1 MB with three.js; lazy-load the tab if that matters for a deploy.
+
 ## Fix: Live thermal view stuck on "Waiting for a thermal frame"
 `/ws/telemetry` only ever sent the newest frame, and the brain stores a thermal grid on only every
 10th frame, so the grid arrived only if a poll happened to land on such a frame. The WebSocket now

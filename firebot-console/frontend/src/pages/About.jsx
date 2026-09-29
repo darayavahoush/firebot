@@ -73,12 +73,54 @@ const GROUPS = [
         ],
       },
       {
+        name: "Lidar avoidance (ScanController)",
+        where: "sim/scan_controller.py",
+        what: "Steers around things the four ultrasonic beams miss, like tree trunks, shelf legs and doorframes.",
+        how: [
+          "A 36-ray, 360-degree sweep replaces the ultrasonic check. When the way ahead is blocked it steers toward the most open heading instead of spinning to one side.",
+          "The explore / track / spray logic is the rule baseline's, unchanged. Simulation only: the real robot has no lidar yet.",
+        ],
+      },
+      {
+        name: "Frontier exploration (FrontierController)",
+        where: "sim/frontier_controller.py",
+        what: "Explores an unknown building on purpose instead of wandering.",
+        how: [
+          "Builds an occupancy grid from the lidar sweeps, finds the nearest reachable frontier (a free cell next to unknown), and follows a breadth-first path to it with pure pursuit. The green line on the MuJoCo tab is that path.",
+          "Once a fire is seen it hands over to the same track and spray logic. It needs the robot's pose, which in simulation is exact and on hardware would come from odometry or SLAM.",
+        ],
+      },
+      {
         name: "Command executor",
         where: "command/executor.py",
         what: "Runs validated commands as one of four modes.",
         how: [
           "IDLE, AUTO (search, approach, suppress), GOTO (drive a path, pump never on) and MANUAL (joystick with a 0.5 s dead-man timeout).",
           "STOP always wins and latches until the next motion command. Being blocked for 2 s triggers a replan.",
+        ],
+      },
+    ],
+  },
+  {
+    title: "Simulation",
+    items: [
+      {
+        name: "MuJoCo 3-D world",
+        where: "sim/mujoco_world.py, sim/mapgen.py",
+        what: "A physics-backed building the controllers can be tested in, with real 3-D obstacles.",
+        how: [
+          "Rooms come from a recursive space partition with a doorway between every adjacent pair, so the fire is always reachable. Walls, trees, shrubs, barrels, shelves and crates are MuJoCo geoms.",
+          "The lidar is an exact ray cast at scan height, and the planning grid is derived from the same solid geoms, so the planner and the physics cannot disagree. Tree canopies are visual only because they sit above the scan plane.",
+          "It is a drop-in for the flat world, so the estimator, planner and controllers run unchanged.",
+        ],
+      },
+      {
+        name: "Live episode stream (MuJoCo tab)",
+        where: "sim/stream.py, backend/mujoco_stream.py",
+        what: "Plays a simulated episode in the browser, and can save it to History.",
+        how: [
+          "The backend steps the simulation and sends the map once, then a small update about ten times a second. The browser draws the 3-D scene, so the server needs no display.",
+          "With Log this run on, each tick is stored with the same sensor names the real robot reports, plus the lidar scan, so a simulated run replays like a real one.",
         ],
       },
     ],
@@ -140,7 +182,7 @@ const GROUPS = [
         how: [
           "Stage 1: one fixed room. Stage 2: the same room with the fire much further away. Stage 3: a new procedurally generated building every episode.",
           "One PPO policy carries across stages. Procedural buildings come from recursive space partition with a doorway cut between rooms.",
-          "Current status: at 300k steps the trained policy trails the rule baseline, so the console runs the rule and RRT* stack.",
+          "Current status: at 300k steps the trained policy trails the rule baseline, so the console runs the rule and RRT* stack, plus the lidar controllers in simulation.",
         ],
       },
     ],

@@ -36,6 +36,13 @@ data structures, so switching to the robot changes drivers only.
     Simulator (browser-only), see "Web console" below
 11. [x] Speaker identification for the audit trail; offline voice-intent classifier
 12. [ ] Real camera stream (the console shows placeholder footage), real map / SLAM
+13. [x] MuJoCo world: 3-D MJCF scenes generated from the same procedural floor plans, exact
+    `mj_ray` lidar, contact-based collisions, trees / shrubs / barrels / shelves as obstacles;
+    a drop-in `World` (see "MuJoCo world" below)
+14. [x] Lidar controllers: `ScanController` (gap-following avoidance) and `FrontierController`
+    (occupancy grid from lidar sweeps + frontier exploration), selectable with
+    `firebot-sim --controller`. Sim-only: the real robot has no lidar yet
+15. [x] Console MuJoCo tab: a live 3-D episode over WebSocket, optional logging to PostgreSQL
 
 ## Command layer (`firebot.command`)
 operator text -> `RuleParser` (deterministic) -> [`SLMParser`, only if rules returned UNKNOWN]
@@ -110,7 +117,30 @@ channel (`voice:<name>`).
 
 Limits: the token authenticates but the link is not encrypted -- use it over a trusted LAN or a
 VPN (WireGuard/Tailscale). Odometry pose comes from the Pi (wheel encoders/IMU); there is no SLAM
-yet. `Brain` assumes the sim's room map (`World`) until a real map is configured.
+on the robot yet (the sim's `FrontierController` uses the simulator's true pose). `Brain` assumes the sim's room map (`World`) until a real map is configured.
+
+## MuJoCo world (`firebot.sim`, optional `mujoco` extra)
+`MuJoCoWorld` is a drop-in for `World` (`grid`, `occupied`, `is_free`, `ray`, `line_of_sight`), so
+`FireEnv`, the sensor models, RRT* and every controller run unchanged on it.
+- Walls and props are static MuJoCo geoms compiled from generated MJCF. Trees are a thin solid
+  trunk plus a visual-only canopy above the scan plane, the way a 2-D lidar sees them.
+- `ray()` / `rays()` are exact `mj_ray` / `mj_multiRay` casts at lidar height over the solid geom
+  group only. The planning grid is derived from the scene itself, so planners and physics cannot
+  disagree about what is solid. `robot_collides()` is a real narrow-phase contact query.
+- Maps come from `mapgen.py` (BSP rooms with a doorway between each adjacent pair, typed rooms,
+  a reachability guarantee), so every fire is reachable.
+- Rendering: `render()` (headless top-down PNG), `render3d()` (still, headless-safe) and `view()`
+  (interactive viewer; `mjpython` on macOS).
+
+Controllers, each building on the last:
+| Controller | Sensors it uses | Behaviour |
+|---|---|---|
+| `rule` | 4 ultrasonic beams, 3 flame sensors, gas | explore / track / spray baseline |
+| `scan` | + 36-ray lidar (`FireEnv.scan`, 360 deg, 4 m) | same logic, gap-following avoidance instead of spinning |
+| `frontier` | + robot pose | builds an occupancy grid from lidar, BFS to the nearest frontier, pure pursuit |
+
+The lidar is a simulation-only sensor. Only `rule` runs on the sensors the real robot has, so
+results for `scan` and `frontier` say what a lidar would add, not how the current hardware behaves.
 
 ## Web console (`firebot-console/`)
 ```
@@ -134,5 +164,17 @@ React (Vite) --HTTP/WS--> FastAPI bridge (server.py) --SQL--> PostgreSQL   (hist
   then Groq Whisper, and reports the mode in `/api/voice/status`. Speaker ID runs on the same audio.
 - **Simulator page:** a browser-only port of the sim, planner (informed RRT*, standing in for OMPL
   which has no browser build) and command grammar. It shares no state with the real robot.
+- **MuJoCo page:** `WS /ws/mujoco?seed=&controller=&speed=&log=` (`backend/mujoco_stream.py`). The
+  server runs `firebot.sim.stream.EpisodeStream` in a worker thread and sends the map once (a
+  `scene` message), then a small `frame` about every 0.1 s of sim time and a final `end`. The
+  browser draws everything with three.js, so the server needs `mujoco` but no display or GL.
+  The client can send `{paused}` and `{speed}` while it runs. `GET /api/mujoco/status` reports
+  whether `mujoco` is installed. With `log=1` the run is written to the telemetry DB (below).
+- **Logging a MuJoCo run:** a session with `robot = 'mujoco-sim'` and `meta` holding the seed,
+  controller and outcome; one `frames` row per tick (batched every 10 frames) using the same
+  sensor names as the real robot, plus a `lidar` list of 36 ranges in `sensors`. The session stays
+  open (`ended_at IS NULL`) while playing, so the Live page follows it, and is closed even if the
+  browser disconnects. Thermal grids are not produced by the sim. A real robot session that is
+  also live can be shadowed on the Live page, since it shows the newest open session.
 - **Reading the console safely:** the console never opens a socket to the Pi; everything goes
   through the brain, so the fail-safes above still apply to manual driving.

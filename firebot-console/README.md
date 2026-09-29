@@ -7,6 +7,7 @@ to `firebot-brain` and reads telemetry and run history from PostgreSQL.
 |---|---|---|
 | **Live** | Real robot: MLX90640 thermal view, tank / gas / fire-fix rings, analog joystick, pump toggle, nozzle slider, command log, alerts | yes |
 | **Simulator** | Self-contained browser demo: procedural map, mock sensors, EIF estimator, RRT* planner, voice and text commands | no (voice transcription fallback aside) |
+| **MuJoCo** | Live 3-D episode from the physics-backed sim (three.js): pick a seed and controller, orbit / top / follow cameras, lidar rays, planned path, optional logging to History | yes, and `pip install -e ".[mujoco]"` |
 | **History** | Past runs: replay with a scrubber, plain-English summary, fault list, sensor chart | yes |
 | **About** | What NIRVANA is and how the pieces fit | no |
 
@@ -57,6 +58,17 @@ Click a run to get:
 - **What happened:** the summary text. Add `?narrate_text=true` to the summary endpoint (with
   `FIREBOT_SLM_CMD` set) for a local-model rewording; numbers are verified against the facts.
 
+## MuJoCo page
+Runs the MuJoCo-backed simulator on the backend and streams it to the browser.
+- Controls: map seed, controller (Frontier, Scan, Rule baseline), speed 0.5x to 8x, pause and
+  restart, camera (orbit, top, follow), lidar rays and planned-path toggles.
+- **Log this run** saves the episode as a `mujoco-sim` session, so it appears on the History page
+  and, while it plays, on Live. If the database is unreachable the run still plays and the panel
+  shows a warning.
+- It shows a simulated robot on a generated map. It is not connected to the real robot, and the
+  lidar it uses does not exist on the hardware.
+- If the tab says the backend can't be reached or `mujoco` isn't installed, see Troubleshooting.
+
 ## Simulator page
 Controls: new building, move the fire, pause, 0.5x to 4x, planner-tree and camera-view toggles,
 and a Stop button. The side panel has four tabs:
@@ -78,6 +90,8 @@ and a Stop button. The side panel has four tabs:
 | `POST /api/command` | `DRIVE` (`dir`/`speed`, or analog `v` 0..1 and `w` -1..1, both finite), `PUMP`, `NOZZLE` (clamped to ±45°), `SET_MODE` (UI-local) |
 | `POST /api/command/estop` | Emergency stop via the brain bridge |
 | `GET /api/voice/status`, `POST /api/transcribe` | Speech backend in use; transcription (plus speaker ID) |
+| `GET /api/mujoco/status` | Whether `mujoco` is installed, and the controller names |
+| `WS /ws/mujoco` | One streamed episode (`?seed=&controller=&speed=&log=`): `scene`, `frame`s, `end` |
 | `WS /ws/telemetry` | Live `frame` and `command` messages, polled from Postgres every 0.4 s |
 
 `/ws/telemetry` sends the newest frame. When that frame has no thermal grid, it attaches the
@@ -98,7 +112,13 @@ groups. `FIREBOT_DB` is read by both `run.sh` and `server.py`.
   `psql postgresql://firebot:firebot@localhost:5432/firebot`.
 - **`zsh: command not found: python`:** use `python3`, or activate `.venv`.
 - **Manual drive does nothing:** the mode must be Manual, and a robot must be connected (409 otherwise).
-- **Vite warns about chunks over 500 kB:** harmless.
+- **MuJoCo tab shows "Not Found":** the backend on :8000 is older than the MuJoCo routes (`run.sh`
+  does not auto-reload). Stop it (`pkill -f "uvicorn server:app"`), check `lsof -nP -iTCP:8000
+  -sTCP:LISTEN` shows nothing, then run `./run.sh` again. `curl localhost:8000/api/mujoco/status`
+  should return `"available":true`.
+- **MuJoCo tab says `mujoco` isn't installed:** `pip install -e ".[pc,mujoco]"` in the venv the
+  backend runs from.
+- **Vite warns about chunks over 500 kB:** harmless (three.js makes the bundle about 1.1 MB).
 
 ## Azure (low-cost, one person)
 `deploy/azure-deploy.sh` (run from the repo root after `az login`) creates a Container App that
@@ -107,10 +127,12 @@ scales to zero and a small Postgres, and saves names to `.azure-firebot.env` (gi
 you only pay for storage. Deleting the Postgres server is the only way to stop its billing fully.
 
 ## Layout
-- `backend/server.py`: the FastAPI bridge (routes above)
-- `frontend/src/pages/`: `LiveOps`, `Simulator`, `History`, `About`
+- `backend/server.py`: the FastAPI bridge (routes above); `backend/mujoco_stream.py`: the MuJoCo tab's
+  WebSocket and run logging
+- `frontend/src/pages/`: `LiveOps`, `Simulator`, `MuJoCo`, `History`, `About`
 - `frontend/src/components/`: shared pieces (`ThermalHero`, `Ring`, `Joystick`, `RunReplay`,
   `RunInsights`, `RunChart`, ...); `components/sim/` holds the Simulator's Sensors, Planner and Voice tabs
+- `frontend/src/components/mujoco/MujocoScene.js`: the three.js scene (walls, props, rover, rays, path)
 - `frontend/src/lib/`: `simEngine.js` / `simController.js` (the browser-only simulator, ported from
   the Python backend), `commandHelp.js` (voice phrase reference, keep in sync with `simEngine.js`
   `parseIntent()` and `command/parser.py`)
