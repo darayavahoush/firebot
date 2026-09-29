@@ -85,13 +85,19 @@ class FireEnv:
         self.rng = np.random.default_rng()
 
     def config(self) -> dict:
-        return {"walls": self.world.walls, "max_steps": self.max_steps, "dt": DT,
-                "vmax": VMAX, "wmax": WMAX, "obs_dim": OBS_DIM}
+        cfg = {"walls": self.world.walls, "max_steps": self.max_steps, "dt": DT,
+               "vmax": VMAX, "wmax": WMAX, "obs_dim": OBS_DIM}
+        if getattr(self.world, "props", None):  # physics-backed worlds carry scenery too
+            cfg["props"] = self.world.props
+        return cfg
 
     def reset(self, seed: int | None = None):
         self.rng = np.random.default_rng(seed)
         if self.world_factory is not None:
+            old = self.world
             self.world = self.world_factory(self.rng)
+            if old is not self.world and hasattr(old, "close"):
+                old.close()  # let the previous episode's physics scene go
         start = _START if self.world.is_free(*_START, .22) else \
             self.world.random_free_point(self.rng, .22)
         self.robot = np.array([start[0], start[1], 0.6])  # x, y, theta

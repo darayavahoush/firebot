@@ -75,8 +75,21 @@ def run_episode(env: FireEnv, ctrl: RuleController, ops: Store, seed: int) -> di
                 time_to_extinguish=env.t * DT if te else None)
 
 
-def run_baseline(episodes: int, seed: int, ops_path: str, train_path: str) -> list[dict]:
-    env = FireEnv()
+def make_env(world: str = "default") -> FireEnv:
+    """`default`: the fixed 12x8 room. `random`: new grid-based building per episode.
+    `mujoco`: new MuJoCo-backed building (trees, shrubs, barrels, shelves...) per episode."""
+    if world == "random":
+        from .world import World
+        return FireEnv(world_factory=lambda rng: World.random(rng))
+    if world == "mujoco":
+        from .mujoco_world import MuJoCoWorld
+        return FireEnv(world_factory=lambda rng: MuJoCoWorld.random(rng))
+    return FireEnv()
+
+
+def run_baseline(episodes: int, seed: int, ops_path: str, train_path: str,
+                 world: str = "default") -> list[dict]:
+    env = make_env(world)
     results = []
     with Store(ops_path) as ops, TrainingStore(train_path) as train:
         ops.seed_default_devices()
@@ -85,7 +98,8 @@ def run_baseline(episodes: int, seed: int, ops_path: str, train_path: str) -> li
         for i in range(episodes):
             s = seed + i
             ep = run_episode(env, RuleController(), ops, s)
-            scen = train.add_scenario("default-room", env.config(), seed=s)
+            name = "default-room" if world == "default" else f"{world}-world"
+            scen = train.add_scenario(name, env.config(), seed=s)
             split = "val" if i % 10 == 8 else "test" if i % 10 == 9 else "train"
             train.add_episode(
                 run, ep["obs"], ep["actions"], ep["rewards"], ep["terminated"], ep["truncated"],
@@ -104,8 +118,10 @@ def main() -> None:
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--ops-db", default="firebot.db")
     p.add_argument("--train-db", default="training.db")
+    p.add_argument("--world", choices=["default", "random", "mujoco"], default="default",
+                   help="map source (mujoco needs `pip install 'firebot[mujoco]'`)")
     a = p.parse_args()
-    res = run_baseline(a.episodes, a.seed, a.ops_db, a.train_db)
+    res = run_baseline(a.episodes, a.seed, a.ops_db, a.train_db, a.world)
     ok = [r for r in res if r["success"]]
     t = [r["time_to_extinguish"] for r in ok]
     print(f"{len(ok)}/{len(res)} extinguished"
