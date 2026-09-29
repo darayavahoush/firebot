@@ -2,8 +2,8 @@ import React from "react";
 
 const TITLES = {
   live: { title: "Live operations", sub: "Telemetry and manual control" },
-  sim: { title: "Simulator", sub: "Procedural map, mock sensors, planner, voice control" },
-  mujoco: { title: "MuJoCo", sub: "Physics-backed 3D world, live from the backend" },
+  sim: { title: "Simulator", sub: "Browser-only demo: its own 2D map, mock sensors, RRT* planner, voice control" },
+  mujoco: { title: "MuJoCo", sub: "Backend 3D physics sim with a simulated lidar, not the Simulator's map" },
   history: { title: "Run history", sub: "Logged runs from Postgres" },
   about: { title: "About", sub: "The algorithms behind the robot" },
 };

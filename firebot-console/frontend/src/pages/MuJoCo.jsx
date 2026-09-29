@@ -169,7 +169,7 @@ export default function MuJoCo() {
           </div>
         </div>
         <p className="text-[11px] text-faint leading-relaxed px-1">
-          Same simulator as <span className="data">firebot-sim --world mujoco</span>, run live on the backend. Drag to orbit, scroll to zoom. Rays show the 36-beam lidar at 0.15 m; the green line is the frontier planner's path.
+          Same simulator as <span className="data">firebot-sim --world mujoco</span>, run live on the backend. Maps differ from the Simulator tab, which is a separate browser-only engine. The lidar exists only in simulation; the real robot has none. Drag to orbit, scroll to zoom. Rays show the 36-beam lidar at 0.15 m; the green line is the frontier planner's path.
         </p>
       </div>
     </div>
