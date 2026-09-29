@@ -39,6 +39,9 @@ export default function MuJoCo() {
   const [camMode, setCamMode] = useState("orbit");
   const [lidar, setLidar] = useState(true);
   const [pathOn, setPathOn] = useState(true);
+  const [logRun, setLogRun] = useState(false);          // save the run to the History database
+  const [sessionId, setSessionId] = useState(null);
+  const [warn, setWarn] = useState("");
   const [phase, setPhase] = useState("idle");          // idle | loading | running | done | error
   const [error, setError] = useState("");
   const [hud, setHud] = useState(null);
@@ -59,14 +62,15 @@ export default function MuJoCo() {
 
   const start = useCallback(() => {
     wsRef.current?.close();
-    setPhase("loading"); setError(""); setResult(null); setHud(null); setPaused(false);
+    setPhase("loading"); setError(""); setResult(null); setHud(null); setPaused(false); setSessionId(null); setWarn("");
     const proto = window.location.protocol === "https:" ? "wss" : "ws";
-    const ws = new WebSocket(`${proto}://${window.location.host}/ws/mujoco?seed=${seed}&controller=${controller}&speed=${speed}`);
+    const ws = new WebSocket(`${proto}://${window.location.host}/ws/mujoco?seed=${seed}&controller=${controller}&speed=${speed}&log=${logRun ? 1 : 0}`);
     wsRef.current = ws;
     let last = 0;
     ws.onmessage = (e) => {
       const m = JSON.parse(e.data);
-      if (m.type === "scene") { sceneRef.current.load(m); setPhase("running"); }
+      if (m.type === "scene") { sceneRef.current.load(m); setSessionId(m.session_id || null); setPhase("running"); }
+      else if (m.type === "warn") { setWarn(m.message); }
       else if (m.type === "frame") {
         sceneRef.current.frame(m);
         const now = performance.now();
@@ -75,7 +79,7 @@ export default function MuJoCo() {
       else if (m.type === "error") { setError(m.message); setPhase("error"); }
     };
     ws.onerror = () => { setError("WebSocket failed. Is the backend running?"); setPhase("error"); };
-  }, [seed, controller, speed]);
+  }, [seed, controller, speed, logRun]);
 
   const send = (msg) => wsRef.current?.readyState === 1 && wsRef.current.send(JSON.stringify(msg));
   const togglePause = () => { setPaused((p) => { send({ paused: !p }); return !p; }); };
@@ -137,6 +141,12 @@ export default function MuJoCo() {
               <span className="text-[12px] text-muted mr-1">Speed</span>
               {SPEEDS.map((v) => <Btn key={v} on={speed === v} onClick={() => changeSpeed(v)}>{v}×</Btn>)}
             </div>
+            <div className="flex flex-wrap gap-1.5 items-center">
+              <Btn on={logRun} onClick={() => setLogRun((v) => !v)} disabled={phase === "running"}>Log this run</Btn>
+              <span className="text-[11px] text-faint">saves to History; shows on Live while running</span>
+            </div>
+            {warn && <div className="text-[12px] text-warn">{warn}</div>}
+            {sessionId && <div className="text-[11px] text-faint data break-all">Logging as session {sessionId.slice(0, 8)}</div>}
             <div className="flex gap-2">
               <button onClick={start} disabled={unavailable || busy}
                 className="flex-1 h-10 rounded-full bg-telemetry text-[#1A0615] font-display font-extrabold text-[14px] disabled:opacity-40 hover:brightness-110 active:scale-95 transition">

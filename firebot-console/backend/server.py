@@ -133,6 +133,9 @@ VOICE_INTENT_ROUTER_STATE = os.environ.get("FIREBOT_VOICE_INTENT_ROUTER_STATE",
                                           "voice_intent_router.json")
 
 app = FastAPI(title="firebot-api")
+import mujoco_stream as _mujoco_stream  # noqa: E402
+
+_mujoco_stream.get_pool = lambda: _pool  # lets /ws/mujoco?log=1 write to Postgres
 app.include_router(mujoco_router)
 app.add_middleware(
     CORSMiddleware,
