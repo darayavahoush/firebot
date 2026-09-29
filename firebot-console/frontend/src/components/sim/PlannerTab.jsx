@@ -39,7 +39,9 @@ export default function PlannerTab({ t }) {
         <summary className="cursor-pointer text-ink">How this planner works</summary>
         <p className="mt-2 leading-relaxed">
           Informed RRT* grows a tree of random collision-free points, rewires it toward shorter routes, then shortcuts the result.
-          OMPL has no browser build, so this demo runs the same search in JavaScript. The Python backend's{" "}
+          It plans against the robot's own SLAM occupancy grid, not the true building -- known obstacles block it, unmapped space
+          is assumed passable until proven otherwise, same as a real global planner. OMPL has no browser build, so this demo runs
+          the same search in JavaScript. The Python backend's{" "}
           <code className="text-ink">firebot.planning.OMPLPlanner</code> uses the real OMPL bindings as a drop-in swap.
         </p>
       </details>

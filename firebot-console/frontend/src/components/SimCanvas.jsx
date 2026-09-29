@@ -26,11 +26,12 @@ function ironbow(t, a = 1) {
 // at once. Mirrors what a real SLAM stack would actually have observed —
 // a close all-around ring (ultrasonic range) plus a longer forward wedge
 // (camera FOV) — so the shape of the revealed area tells its own story.
+const hyp = (dx, dy) => Math.sqrt(dx * dx + dy * dy);
 const MASK_RES = 24;       // mask-canvas px per world metre, independent of view zoom
 const REVEAL_NEAR = 2.1;   // m, all-around proximity reveal
 const REVEAL_FAR = 6.0;    // m, forward camera-cone reveal
 
-export default function SimCanvas({ engineRef, showTree, showSensors, height = 560 }) {
+export default function SimCanvas({ engineRef, showTree, showSensors, showSlam, height = 560 }) {
   const canvasRef = useRef(null);
   const rafRef = useRef(null);
   const detailRef = useRef(null);
@@ -169,7 +170,7 @@ export default function SimCanvas({ engineRef, showTree, showSensors, height = 5
 
       for (const w of world.walls) {
         const px = X(w.x), py = Y(w.y + w.h), pw = w.w * scale, ph = w.h * scale;  // Y() is flipped: top edge = y + h
-        if (w.prop) drawCrate(dctx, px, py, pw, ph);
+        if (w.prop) drawProp(dctx, w.kind, px, py, pw, ph, scale);
         else drawWall(dctx, px, py, pw, ph);
       }
 
@@ -207,6 +208,44 @@ export default function SimCanvas({ engineRef, showTree, showSensors, height = 5
         ctx.beginPath();
         for (const [a, b] of controller.tree) { ctx.moveTo(X(a[0]), Y(a[1])); ctx.lineTo(X(b[0]), Y(b[1])); }
         ctx.stroke();
+      }
+
+      // ---- SLAM / next-best-view overlay: the frontier the robot's own occupancy grid sees,
+      // the viewpoint NBV picked from it, and how far dead-reckoning + scan-matching has drifted
+      // from ground truth -- i.e. what the robot itself believes, not what the world actually is.
+      if (showSlam) {
+        const nbv = controller.nbv;
+        if (nbv?.frontier?.length) {
+          ctx.fillStyle = "rgba(125,227,176,0.55)";
+          for (const [fx, fy] of nbv.frontier) { ctx.beginPath(); ctx.arc(X(fx), Y(fy), 1.6, 0, 7); ctx.fill(); }
+        }
+        if (nbv?.candidates?.length) {
+          for (const c of nbv.candidates) {
+            const cx = X(c.x), cy = Y(c.y);
+            ctx.fillStyle = "rgba(196,160,255,0.55)";
+            ctx.beginPath(); ctx.arc(cx, cy, 3, 0, 7); ctx.fill();
+          }
+        }
+        if (nbv?.target) {
+          const tx = X(nbv.target.x), ty = Y(nbv.target.y), s6 = 6 + Math.sin(t * 4) * 1.5;
+          ctx.strokeStyle = "#C4A0FF"; ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.moveTo(tx, ty - s6); ctx.lineTo(tx + s6, ty); ctx.lineTo(tx, ty + s6); ctx.lineTo(tx - s6, ty); ctx.closePath();
+          ctx.stroke();
+          ctx.fillStyle = "#C4A0FF"; ctx.font = "10px 'Martian Mono', monospace";
+          ctx.textAlign = "center"; ctx.textBaseline = "bottom";
+          ctx.fillText("NBV", tx, ty - s6 - 3);
+        }
+        const slamPose = controller.slam?.pose;
+        if (slamPose) {
+          const px = X(slamPose.x), py = Y(slamPose.y), errPx = hyp(X(slamPose.x) - X(rx0), Y(slamPose.y) - Y(ry0));
+          if (errPx > 2) {
+            ctx.strokeStyle = "rgba(255,178,56,0.65)"; ctx.setLineDash([3, 3]); ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(X(rx0), Y(ry0)); ctx.lineTo(px, py); ctx.stroke(); ctx.setLineDash([]);
+          }
+          ctx.strokeStyle = "#FFB238"; ctx.lineWidth = 1.5;
+          ctx.beginPath(); ctx.arc(px, py, 4, 0, 7); ctx.stroke();
+        }
       }
       if (controller.path?.length > 1) {
         ctx.strokeStyle = COLORS.path; ctx.lineWidth = 2.5; ctx.lineJoin = "round"; ctx.lineCap = "round"; ctx.setLineDash([9, 7]); ctx.lineDashOffset = -t * 26; ctx.shadowColor = COLORS.path; ctx.shadowBlur = 8;
@@ -279,7 +318,7 @@ export default function SimCanvas({ engineRef, showTree, showSensors, height = 5
     }
     rafRef.current = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [engineRef, showTree, showSensors, height]);
+  }, [engineRef, showTree, showSensors, showSlam, height]);
 
   return <canvas ref={canvasRef} style={{ width: "100%", height }} className="block" />;
 }
@@ -326,6 +365,44 @@ function drawCrate(ctx, px, py, pw, ph) {
   ctx.moveTo(x + w - 1, y + 1); ctx.lineTo(x + 1, y + h - 1); ctx.stroke();
   ctx.strokeStyle = "#FFB000"; ctx.lineWidth = 1.5;
   ctx.strokeRect(x + 0.75, y + 0.75, Math.max(0, w - 1.5), Math.max(0, h - 1.5));
+}
+
+// Flat rectangular furniture: a shelf/table read as long low blocks with a top highlight edge,
+// distinct from a wall (no shadow, lighter warm tone) and from a crate (no hazard cross).
+function drawFurniture(ctx, px, py, pw, ph) {
+  const [x, y, w, h] = snapRect(px, py, pw, ph);
+  ctx.fillStyle = "#3B2E23"; ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = "rgba(196,150,110,0.55)"; ctx.fillRect(x, y, w, Math.min(h, 2));
+  ctx.strokeStyle = "rgba(196,150,110,0.4)"; ctx.lineWidth = 1; ctx.strokeRect(x + 0.5, y + 0.5, Math.max(0, w - 1), Math.max(0, h - 1));
+}
+
+// Round canopy foliage (tree/shrub) and a barrel: drawn as discs so they read as "planted" or
+// "cylindrical" clutter rather than more geometric obstacle blocks.
+function drawFoliage(ctx, px, py, pw, ph, kind) {
+  const cx = px + pw / 2, cy = py + ph / 2, r = Math.max(2, Math.min(pw, ph) / 2);
+  if (kind === "tree") {
+    ctx.fillStyle = "rgba(70,40,20,0.9)"; ctx.fillRect(cx - Math.max(1, r * 0.12), cy, Math.max(2, r * 0.24), r * 0.9);
+    const canopy = ["#1F6B4A", "#2E8F63", "#48B37F"];
+    canopy.forEach((c, i) => {
+      ctx.fillStyle = c;
+      ctx.beginPath(); ctx.arc(cx - r * 0.15 * i, cy - r * 0.12 * i, r * (1 - i * 0.22), 0, 7); ctx.fill();
+    });
+    ctx.strokeStyle = "rgba(72,179,127,0.5)"; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(cx, cy, r, 0, 7); ctx.stroke();
+  } else if (kind === "shrub") {
+    ctx.fillStyle = "#2E8F63"; ctx.beginPath(); ctx.arc(cx, cy, r, 0, 7); ctx.fill();
+    ctx.strokeStyle = "rgba(72,179,127,0.6)"; ctx.lineWidth = 1; ctx.stroke();
+  } else { // barrel
+    ctx.fillStyle = "#3A2F1A"; ctx.beginPath(); ctx.arc(cx, cy, r, 0, 7); ctx.fill();
+    ctx.strokeStyle = "rgba(255,176,0,0.55)"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(cx, cy, r * 0.62, 0, 7); ctx.stroke();
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, 7); ctx.stroke();
+  }
+}
+
+function drawProp(ctx, kind, px, py, pw, ph, scale) {
+  if (kind === "tree" || kind === "shrub" || kind === "barrel") drawFoliage(ctx, px, py, pw, ph, kind);
+  else if (kind === "shelf" || kind === "table") drawFurniture(ctx, px, py, pw, ph);
+  else drawCrate(ctx, px, py, pw, ph);
 }
 
 // Fire (ground truth): solid red marker sized by remaining intensity `p`, a pulsing ring and

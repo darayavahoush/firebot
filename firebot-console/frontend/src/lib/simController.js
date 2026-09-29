@@ -1,8 +1,13 @@
 import {
-  mulberry32, generateBuilding, World, RRTStar, CostMap, pathLength, followPath,
+  mulberry32, generateBuilding, World, RRTStar, pathLength, followPath,
   readSensors, EIF, makePlaces, parseIntent, VMAX, WMAX, SPRAY_RANGE, SPRAY_CONE,
   EXTINGUISH_RATE, WATER_RATE, BATTERY_RATE, ROBOT_RADIUS,
 } from './simEngine.js';
+import { lidarScan, SlamLite, MapCostMap, nextBestView } from './slam.js';
+
+const SCAN_PERIOD = 0.2;          // s of sim time between lidar/SLAM updates (5 Hz)
+const FACE_FIRE_TOL = 0.35;       // rad (~20deg) nozzle/heading-to-fire error counted as "facing it"
+const toDeg = (r) => (r * 180) / Math.PI;
 
 const STANDOFF = 1.8, LOOKAHEAD = 0.6, REPLAN_EVERY = 4.0, RETRY_AFTER = 1.5, GOAL_SHIFT = 0.7;
 const wrapA = (a) => Math.atan2(Math.sin(a), Math.cos(a));
@@ -62,7 +67,6 @@ export class SimController {
     this.rng = mulberry32(s);
     const { width, height, walls, rooms } = generateBuilding(this.rng);
     this.world = new World(width, height, walls);
-    this.cmap = new CostMap(this.world);
     this.rooms = rooms;
     this.places = makePlaces(this.world);
     const home = this.world.isFree(1.3, 1.1, 0.4) ? [1.3, 1.1] : this.world.randomFreePoint(this.rng, 0.4);
@@ -71,6 +75,16 @@ export class SimController {
     const [fx, fy] = this.world.randomFreePoint(this.rng, 0.5, home, Math.min(width, height) * 0.5);
     this.fire = { x: fx, y: fy, p: 1.0 };
     this.eif = new EIF();
+    // SLAM front end: builds its own occupancy grid from simulated lidar + noisy odometry, and
+    // is what next-best-view exploration and the "known map" overlay actually see -- ground
+    // truth (`this.world`) is only used for physics, raycasts and the pose-error readout.
+    this.slam = new SlamLite(this.world, this.robot, this.rng);
+    this.sinceScan = 0;
+    this.nbv = { target: null, candidates: [], frontier: [] };
+    this.exploreBlacklist = [];   // frontier targets that proved unreachable/stale: [x, y, radius]
+    this.extinguishReport = [];   // {t, x, y, headingDeg, bearingToFireDeg, headingErrDeg, facingFire}
+    this.orientation = null;
+    this._firePrevP = 1.0;
     this.t = 0;
     this.tank = 1.0;
     this.battery = 1.0;
@@ -128,6 +142,8 @@ export class SimController {
     this.trackStallT = 0; this.trackCooldown = 0; this.lost = 0; this.spinT = 0;
     this.errHistory = [];
     this.lastSense = null;
+    this.exploreBlacklist = [];
+    this._firePrevP = 1.0;
     this._logEvent('scenario', `New fire placed at (${fx.toFixed(1)}, ${fy.toFixed(1)}) \u2013 approaching to extinguish (tank/battery reset)`);
   }
 
@@ -177,9 +193,21 @@ export class SimController {
     }
   }
 
+  /** Planner-facing cost map built from the robot's own SLAM occupancy grid, not ground truth:
+   *  cells the map has actually seen occupied are blocked (inflated by the robot's radius);
+   *  everything else -- free or simply not yet scanned -- is treated as passable. That's what
+   *  lets the robot plan into a frontier it hasn't fully mapped yet or toward a commanded goal
+   *  across unexplored territory, the same way a real global planner runs optimistically against
+   *  its current map and leans on the reactive ultrasonic backstop (see step(), below) plus
+   *  replanning if something it didn't know about turns out to be in the way. */
+  _slamCostMap(margin = 0.08) {
+    return new MapCostMap(this.slam.map, ROBOT_RADIUS + margin, true);
+  }
+
   _replanFor(goalXY, kind) {
     this.sincePlan = 0;
-    const planner = new RRTStar(this.world, this.rng, { maxIter: 1400 });
+    const cmap = this._slamCostMap();
+    const planner = new RRTStar(this.slam.map, this.rng, { maxIter: 1400, cmap });
     const { path, tree } = planner.plan([this.robot.x, this.robot.y], goalXY);
     this.tree = tree;
     if (!path) { this.planStats.failures += 1; this.path = null; this.goal = goalXY; this.goalKind = kind; return; }
@@ -249,8 +277,22 @@ export class SimController {
         else {
           const arrived = this.explorePoint && hyp(this.explorePoint[0] - this.robot.x, this.explorePoint[1] - this.robot.y) < 0.4;
           const stuck = this.lastSpeed < 0.05 * VMAX && this.path && this.sincePlan > 1.0;
-          if (!this.explorePoint || arrived || !this.path || stuck || this.sincePlan > 8.0) {
-            this.explorePoint = pickExploreTarget(this.world, this.rng, this.visited);
+          const failedToPlan = !this.path && this.sincePlan > 8.0;
+          if (this.explorePoint && (arrived || failedToPlan)) {
+            // retire this frontier -- reached it (so it's no longer a frontier once the next
+            // scan folds it in) or gave up planning to it -- so next-best-view doesn't just
+            // re-offer the same point immediately.
+            this.exploreBlacklist.push([this.explorePoint[0], this.explorePoint[1], 0.9]);
+            if (this.exploreBlacklist.length > 40) this.exploreBlacklist.shift();
+            this.explorePoint = null;
+          }
+          if (!this.explorePoint || stuck || this.sincePlan > 8.0) {
+            // Next-best-view: cluster the SLAM map's frontier (known-free bordering unknown),
+            // score each cluster by raycast information gain discounted by path length, and head
+            // for the best one. Falls back to a random free point only once the reachable frontier
+            // is exhausted (map fully covered, or every frontier is behind a blacklisted dead end).
+            this.nbv = nextBestView(this.slam.map, [this.robot.x, this.robot.y], { R: ROBOT_RADIUS + 0.08, blacklist: this.exploreBlacklist });
+            this.explorePoint = this.nbv.target ? [this.nbv.target.x, this.nbv.target.y] : pickExploreTarget(this.world, this.rng, this.visited);
             this._replanFor(this.explorePoint, 'explore');
           }
           if (this.path) {
@@ -272,7 +314,7 @@ export class SimController {
           // never replan more than once a second even if the (still-noisy) estimate drifted --
           // otherwise a not-yet-converged filter can trigger a new RRT* solve almost every tick
           if (first || stuck || retry || this.sincePlan > REPLAN_EVERY || (moved && this.sincePlan > 1.0)) {
-            const goal = standoffPoint(this.world, this.cmap, [est.x, est.y], [this.robot.x, this.robot.y]);
+            const goal = standoffPoint(this.slam.map, this._slamCostMap(), [est.x, est.y], [this.robot.x, this.robot.y]);
             this.fireEstAtPlan = [est.x, est.y];
             if (goal) this._replanFor(goal, 'standoff'); else { this.planStats.failures += 1; this.path = null; }
           }
@@ -333,18 +375,58 @@ export class SimController {
     }
 
     v = clamp(v, 0, 1) * VMAX; w = clamp(w, -1, 1) * WMAX;
+    const prevTh = this.robot.th;
     this.robot.th = wrapA(this.robot.th + w * dt);
     const nx = this.robot.x + Math.cos(this.robot.th) * v * dt;
     const ny = this.robot.y + Math.sin(this.robot.th) * v * dt;
     const collided = v > 0 && !this.world.isFree(nx, ny, ROBOT_RADIUS);
+    let moved = 0;
     if (collided) this.collisions += 1;
     else {
-      this.distanceTravelled += hyp(nx - this.robot.x, ny - this.robot.y);
+      moved = hyp(nx - this.robot.x, ny - this.robot.y);
+      this.distanceTravelled += moved;
       this.robot.x = nx; this.robot.y = ny;
     }
     this.lastSpeed = collided ? 0 : v;
     if (this.mode !== 'STOPPED') this.battery = Math.max(0, this.battery - BATTERY_RATE * dt * (0.6 + v / VMAX));
     this.pumpOn = pump;
+
+    // ---- SLAM: dead-reckon every tick, correct against the map + rebuild it from lidar at 5 Hz.
+    // This mirrors a real stack's separation of a fast, drifting odometry rate from a slower
+    // scan-matching rate; ground truth (this.robot/this.world) never feeds the estimate directly.
+    this.slam.predict(moved, wrapA(this.robot.th - prevTh), dt);
+    this.sinceScan += dt;
+    if (this.sinceScan >= SCAN_PERIOD) {
+      this.sinceScan = 0;
+      const scan = lidarScan(this.world, this.robot.x, this.robot.y, this.robot.th, this.rng);
+      this.slam.update(scan, this.robot);
+    }
+
+    // ---- orientation-to-fire: how square the robot (and nozzle) is on the fire right now,
+    // independent of whether it's currently in view -- computed from ground-truth bearing so the
+    // number is always meaningful, not just while SPRAY has a lock. Logged once, permanently, at
+    // the instant a fire actually goes out, so "did it face the fire when it put it out" is an
+    // answerable fact afterwards rather than something only visible live.
+    {
+      const dxF = this.fire.x - this.robot.x, dyF = this.fire.y - this.robot.y;
+      const trueBearing = wrapA(Math.atan2(dyF, dxF) - this.robot.th);
+      this.orientation = {
+        headingDeg: toDeg(wrapA(this.robot.th)),
+        bearingToFireDeg: toDeg(trueBearing),
+        headingErrDeg: toDeg(Math.abs(trueBearing)),
+        facingFire: Math.abs(trueBearing) < FACE_FIRE_TOL,
+      };
+      if (this._firePrevP > 0 && this.fire.p <= 0) {
+        this.extinguishReport.unshift({
+          t: this.t, x: this.robot.x, y: this.robot.y,
+          headingDeg: this.orientation.headingDeg, bearingToFireDeg: this.orientation.bearingToFireDeg,
+          headingErrDeg: this.orientation.headingErrDeg, facingFire: this.orientation.facingFire,
+        });
+        if (this.extinguishReport.length > 20) this.extinguishReport.length = 20;
+        this._logEvent('state', `Extinguished while ${this.orientation.facingFire ? 'facing' : `${this.orientation.headingErrDeg.toFixed(0)}\u00b0 off`} the fire (nozzle bearing ${this.orientation.bearingToFireDeg.toFixed(0)}\u00b0)`);
+      }
+      this._firePrevP = this.fire.p;
+    }
   }
 
   telemetry() {
@@ -361,6 +443,13 @@ export class SimController {
       planStats: { ...this.planStats }, sense: this.lastSense, pumpOn: this.pumpOn,
       events: this.events.slice(0, 30), commandLog: this.commandLog.slice(0, 20),
       errHistory: this.errHistory, world: this.world, home: this.home,
+      orientation: this.orientation, extinguishReport: this.extinguishReport,
+      slam: {
+        map: this.slam.map, pose: { ...this.slam.pose }, truth: { ...this.slam.truth },
+        coverage: this.slam.coverage(), poseError: this.slam.lastPoseError(),
+        headingErrorDeg: toDeg(this.slam.lastHeadingError()), stats: { ...this.slam.stats },
+      },
+      nbv: this.nbv,
     };
   }
 }

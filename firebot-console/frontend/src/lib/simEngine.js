@@ -78,13 +78,60 @@ export function generateBuilding(rng) {
       }
     }
   }
-  const nProps = 3 + Math.floor(rng() * 4);
-  for (let i = 0; i < nProps; i++) {
-    const pw = lerp(0.4, 1.2, rng()), ph = lerp(0.4, 1.2, rng());
-    const px = lerp(1.5, width - 1.5 - pw, rng()), py = lerp(1.5, height - 1.5 - ph, rng());
-    walls.push({ x: px, y: py, w: pw, h: ph, prop: true });
+  // Clutter: several kinds of loose obstacle, one to a few per room, so the map reads as a
+  // furnished/planted space instead of a handful of identical crates scattered at random.
+  // Density scales with room area (a big room earns more clutter than a closet) and every
+  // piece is checked against walls, doors and earlier clutter so nothing spawns embedded.
+  const PROP_KINDS = [
+    { kind: 'tree', wMin: 0.5, wMax: 0.9, sq: true, weight: 3 },      // round canopy, drawn as a disc
+    { kind: 'shrub', wMin: 0.3, wMax: 0.5, sq: true, weight: 2 },     // smaller round clutter
+    { kind: 'crate', wMin: 0.5, wMax: 0.9, sq: false, weight: 2 },
+    { kind: 'barrel', wMin: 0.35, wMax: 0.5, sq: true, weight: 2 },
+    { kind: 'shelf', wMin: 0.9, wMax: 1.6, sq: false, thin: true, weight: 1.5 },
+    { kind: 'table', wMin: 0.8, wMax: 1.3, sq: false, weight: 1 },
+  ];
+  const pickKind = () => {
+    const total = PROP_KINDS.reduce((s, k) => s + k.weight, 0);
+    let r = rng() * total;
+    for (const k of PROP_KINDS) { if ((r -= k.weight) <= 0) return k; }
+    return PROP_KINDS[0];
+  };
+  // Padding is generous on purpose: it has to leave room for the robot's own body plus the
+  // planner's inflation margin to pass on *both* sides of a doorway or a gap between two props,
+  // or dense clutter turns into unintentional collisions instead of just a busier-looking map.
+  const overlapsAny = (rect, pad = 0.4) =>
+    walls.some((w) => rect.x - pad < w.x + w.w && rect.x + rect.w + pad > w.x && rect.y - pad < w.y + w.h && rect.y + rect.h + pad > w.y);
+  const propsAdded = [];
+  for (const room of rooms) {
+    const area = room.w * room.h;
+    const nHere = Math.round(lerp(1, 3, Math.min(1, area / 40)) + rng());
+    let placed = 0;
+    for (let tries = 0; tries < nHere * 20 && placed < nHere; tries++) {
+      const spec = pickKind();
+      let pw = lerp(spec.wMin, spec.wMax, rng());
+      let ph = spec.sq ? pw : (spec.thin ? pw * lerp(0.25, 0.4, rng()) : lerp(spec.wMin, spec.wMax, rng()));
+      if (rng() < 0.5 && !spec.sq) [pw, ph] = [ph, pw];
+      const px = lerp(room.x + 0.5, room.x + room.w - 0.5 - pw, rng());
+      const py = lerp(room.y + 0.5, room.y + room.h - 0.5 - ph, rng());
+      if (pw <= 0 || ph <= 0 || px < room.x || py < room.y) continue;
+      const rect = { x: px, y: py, w: pw, h: ph, prop: true, kind: spec.kind };
+      if (overlapsAny(rect)) continue;
+      walls.push(rect); propsAdded.push(rect); placed++;
+    }
   }
-  return { width, height, walls, rooms };
+  // A handful of tall trees/shrubs along outer walls too, so the greenery isn't confined to
+  // room interiors -- reads like planters/atrium growth against the building's perimeter.
+  const nPerimeter = 2 + Math.floor(rng() * 3);
+  for (let i = 0; i < nPerimeter; i++) {
+    const w = lerp(0.4, 0.8, rng());
+    const alongTop = rng() < 0.5;
+    const px = alongTop ? lerp(1, width - 1 - w, rng()) : (rng() < 0.5 ? lerp(0.5, 1.2, rng()) : lerp(width - 1.2 - w, width - 0.5 - w, rng()));
+    const py = alongTop ? (rng() < 0.5 ? lerp(0.5, 1.2, rng()) : lerp(height - 1.2 - w, height - 0.5 - w, rng())) : lerp(1, height - 1 - w, rng());
+    const rect = { x: px, y: py, w, h: w, prop: true, kind: rng() < 0.7 ? 'tree' : 'shrub' };
+    if (overlapsAny(rect)) continue;
+    walls.push(rect); propsAdded.push(rect);
+  }
+  return { width, height, walls, rooms, props: propsAdded };
 }
 
 /* ------------------------------- world (rect-list occupancy, mirrors sim/world.py) --- */
@@ -117,6 +164,12 @@ export class World {
       return [x, y];
     }
     return [this.width / 2, this.height / 2];
+  }
+  /** Grid-sampled free-cell count at resolution `res`, for coverage-percentage denominators. */
+  countFree(res) {
+    let n = 0;
+    for (let y = res / 2; y < this.height; y += res) for (let x = res / 2; x < this.width; x += res) if (!this.hit(x, y)) n++;
+    return n;
   }
 }
 
@@ -155,7 +208,7 @@ export class CostMap {
  *  behaviour -- tree growth, rewiring, shortcutting -- is the same family of planner. */
 export class RRTStar {
   constructor(world, rng, opts = {}) {
-    this.world = world; this.rng = rng; this.cmap = new CostMap(world);
+    this.world = world; this.rng = rng; this.cmap = opts.cmap ?? new CostMap(world);
     this.step = opts.step ?? 0.55; this.maxIter = opts.maxIter ?? 1400; this.goalBias = opts.goalBias ?? 0.12;
     this.goalTol = opts.goalTol ?? 0.28; this.gamma = opts.gamma ?? 2.5; this.smoothIter = opts.smoothIter ?? 50;
   }

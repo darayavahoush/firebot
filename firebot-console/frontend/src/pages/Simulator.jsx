@@ -38,6 +38,7 @@ export default function Simulator() {
   const [speed, setSpeed] = useState(1);
   const [showTree, setShowTree] = useState(true);
   const [showSensors, setShowSensors] = useState(true);
+  const [showSlam, setShowSlam] = useState(true);
   const [tab, setTab] = useState("telemetry");
   const [textCmd, setTextCmd] = useState("");
   const [listening, setListening] = useState(false);
@@ -315,6 +316,7 @@ export default function Simulator() {
         </div>
         <button className="chip" data-on={showTree} onClick={() => setShowTree((v) => !v)}>Planner tree</button>
         <button className="chip" data-on={showSensors} onClick={() => setShowSensors((v) => !v)}>Camera view</button>
+        <button className="chip" data-on={showSlam} onClick={() => setShowSlam((v) => !v)}>SLAM / NBV</button>
         <button
           onClick={() => sendCommand("stop")}
           aria-label="Emergency stop"
@@ -334,13 +336,15 @@ export default function Simulator() {
             <span className="rounded-full bg-base/80 backdrop-blur px-3 py-1.5 text-[13px] data">Tank {(t.tank * 100).toFixed(0)}%</span>
             <span className="rounded-full bg-base/80 backdrop-blur px-3 py-1.5 text-[13px] data">Fire {t.fire.p > 0 ? `${(t.fire.p * 100).toFixed(0)}% left` : "out"}</span>
           </div>
-          <SimCanvas engineRef={engineRef} showTree={showTree} showSensors={showSensors} height={620} />
+          <SimCanvas engineRef={engineRef} showTree={showTree} showSensors={showSensors} showSlam={showSlam} height={620} />
           <div className="border-t border-line bg-panel px-4 py-2.5 flex items-center gap-4 text-[12px] text-muted flex-wrap relative">
             <Legend swatch="#3FA7D6" label="robot" />
             <Legend swatch="#E14A3A" label="fire (ground truth)" />
             <Legend swatch="#D69A3C" label="fire estimate + \u03c3" />
             <Legend swatch="#4CAF6D" label="planned path" />
             <Legend swatch="rgba(63,167,214,0.6)" label="RRT* search tree" />
+            <Legend swatch="#C4A0FF" label="next-best-view target" />
+            <Legend swatch="#FFB238" label="SLAM pose (vs. true)" />
             <span className="ml-auto text-faint">{t.world.width.toFixed(1)}m \u00d7 {t.world.height.toFixed(1)}m building, seed {engineRef.current.seed}</span>
           </div>
         </div>
@@ -439,7 +443,33 @@ function TelemetryTab({ t, sigma }) {
       <div className="border-t border-line px-4 py-3 space-y-1.5">
         <Row k="Position" v={`${t.robot.x.toFixed(2)}, ${t.robot.y.toFixed(2)}`} />
         <Row k="Heading" v={`${((t.robot.th * 180) / Math.PI).toFixed(0)}\u00b0`} />
+        <Row
+          k="Facing the fire"
+          v={t.orientation ? `${t.orientation.facingFire ? "yes" : "no"} \u00b7 ${t.orientation.headingErrDeg.toFixed(0)}\u00b0 off` : "\u2014"}
+          ok={t.orientation?.facingFire} alarm={t.orientation && !t.orientation.facingFire && t.state === "SPRAY"}
+        />
       </div>
+      <PanelHeader label="SLAM" right={<span className="data text-[12px] text-muted">{t.slam.coverage.toFixed(0)}% mapped</span>} />
+      <div className="border-t border-line px-4 py-3 space-y-1.5">
+        <Row k="Pose error vs. ground truth" v={`${t.slam.poseError.toFixed(2)} m`} alarm={t.slam.poseError > 0.5} ok={t.slam.poseError < 0.15} />
+        <Row k="Heading error vs. ground truth" v={`${t.slam.headingErrorDeg.toFixed(1)}\u00b0`} />
+        <Row k="Scan matches" v={`${t.slam.stats.matched} / ${t.slam.stats.scans}`} />
+      </div>
+      {t.extinguishReport?.length > 0 && (
+        <>
+          <PanelHeader label="Extinguish Log" />
+          <div className="border-t border-line divide-y divide-line">
+            {t.extinguishReport.slice(0, 5).map((r, i) => (
+              <div key={i} className="px-4 py-2 text-[12px] flex items-center justify-between">
+                <span className="text-muted">{r.t.toFixed(0)}s \u00b7 ({r.x.toFixed(1)}, {r.y.toFixed(1)})</span>
+                <span className={`data ${r.facingFire ? "text-ok" : "text-warn"}`}>
+                  {r.facingFire ? "facing fire" : `${r.headingErrDeg.toFixed(0)}\u00b0 off`}
+                </span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }
