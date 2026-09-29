@@ -69,7 +69,8 @@ class EpisodeStream:
             act = c.act(self.obs, DT)
         self.obs, _, te, tr, info = env.step(act)
         self.seq += 1
-        self.last_db = self._db_row(obs_in, act, info)
+        scan = [_r(v) for v in env.scan()]
+        self.last_db = self._db_row(obs_in, act, info, scan)
         self.done = bool(te or tr)
         path = []
         if isinstance(c, FrontierController) and c.path:
@@ -77,10 +78,10 @@ class EpisodeStream:
             path = [[_r(x), _r(y)] for x, y in c.path[::k]] + [[_r(c.path[-1][0]), _r(c.path[-1][1])]]
         return {"t": _r(env.t * DT, 1), **self._pose(), "fire_p": _r(env.fire.p),
                 "state": c.state, "pump": bool(info["pump"]), "collisions": int(info["collisions"]),
-                "tank": _r(env.tank), "scan": [_r(v) for v in env.scan()], "path": path,
+                "tank": _r(env.tank), "scan": scan, "path": path,
                 "done": self.done, "success": bool(te)}
 
-    def _db_row(self, obs, act, info) -> dict:
+    def _db_row(self, obs, act, info, scan) -> dict:
         """One telemetry row in the ops-DB shape (sessions/frames), so the History and Live
         tabs can show a simulated run like a real one."""
         lay = obs_layout()
@@ -89,6 +90,9 @@ class EpisodeStream:
         sensors = {n: _r(v, 3) for n, v in zip(names, us)}
         sensors.update(flame_left=_r(fl[0], 3), flame_center=_r(fl[1], 3), flame_right=_r(fl[2], 3),
                        mq2_front=_r(obs[lay["gas"]], 3), mq2_rear=_r(obs[lay["gas"]], 3))
+        # 36 ranges in metres, ray k at angle -pi + 2*pi*k/36 from heading. A list, so the
+        # anomaly detector (numeric channels only) ignores it; the real robot has no lidar.
+        sensors["lidar"] = scan
         a = np.asarray(act, dtype=float).ravel()
         x, y, th = self.env.robot
         return {"seq": self.seq, "t": _r(self.env.t * DT, 2), "x": _r(x, 3), "y": _r(y, 3),

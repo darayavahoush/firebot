@@ -17,7 +17,8 @@ def test_db_row_matches_frames_schema():
         st.step()
         r = st.last_db
         assert r["seq"] == 2
-        assert set(r["sensors"]) == SENSOR_KEYS
+        assert set(r["sensors"]) == SENSOR_KEYS | {"lidar"}
+        assert len(r["sensors"]["lidar"]) == 36
         assert r["mode"] in {"EXPLORE", "TRACK", "SPRAY"}
         assert isinstance(r["cmd_pump"], bool)
         assert {"t", "x", "y", "theta", "tank", "cmd_v", "cmd_w"} <= set(r)
