@@ -1,37 +1,44 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import MujocoScene from "../components/mujoco/MujocoScene.js";
-import { PanelHeader } from "../components/TelemetryGauges.jsx";
+import { playSound } from "../lib/sound.js";
 
 const CONTROLLERS = [
-  { id: "frontier", label: "Frontier", hint: "lidar avoidance + map-based exploration" },
-  { id: "scan", label: "Scan", hint: "lidar avoidance, wandering search" },
-  { id: "rule", label: "Rule baseline", hint: "four ultrasonic beams only" },
+  {
+    id: "frontier",
+    label: "Frontier Exploration",
+    tag: "RECOMMENDED",
+    desc: "Autonomous occupancy grid mapping & frontier point routing with pure-pursuit path execution.",
+    sensor: "36-beam Lidar + SLAM",
+  },
+  {
+    id: "scan",
+    label: "Lidar Scan Avoidance",
+    tag: "REACTIVE",
+    desc: "360° obstacle clearance scanning with wandering open-corridor search and flame-tracking takeover.",
+    sensor: "36-beam Lidar",
+  },
+  {
+    id: "rule",
+    label: "Rule-Based Baseline",
+    tag: "ULTRASONIC",
+    desc: "Direct observation reactive policy without lidar, relying strictly on 4 ultrasonic range beams.",
+    sensor: "4x Ultrasonic",
+  },
 ];
+
 const SPEEDS = [0.5, 1, 2, 4, 8];
-const STATE_COLOR = { EXPLORE: "text-muted", TRACK: "text-warn", SPRAY: "text-telemetry" };
 
-function Btn({ on, children, ...p }) {
-  return (
-    <button {...p} className={`px-3 py-1.5 rounded-full text-[12px] border transition-colors ${on ? "border-telemetry text-telemetry bg-telemetry/15" : "border-line text-muted hover:text-ink"}`}>
-      {children}
-    </button>
-  );
-}
-
-function Stat({ label, value, unit, cls = "" }) {
-  return (
-    <div className="px-4 py-3">
-      <div className="text-[11px] uppercase tracking-wider text-faint">{label}</div>
-      <div className={`data text-[20px] ${cls}`}>{value}{unit && <span className="text-[12px] text-faint ml-1">{unit}</span>}</div>
-    </div>
-  );
-}
+const STATE_CONFIG = {
+  EXPLORE: { label: "EXPLORING TERRAIN", cls: "text-[#8FE0F5] bg-[#8FE0F5]/10 border-[#8FE0F5]/30" },
+  TRACK: { label: "TRACKING THERMAL FLAME", cls: "text-warn bg-warn/10 border-warn/30 animate-pulse" },
+  SPRAY: { label: "FIRE SUPPRESSION ACTIVE", cls: "text-telemetry bg-telemetry/15 border-telemetry/40 animate-pulse" },
+};
 
 export default function MuJoCo() {
   const hostRef = useRef(null);
   const sceneRef = useRef(null);
   const wsRef = useRef(null);
-  const [status, setStatus] = useState(null);          // /api/mujoco/status
+  const [status, setStatus] = useState(null);
   const [seed, setSeed] = useState(3);
   const [controller, setController] = useState("frontier");
   const [speed, setSpeed] = useState(1);
@@ -39,138 +46,468 @@ export default function MuJoCo() {
   const [camMode, setCamMode] = useState("orbit");
   const [lidar, setLidar] = useState(true);
   const [pathOn, setPathOn] = useState(true);
-  const [logRun, setLogRun] = useState(false);          // save the run to the History database
+  const [logRun, setLogRun] = useState(false);
   const [sessionId, setSessionId] = useState(null);
   const [warn, setWarn] = useState("");
-  const [phase, setPhase] = useState("idle");          // idle | loading | running | done | error
+  const [phase, setPhase] = useState("idle"); // idle | loading | running | done | error
   const [error, setError] = useState("");
   const [hud, setHud] = useState(null);
   const [result, setResult] = useState(null);
 
   useEffect(() => {
-    fetch("/api/mujoco/status").then((r) => r.json()).then(setStatus).catch(() => setStatus({ available: false, detail: "Backend not reachable. Is `./run.sh` running in firebot-console/backend?" }));
+    fetch("/api/mujoco/status")
+      .then((r) => r.json())
+      .then(setStatus)
+      .catch(() =>
+        setStatus({
+          available: false,
+          detail: "Backend not reachable. Is `./run.sh` running in firebot-console/backend?",
+        })
+      );
   }, []);
 
   useEffect(() => {
     const s = new MujocoScene(hostRef.current);
     sceneRef.current = s;
-    return () => { wsRef.current?.close(); s.dispose(); };
+    return () => {
+      wsRef.current?.close();
+      s.dispose();
+    };
   }, []);
 
-  useEffect(() => { const s = sceneRef.current; if (s) { s.showLidar = lidar; s.showPath = pathOn; } }, [lidar, pathOn]);
-  useEffect(() => { sceneRef.current?.setCamera(camMode); }, [camMode]);
+  useEffect(() => {
+    const s = sceneRef.current;
+    if (s) {
+      s.showLidar = lidar;
+      s.showPath = pathOn;
+    }
+  }, [lidar, pathOn]);
+
+  useEffect(() => {
+    sceneRef.current?.setCamera(camMode);
+  }, [camMode]);
 
   const start = useCallback(() => {
+    playSound("ack");
     wsRef.current?.close();
-    setPhase("loading"); setError(""); setResult(null); setHud(null); setPaused(false); setSessionId(null); setWarn("");
+    setPhase("loading");
+    setError("");
+    setResult(null);
+    setHud(null);
+    setPaused(false);
+    setSessionId(null);
+    setWarn("");
+
     const proto = window.location.protocol === "https:" ? "wss" : "ws";
-    const ws = new WebSocket(`${proto}://${window.location.host}/ws/mujoco?seed=${seed}&controller=${controller}&speed=${speed}&log=${logRun ? 1 : 0}`);
+    const ws = new WebSocket(
+      `${proto}://${window.location.host}/ws/mujoco?seed=${seed}&controller=${controller}&speed=${speed}&log=${
+        logRun ? 1 : 0
+      }`
+    );
     wsRef.current = ws;
     let last = 0;
+
     ws.onmessage = (e) => {
       const m = JSON.parse(e.data);
-      if (m.type === "scene") { sceneRef.current.load(m); setSessionId(m.session_id || null); setPhase("running"); }
-      else if (m.type === "warn") { setWarn(m.message); }
-      else if (m.type === "frame") {
+      if (m.type === "scene") {
+        sceneRef.current.load(m);
+        setSessionId(m.session_id || null);
+        setPhase("running");
+      } else if (m.type === "warn") {
+        setWarn(m.message);
+      } else if (m.type === "frame") {
         sceneRef.current.frame(m);
         const now = performance.now();
-        if (now - last > 90 || m.done) { last = now; setHud(m); }   // throttle React re-renders
-      } else if (m.type === "end") { setResult(m); setPhase("done"); }
-      else if (m.type === "error") { setError(m.message); setPhase("error"); }
+        if (now - last > 80 || m.done) {
+          last = now;
+          setHud(m);
+        }
+      } else if (m.type === "end") {
+        setResult(m);
+        setPhase("done");
+        playSound(m.success ? "ack" : "estop");
+      } else if (m.type === "error") {
+        setError(m.message);
+        setPhase("error");
+      }
     };
-    ws.onerror = () => { setError("WebSocket failed. Is the backend running?"); setPhase("error"); };
+    ws.onerror = () => {
+      setError("WebSocket connection failed. Ensure the MuJoCo backend server is running.");
+      setPhase("error");
+    };
   }, [seed, controller, speed, logRun]);
 
   const send = (msg) => wsRef.current?.readyState === 1 && wsRef.current.send(JSON.stringify(msg));
-  const togglePause = () => { setPaused((p) => { send({ paused: !p }); return !p; }); };
-  const changeSpeed = (v) => { setSpeed(v); send({ speed: v }); };
+
+  const togglePause = () => {
+    playSound("click");
+    setPaused((p) => {
+      send({ paused: !p });
+      return !p;
+    });
+  };
+
+  const changeSpeed = (v) => {
+    playSound("click");
+    setSpeed(v);
+    send({ speed: v });
+  };
+
+  const handleRandomSeed = () => {
+    playSound("click");
+    setSeed(Math.floor(Math.random() * 999) + 1);
+  };
 
   const unavailable = status && !status.available;
   const busy = phase === "loading";
+  const stateStyle = STATE_CONFIG[hud?.state] || {
+    label: hud?.state ?? "STANDBY",
+    cls: "text-muted bg-panel2 border-line",
+  };
 
   return (
-    <div className="flex-1 min-h-0 px-6 pb-6 pt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
-      <div className="panel flex flex-col min-h-[520px]">
-        <PanelHeader label="MuJoCo scene" />
-        <div className="relative flex-1 min-h-[460px] border-t border-line">
-          <div ref={hostRef} className="absolute inset-0" />
-          {phase === "idle" && !unavailable && (
-            <div className="absolute inset-0 flex items-center justify-center text-muted text-[14px] pointer-events-none">
-              Pick a seed and controller, then press Run.
-            </div>
-          )}
-          {(unavailable || phase === "error") && (
-            <div className="absolute inset-x-6 top-6 rounded-lg border border-warn bg-panel/95 p-4 text-[13px] text-warn">
-              {phase === "error" ? error : status.detail}
-            </div>
-          )}
-          {phase === "done" && result && (
-            <div className={`absolute top-4 left-1/2 -translate-x-1/2 rounded-full border px-4 py-1.5 text-[13px] font-mono bg-panel ${result.success ? "border-ok text-ok" : "border-alarm text-alarm"}`}>
-              {result.success ? `Fire out in ${result.t.toFixed(1)} s` : `Time out after ${result.t.toFixed(0)} s`} · {result.collisions} collisions
-            </div>
-          )}
-          <div className="absolute bottom-3 left-3 flex gap-2">
-            {["orbit", "top", "follow"].map((c) => <Btn key={c} on={camMode === c} onClick={() => setCamMode(c)}>{c}</Btn>)}
+    <div className="flex-1 min-h-0 p-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px] items-start">
+      {/* 3D Viewport Station */}
+      <div className="panel flex flex-col min-h-[580px] h-[calc(100vh-140px)] relative overflow-hidden">
+        {/* Viewport Top Bar */}
+        <div className="px-4 py-3 bg-panel2/70 border-b border-line flex items-center justify-between z-10 gap-2 flex-wrap">
+          <div className="flex items-center gap-2.5">
+            <span className="h-2.5 w-2.5 rounded-full bg-telemetry animate-pulse shadow-[0_0_8px_#f0559b]" />
+            <span className="font-display font-extrabold text-[15px] tracking-tight text-ink">
+              MuJoCo 3D Rigid-Body Physics Sim
+            </span>
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-panel border border-line text-faint uppercase">
+              36-Ray Lidar • 60Hz
+            </span>
           </div>
-          <div className="absolute bottom-3 right-3 flex gap-2">
-            <Btn on={lidar} onClick={() => setLidar((v) => !v)}>lidar rays</Btn>
-            <Btn on={pathOn} onClick={() => setPathOn((v) => !v)}>planned path</Btn>
+
+          {/* Quick HUD Camera Controls */}
+          <div className="flex items-center gap-1.5 bg-panel/90 backdrop-blur p-1 rounded-xl border border-line">
+            {[
+              { id: "orbit", label: "Orbit 3D" },
+              { id: "top", label: "Top-Down" },
+              { id: "follow", label: "Chase Cam" },
+            ].map((c) => (
+              <button
+                key={c.id}
+                onClick={() => { playSound("click"); setCamMode(c.id); }}
+                className={`px-2.5 py-1 text-[11px] font-mono rounded-lg transition-all ${
+                  camMode === c.id
+                    ? "bg-telemetry text-base font-bold shadow-[0_0_8px_rgba(240,85,155,0.4)]"
+                    : "text-muted hover:text-ink"
+                }`}
+              >
+                {c.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* 3D Canvas Host Container */}
+        <div className="relative flex-1 min-h-[480px] bg-[#0E0919]">
+          <div ref={hostRef} className="absolute inset-0 w-full h-full" />
+
+          {/* Tactical Corner HUD Reticles */}
+          <div className="absolute top-3 left-3 text-[10px] font-mono text-ink/30 select-none pointer-events-none">
+            ┌ MUJOCO_ENGINE: v3.x
+          </div>
+          <div className="absolute top-3 right-3 text-[10px] font-mono text-ink/30 select-none pointer-events-none">
+            WORLD_GEOMS ┐
+          </div>
+          <div className="absolute bottom-14 left-3 text-[10px] font-mono text-ink/30 select-none pointer-events-none">
+            └ RAYCAST_SCANNER
+          </div>
+          <div className="absolute bottom-14 right-3 text-[10px] font-mono text-ink/30 select-none pointer-events-none">
+            STEP_DT: 0.016s ┘
+          </div>
+
+          {/* Idle Prompt */}
+          {phase === "idle" && !unavailable && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center text-muted gap-3 bg-base/50 backdrop-blur-sm pointer-events-none">
+              <div className="h-12 w-12 rounded-2xl bg-panel2 border border-line flex items-center justify-center text-telemetry shadow-lg">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polygon points="5 3 19 12 5 21 5 3" />
+                </svg>
+              </div>
+              <p className="text-[14px] font-mono text-ink">
+                Configure parameters and press <b className="text-telemetry font-bold">START SIMULATION</b>
+              </p>
+              <p className="text-[12px] font-mono text-faint">
+                Use mouse/trackpad to orbit, right-click to pan, scroll to zoom.
+              </p>
+            </div>
+          )}
+
+          {/* Unavailable / Error Message */}
+          {(unavailable || phase === "error") && (
+            <div className="absolute inset-x-6 top-6 rounded-2xl border border-warn/40 bg-panel/95 backdrop-blur-md p-5 text-[13px] text-warn shadow-2xl flex items-start gap-3">
+              <span className="text-[20px] leading-none">⚠</span>
+              <div className="space-y-1">
+                <div className="font-bold uppercase tracking-wider text-[11px] font-mono">
+                  Simulation Backend Offline
+                </div>
+                <div className="text-ink">
+                  {phase === "error" ? error : status.detail}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Episode Complete Banner */}
+          {phase === "done" && result && (
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 rounded-2xl border px-6 py-2.5 shadow-2xl backdrop-blur-xl flex items-center gap-3 bg-panel/90 border-line animate-fadeIn">
+              <span className={`text-[20px] leading-none ${result.success ? "text-ok" : "text-alarm"}`}>
+                {result.success ? "✓" : "⚠"}
+              </span>
+              <div>
+                <div className={`text-[14px] font-display font-black tracking-tight ${result.success ? "text-ok" : "text-alarm"}`}>
+                  {result.success ? `FIRE EXTINGUISHED IN ${result.t.toFixed(1)}s` : `TIME OUT (${result.t.toFixed(0)}s)`}
+                </div>
+                <div className="text-[11px] font-mono text-faint">
+                  {result.collisions} collisions recorded • Water pump completed
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Bottom Left Sensor Toggles */}
+          <div className="absolute bottom-3 left-3 flex gap-2 z-10">
+            <button
+              onClick={() => { playSound("click"); setLidar((v) => !v); }}
+              className={`px-3 py-1.5 rounded-xl text-[12px] font-mono border backdrop-blur-md transition-all ${
+                lidar
+                  ? "border-telemetry bg-telemetry/20 text-white shadow-[0_0_12px_rgba(240,85,155,0.4)]"
+                  : "border-line bg-panel/80 text-muted hover:text-ink"
+              }`}
+            >
+              Lidar Rays ({lidar ? "ON" : "OFF"})
+            </button>
+            <button
+              onClick={() => { playSound("click"); setPathOn((v) => !v); }}
+              className={`px-3 py-1.5 rounded-xl text-[12px] font-mono border backdrop-blur-md transition-all ${
+                pathOn
+                  ? "border-ok bg-ok/20 text-white shadow-[0_0_12px_rgba(125,227,176,0.4)]"
+                  : "border-line bg-panel/80 text-muted hover:text-ink"
+              }`}
+            >
+              Planned Path ({pathOn ? "ON" : "OFF"})
+            </button>
           </div>
         </div>
       </div>
 
-      <div className="flex flex-col gap-4">
-        <div className="panel">
-          <PanelHeader label="Run" />
-          <div className="border-t border-line p-4 flex flex-col gap-3">
-            <label className="text-[12px] text-muted flex items-center justify-between gap-3">
-              Map seed
-              <input type="number" value={seed} min={0} onChange={(e) => setSeed(Math.max(0, parseInt(e.target.value || "0", 10)))}
-                className="data w-24 bg-panel2 border border-line rounded px-2 py-1 text-ink text-right" />
-            </label>
-            <div className="flex flex-col gap-1.5">
-              {CONTROLLERS.map((c) => (
-                <button key={c.id} onClick={() => setController(c.id)} title={c.hint}
-                  className={`text-left rounded-lg border px-3 py-2 transition-colors ${controller === c.id ? "border-telemetry bg-telemetry/10" : "border-line hover:border-faint"}`}>
-                  <div className="text-[13px] text-ink">{c.label}</div>
-                  <div className="text-[11px] text-faint">{c.hint}</div>
+      {/* Control Station & Telemetry Column */}
+      <div className="flex flex-col gap-5">
+        {/* Simulation Configuration Card */}
+        <div className="panel space-y-4 p-5">
+          <div className="flex items-center justify-between border-b border-line pb-3">
+            <span className="font-display font-extrabold text-[15px] tracking-tight text-ink">
+              MISSION CONTROLS
+            </span>
+            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-panel2 border border-line text-telemetry">
+              EPISODE SETUP
+            </span>
+          </div>
+
+          {/* Seed Input with Randomize */}
+          <div className="flex items-center justify-between gap-3 text-[12px]">
+            <span className="text-muted font-medium">Procedural Map Seed</span>
+            <div className="flex items-center gap-1.5">
+              <input
+                type="number"
+                value={seed}
+                min={0}
+                onChange={(e) => setSeed(Math.max(0, parseInt(e.target.value || "0", 10)))}
+                className="data w-20 bg-panel2 border border-line rounded-lg px-2.5 py-1 text-ink text-right font-mono"
+              />
+              <button
+                onClick={handleRandomSeed}
+                title="Generate random seed"
+                className="h-8 w-8 rounded-lg border border-line bg-panel2 text-faint hover:text-ink flex items-center justify-center transition-colors"
+              >
+                🎲
+              </button>
+            </div>
+          </div>
+
+          {/* Controller Selector */}
+          <div className="space-y-2">
+            <div className="text-[11px] font-mono uppercase tracking-wider text-muted">
+              Select Navigation Agent
+            </div>
+            <div className="space-y-2">
+              {CONTROLLERS.map((c) => {
+                const active = controller === c.id;
+                return (
+                  <button
+                    key={c.id}
+                    onClick={() => { playSound("click"); setController(c.id); }}
+                    className={`w-full text-left rounded-xl p-3 border transition-all duration-150 cursor-pointer ${
+                      active
+                        ? "border-telemetry bg-telemetry/15 shadow-[0_0_16px_rgba(240,85,155,0.25)]"
+                        : "border-line bg-panel2/50 hover:bg-panel2 hover:border-line/90"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-[13px] font-display font-bold text-ink">
+                        {c.label}
+                      </span>
+                      <span
+                        className={`text-[9px] font-mono px-1.5 py-0.2 rounded font-bold uppercase ${
+                          active
+                            ? "bg-telemetry text-base"
+                            : "bg-panel text-faint border border-line"
+                        }`}
+                      >
+                        {c.tag}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-faint mt-1 leading-snug">
+                      {c.desc}
+                    </div>
+                    <div className="text-[10px] font-mono text-muted mt-1.5 flex items-center gap-1.5">
+                      <span className="h-1 w-1 rounded-full bg-telemetry" />
+                      <span>{c.sensor}</span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Speed Multipliers */}
+          <div className="pt-2 border-t border-line space-y-2">
+            <div className="flex items-center justify-between text-[11px] font-mono uppercase text-muted">
+              <span>Physics Stepping Rate</span>
+              <span className="text-telemetry font-bold">{speed}× REALTIME</span>
+            </div>
+            <div className="flex items-center gap-1.5 bg-panel2 p-1 rounded-xl border border-line">
+              {SPEEDS.map((v) => (
+                <button
+                  key={v}
+                  onClick={() => changeSpeed(v)}
+                  className={`flex-1 py-1.5 text-[12px] font-mono rounded-lg transition-all ${
+                    speed === v
+                      ? "bg-telemetry text-base font-bold shadow-[0_0_8px_rgba(240,85,155,0.4)]"
+                      : "text-muted hover:text-ink"
+                  }`}
+                >
+                  {v}×
                 </button>
               ))}
             </div>
-            <div className="flex flex-wrap gap-1.5 items-center">
-              <span className="text-[12px] text-muted mr-1">Speed</span>
-              {SPEEDS.map((v) => <Btn key={v} on={speed === v} onClick={() => changeSpeed(v)}>{v}×</Btn>)}
+          </div>
+
+          {/* Log this run toggle */}
+          <div className="pt-2 border-t border-line">
+            <label className="flex items-center gap-3 cursor-pointer group">
+              <input
+                type="checkbox"
+                checked={logRun}
+                disabled={phase === "running"}
+                onChange={(e) => { playSound("click"); setLogRun(e.target.checked); }}
+                className="h-4 w-4 rounded accent-telemetry"
+              />
+              <div className="flex flex-col min-w-0">
+                <span className="text-[12px] font-medium text-ink group-hover:text-telemetry transition-colors">
+                  Log Sortie to Database
+                </span>
+                <span className="text-[10px] text-faint">
+                  Stores 36-beam scan, sensors and pose into Postgres run history
+                </span>
+              </div>
+            </label>
+          </div>
+
+          {warn && (
+            <div className="text-[11px] font-mono text-warn bg-warn/10 p-2.5 rounded-lg border border-warn/30">
+              {warn}
             </div>
-            <div className="flex flex-wrap gap-1.5 items-center">
-              <Btn on={logRun} onClick={() => setLogRun((v) => !v)} disabled={phase === "running"}>Log this run</Btn>
-              <span className="text-[11px] text-faint">saves to History; shows on Live while running</span>
+          )}
+
+          {sessionId && (
+            <div className="text-[10px] font-mono text-faint data break-all bg-panel2 px-2.5 py-1.5 rounded-lg border border-line">
+              LOGGING SESSION: {sessionId}
             </div>
-            {warn && <div className="text-[12px] text-warn">{warn}</div>}
-            {sessionId && <div className="text-[11px] text-faint data break-all">Logging as session {sessionId.slice(0, 8)}</div>}
-            <div className="flex gap-2">
-              <button onClick={start} disabled={unavailable || busy}
-                className="flex-1 h-10 rounded-full bg-telemetry text-[#1A0615] font-display font-extrabold text-[14px] disabled:opacity-40 hover:brightness-110 active:scale-95 transition">
-                {busy ? "Building map…" : phase === "idle" ? "Run" : "Restart"}
+          )}
+
+          {/* Primary Action Buttons */}
+          <div className="pt-2 flex gap-2.5">
+            <button
+              onClick={start}
+              disabled={unavailable || busy}
+              className="flex-1 h-12 rounded-xl bg-gradient-to-r from-telemetry to-[#c4286f] text-white font-display font-black text-[14px] tracking-wider uppercase disabled:opacity-40 hover:brightness-110 active:scale-95 transition shadow-[0_0_20px_rgba(240,85,155,0.4)] cursor-pointer"
+            >
+              {busy ? "GENERATING WORLD..." : phase === "idle" ? "START SIMULATION" : "RESTART EPISODE"}
+            </button>
+            {phase === "running" && (
+              <button
+                onClick={togglePause}
+                className="px-4 h-12 rounded-xl border border-line bg-panel2 hover:bg-panel2/80 font-mono text-[12px] text-ink font-bold transition-all cursor-pointer"
+              >
+                {paused ? "RESUME" : "PAUSE"}
               </button>
-              {(phase === "running") && <Btn on={paused} onClick={togglePause}>{paused ? "Resume" : "Pause"}</Btn>}
-            </div>
+            )}
           </div>
         </div>
 
-        <div className="panel">
-          <PanelHeader label="Episode" />
-          <div className="grid grid-cols-2 divide-x divide-y divide-line border-t border-line">
-            <Stat label="State" value={hud?.state ?? "—"} cls={STATE_COLOR[hud?.state] ?? ""} />
-            <Stat label="Time" value={hud ? hud.t.toFixed(1) : "—"} unit="s" />
-            <Stat label="Fire" value={hud ? Math.round(hud.fire_p * 100) : "—"} unit="%" cls={hud && hud.fire_p > 0 ? "text-alarm" : "text-ok"} />
-            <Stat label="Tank" value={hud ? Math.round(hud.tank * 100) : "—"} unit="%" />
-            <Stat label="Collisions" value={hud?.collisions ?? "—"} cls={hud?.collisions ? "text-warn" : ""} />
-            <Stat label="Pump" value={hud ? (hud.pump ? "ON" : "off") : "—"} cls={hud?.pump ? "text-telemetry" : ""} />
+        {/* Live Episode Telemetry HUD Card */}
+        <div className="panel p-5 space-y-4">
+          <div className="flex items-center justify-between border-b border-line pb-3">
+            <span className="font-display font-extrabold text-[15px] tracking-tight text-ink">
+              EPISODE TELEMETRY
+            </span>
+            <span className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold border ${stateStyle.cls}`}>
+              {stateStyle.label}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            {/* Simulation Time */}
+            <div className="p-3 rounded-xl bg-panel2/60 border border-line space-y-1">
+              <div className="text-[10px] font-mono uppercase tracking-wider text-faint">Sim Time</div>
+              <div className="data text-[22px] font-bold text-ink">
+                {hud ? hud.t.toFixed(1) : "0.0"}<span className="text-[11px] font-mono text-faint ml-1">s</span>
+              </div>
+            </div>
+
+            {/* Fire Intensity */}
+            <div className="p-3 rounded-xl bg-panel2/60 border border-line space-y-1">
+              <div className="text-[10px] font-mono uppercase tracking-wider text-faint">Flame Intensity</div>
+              <div className={`data text-[22px] font-bold ${hud && hud.fire_p > 0 ? "text-alarm" : "text-ok"}`}>
+                {hud ? Math.round(hud.fire_p * 100) : "100"}<span className="text-[11px] font-mono text-faint ml-1">%</span>
+              </div>
+            </div>
+
+            {/* Water Tank */}
+            <div className="p-3 rounded-xl bg-panel2/60 border border-line space-y-1">
+              <div className="text-[10px] font-mono uppercase tracking-wider text-faint">Water Tank</div>
+              <div className="data text-[22px] font-bold text-telemetry">
+                {hud ? Math.round(hud.tank * 100) : "100"}<span className="text-[11px] font-mono text-faint ml-1">%</span>
+              </div>
+            </div>
+
+            {/* Collisions */}
+            <div className="p-3 rounded-xl bg-panel2/60 border border-line space-y-1">
+              <div className="text-[10px] font-mono uppercase tracking-wider text-faint">Impacts</div>
+              <div className={`data text-[22px] font-bold ${hud?.collisions ? "text-warn" : "text-ink"}`}>
+                {hud?.collisions ?? 0}
+              </div>
+            </div>
+          </div>
+
+          {/* Pump Status Strip */}
+          <div className="p-3 rounded-xl bg-panel2/40 border border-line flex items-center justify-between">
+            <span className="text-[11px] font-mono uppercase text-muted">Water Cannon</span>
+            <span className={`text-[11px] font-mono font-bold px-2 py-0.5 rounded ${
+              hud?.pump
+                ? "bg-telemetry text-base animate-pulse"
+                : "bg-panel text-faint border border-line"
+            }`}>
+              {hud?.pump ? "DISPENSING JET" : "STANDBY"}
+            </span>
           </div>
         </div>
-        <p className="text-[11px] text-faint leading-relaxed px-1">
-          Same simulator as <span className="data">firebot-sim --world mujoco</span>, run live on the backend. Maps differ from the Simulator tab, which is a separate browser-only engine. The lidar exists only in simulation; the real robot has none. Drag to orbit, scroll to zoom. Rays show the 36-beam lidar at 0.15 m; the green line is the frontier planner's path.
-        </p>
       </div>
     </div>
   );

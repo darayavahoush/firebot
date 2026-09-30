@@ -1,20 +1,124 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; }
-body { @apply bg-base text-ink font-sans antialiased; }
-::selection { background: #f0559b55; }
-:root { --ironbow: linear-gradient(90deg,#1b0a3c 0%,#5a1a86 24%,#c4286f 50%,#ff8a2a 76%,#fff2c9 100%); }
-.panel { @apply bg-panel border border-line rounded-[10px] overflow-hidden; box-shadow: 0 8px 24px -12px rgba(0,0,0,.6); }
-.heat-rule { height: 3px; background: var(--ironbow); }
-.data { @apply font-mono tabular-nums; font-size: .92em; }
-.ember-glow { display: none; }
-.pulse-dot { animation: pulse-dot 2s ease-in-out infinite; }
-@keyframes pulse-dot { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
-:focus-visible { outline: 2px solid #ff8a2a; outline-offset: 2px; }
-@media (prefers-reduced-motion: reduce) { .pulse-dot { animation: none; } }
-.btn { @apply rounded-full border border-line bg-panel2 px-3.5 py-1.5 text-[13px] text-ink transition-colors hover:border-telemetry hover:text-telemetry; }
-.chip { @apply rounded-full px-3 py-1 text-[12px] text-muted border border-line cursor-pointer select-none transition-colors; }
-.chip[data-on="true"] { @apply text-ink border-telemetry bg-telemetry/15; }
-.heatbar { background: var(--ironbow); background-size: var(--full,100%) 100%; }
+body {
+  @apply bg-base text-ink font-sans antialiased selection:bg-telemetry/30 selection:text-ink;
+  background-image:
+    radial-gradient(ellipse at 50% 0%, rgba(90, 26, 134, 0.12) 0%, transparent 60%),
+    radial-gradient(circle at 100% 100%, rgba(196, 40, 111, 0.06) 0%, transparent 40%);
+}
+
+:root {
+  --ironbow: linear-gradient(90deg, #1b0a3c 0%, #5a1a86 24%, #c4286f 50%, #ff8a2a 76%, #fff2c9 100%);
+  --cyber-glow: 0 0 16px -2px rgba(240, 85, 155, 0.35);
+  --alarm-glow: 0 0 20px -2px rgba(255, 74, 43, 0.45);
+  --ok-glow: 0 0 16px -2px rgba(125, 227, 176, 0.35);
+}
+
+/* Custom Tactical Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(14, 9, 25, 0.6);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(226, 214, 255, 0.16);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(240, 85, 155, 0.4);
+}
+
+.panel {
+  @apply bg-panel/90 backdrop-blur-md border border-line rounded-[12px] overflow-hidden;
+  box-shadow: 0 12px 32px -12px rgba(0, 0, 0, 0.65), inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
+}
+
+.panel-header {
+  @apply flex items-center justify-between px-4 py-3 bg-panel2/60 border-b border-line text-[11px] font-mono uppercase tracking-wider text-muted font-medium;
+}
+
+.heat-rule {
+  height: 2px;
+  background: var(--ironbow);
+}
+
+.data {
+  @apply font-mono tabular-nums;
+  font-size: 0.92em;
+}
+
+.pulse-dot {
+  animation: pulse-dot 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.92); }
+}
+
+@keyframes radar-sweep {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.radar-sweep {
+  animation: radar-sweep 4s linear infinite;
+}
+
+:focus-visible {
+  outline: 2px solid #ff8a2a;
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pulse-dot, .radar-sweep { animation: none; }
+}
+
+.btn {
+  @apply rounded-lg border border-line bg-panel2/90 px-3.5 py-1.5 text-[13px] text-ink font-medium transition-all duration-150 hover:border-telemetry/60 hover:text-white hover:bg-panel2 hover:shadow-[0_0_12px_rgba(240,85,155,0.2)] active:scale-95 disabled:opacity-40 disabled:pointer-events-none;
+}
+
+.btn-primary {
+  @apply rounded-lg bg-telemetry text-base font-display font-extrabold text-[13px] px-4 py-2 transition-all duration-150 hover:brightness-110 hover:shadow-[0_0_16px_rgba(240,85,155,0.45)] active:scale-95 disabled:opacity-40 disabled:pointer-events-none;
+}
+
+.chip {
+  @apply rounded-full px-3 py-1 text-[12px] text-muted border border-line bg-panel2/40 cursor-pointer select-none transition-all duration-150 hover:text-ink hover:border-line/90;
+}
+
+.chip[data-on="true"] {
+  @apply text-ink border-telemetry/80 bg-telemetry/20 shadow-[0_0_10px_rgba(240,85,155,0.25)];
+}
+
+.heatbar {
+  background: var(--ironbow);
+  background-size: var(--full, 100%) 100%;
+}
+
+/* Guarded E-Stop Button Styling */
+.estop-button {
+  background: linear-gradient(135deg, #FF4A2B 0%, #C41E15 100%);
+  box-shadow: 0 0 20px -3px rgba(255, 74, 43, 0.5), inset 0 1px 1px 0 rgba(255, 255, 255, 0.3);
+}
+.estop-button:hover {
+  background: linear-gradient(135deg, #FF6145 0%, #D8261B 100%);
+  box-shadow: 0 0 25px -1px rgba(255, 74, 43, 0.75), inset 0 1px 1px 0 rgba(255, 255, 255, 0.4);
+}
+.estop-button:active {
+  transform: scale(0.96);
+  box-shadow: 0 0 10px 0 rgba(255, 74, 43, 0.4);
+}
+
+/* Grid & HUD overlay helpers */
+.tactical-grid {
+  background-image:
+    linear-gradient(to right, rgba(226, 214, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(226, 214, 255, 0.04) 1px, transparent 1px);
+  background-size: 24px 24px;
+}

@@ -8,6 +8,7 @@ import { COMMAND_HELP } from "../lib/commandHelp.js";
 import { PanelHeader } from "../components/TelemetryGauges.jsx";
 import { SimController } from "../lib/simController.js";
 import { blobToWav16k } from "../lib/wav";
+import { playSound } from "../lib/sound.js";
 
 const SPEEDS = [0.5, 1, 2, 4];
 
@@ -305,55 +306,122 @@ export default function Simulator() {
           {ack.understood && <span className="text-faint"> {"\u2192"} {ack.intent}</span>}
         </div>
       )}
-      <div className="px-6 py-3 flex items-center gap-3 flex-wrap bg-base">
-        <button onClick={newBuilding} className="btn">New building</button>
-        <button onClick={newFire} className="btn">Move the fire</button>
-        <button onClick={() => setPaused((p) => !p)} className="btn">{paused ? "Resume" : "Pause"}</button>
-        <div className="flex items-center gap-1 rounded-full bg-panel p-1" role="group" aria-label="Speed">
+      <div className="px-6 py-3 flex items-center gap-2.5 flex-wrap bg-base/80 backdrop-blur-md border-b border-line">
+        <button onClick={() => { playSound("click"); newBuilding(); }} className="btn">
+          <span>🏢</span> New Building
+        </button>
+        <button onClick={() => { playSound("click"); newFire(); }} className="btn">
+          <span>🔥</span> Relocate Fire
+        </button>
+        <button onClick={() => { playSound("click"); setPaused((p) => !p); }} className="btn">
+          {paused ? "▶ Resume" : "⏸ Pause"}
+        </button>
+
+        <div className="flex items-center gap-1 rounded-xl bg-panel2 p-1 border border-line" role="group" aria-label="Speed">
           {SPEEDS.map((s) => (
-            <button key={s} onClick={() => setSpeed(s)} data-on={speed === s} className="chip border-transparent">{s}x</button>
+            <button
+              key={s}
+              onClick={() => { playSound("click"); setSpeed(s); }}
+              data-on={speed === s}
+              className={`px-2.5 py-1 text-[11px] font-mono rounded-lg transition-all ${
+                speed === s
+                  ? "bg-telemetry text-base font-bold shadow-[0_0_8px_rgba(240,85,155,0.4)]"
+                  : "text-muted hover:text-ink"
+              }`}
+            >
+              {s}×
+            </button>
           ))}
         </div>
-        <button className="chip" data-on={showTree} onClick={() => setShowTree((v) => !v)}>Planner tree</button>
-        <button className="chip" data-on={showSensors} onClick={() => setShowSensors((v) => !v)}>Camera view</button>
-        <button className="chip" data-on={showSlam} onClick={() => setShowSlam((v) => !v)}>SLAM / NBV</button>
+
+        <div className="flex items-center gap-1.5 ml-1">
+          <button
+            className={`px-3 py-1.5 rounded-xl text-[12px] font-mono border transition-all ${
+              showTree
+                ? "border-telemetry bg-telemetry/15 text-telemetry font-bold"
+                : "border-line text-muted hover:text-ink"
+            }`}
+            onClick={() => { playSound("click"); setShowTree((v) => !v); }}
+          >
+            RRT* Tree
+          </button>
+          <button
+            className={`px-3 py-1.5 rounded-xl text-[12px] font-mono border transition-all ${
+              showSensors
+                ? "border-ok bg-ok/15 text-ok font-bold"
+                : "border-line text-muted hover:text-ink"
+            }`}
+            onClick={() => { playSound("click"); setShowSensors((v) => !v); }}
+          >
+            Camera Cone
+          </button>
+          <button
+            className={`px-3 py-1.5 rounded-xl text-[12px] font-mono border transition-all ${
+              showSlam
+                ? "border-warn bg-warn/15 text-warn font-bold"
+                : "border-line text-muted hover:text-ink"
+            }`}
+            onClick={() => { playSound("click"); setShowSlam((v) => !v); }}
+          >
+            SLAM / NBV
+          </button>
+        </div>
+
         <button
-          onClick={() => sendCommand("stop")}
+          onClick={() => { playSound("estop"); sendCommand("stop"); }}
           aria-label="Emergency stop"
-          className="ml-auto h-10 px-5 rounded-full bg-alarm text-[#1A0605] font-display font-extrabold hover:brightness-110 active:scale-95 transition shadow-[0_0_0_4px_rgba(255,74,43,0.22)]"
+          className="estop-button ml-auto h-10 px-5 rounded-xl text-white font-display font-black text-[13px] tracking-wider uppercase flex items-center gap-2 cursor-pointer"
         >
-          Stop
+          <rect x="4" y="4" width="16" height="16" rx="2" />
+          <span>STOP</span>
         </button>
       </div>
 
-      <div className="flex-1 grid grid-cols-[1fr_340px] gap-4 bg-base overflow-hidden px-6 pb-6">
+      <div className="flex-1 grid grid-cols-[1fr_360px] gap-5 bg-base overflow-hidden px-6 pb-6 pt-4">
         <div className="panel flex flex-col relative">
           <div className="absolute top-3 left-3 z-10 flex flex-wrap gap-2 pointer-events-none">
-            <span className="rounded-full bg-base/80 backdrop-blur px-3 py-1.5 text-[13px] flex items-center gap-2">
+            <span className="rounded-xl bg-base/85 backdrop-blur-md border border-line px-3 py-1.5 text-[12px] font-mono flex items-center gap-2 shadow-lg">
               <span className={`h-2 w-2 rounded-full ${t.mode === "STOPPED" ? "bg-alarm pulse-dot" : t.state === "SAFE" ? "bg-ok" : "bg-telemetry pulse-dot"}`} />
-              {t.mode === "STOPPED" ? "Stopped" : t.state}
+              <b className="text-ink">{t.mode === "STOPPED" ? "STOPPED" : t.state}</b>
             </span>
-            <span className="rounded-full bg-base/80 backdrop-blur px-3 py-1.5 text-[13px] data">Tank {(t.tank * 100).toFixed(0)}%</span>
-            <span className="rounded-full bg-base/80 backdrop-blur px-3 py-1.5 text-[13px] data">Fire {t.fire.p > 0 ? `${(t.fire.p * 100).toFixed(0)}% left` : "out"}</span>
+            <span className="rounded-xl bg-base/85 backdrop-blur-md border border-line px-3 py-1.5 text-[12px] font-mono data shadow-lg">
+              TANK <b className="text-telemetry">{(t.tank * 100).toFixed(0)}%</b>
+            </span>
+            <span className="rounded-xl bg-base/85 backdrop-blur-md border border-line px-3 py-1.5 text-[12px] font-mono data shadow-lg">
+              FIRE <b className={t.fire.p > 0 ? "text-alarm" : "text-ok"}>{t.fire.p > 0 ? `${(t.fire.p * 100).toFixed(0)}%` : "OUT"}</b>
+            </span>
           </div>
           <SimCanvas engineRef={engineRef} showTree={showTree} showSensors={showSensors} showSlam={showSlam} height={620} />
-          <div className="border-t border-line bg-panel px-4 py-2.5 flex items-center gap-4 text-[12px] text-muted flex-wrap relative">
+          <div className="border-t border-line bg-panel2/40 px-4 py-2.5 flex items-center gap-4 text-[11px] font-mono text-muted flex-wrap relative">
             <Legend swatch="#3FA7D6" label="robot" />
-            <Legend swatch="#E14A3A" label="fire (ground truth)" />
-            <Legend swatch="#D69A3C" label="fire estimate + \u03c3" />
-            <Legend swatch="#4CAF6D" label="planned path" />
-            <Legend swatch="rgba(63,167,214,0.6)" label="RRT* search tree" />
-            <Legend swatch="#C4A0FF" label="next-best-view target" />
-            <Legend swatch="#FFB238" label="SLAM pose (vs. true)" />
-            <span className="ml-auto text-faint">{t.world.width.toFixed(1)}m \u00d7 {t.world.height.toFixed(1)}m building, seed {engineRef.current.seed}</span>
+            <Legend swatch="#E14A3A" label="fire (truth)" />
+            <Legend swatch="#D69A3C" label="EIF estimate" />
+            <Legend swatch="#4CAF6D" label="path" />
+            <Legend swatch="rgba(63,167,214,0.6)" label="RRT* tree" />
+            <Legend swatch="#C4A0FF" label="NBV target" />
+            <Legend swatch="#FFB238" label="SLAM pose" />
+            <span className="ml-auto text-faint data">{t.world.width.toFixed(1)}m × {t.world.height.toFixed(1)}m • Seed {engineRef.current.seed}</span>
           </div>
         </div>
 
         <div className="panel flex flex-col overflow-hidden">
-          <div className="flex bg-panel2">
-            {["telemetry", "sensors", "planner", "voice"].map((k) => (
-              <button key={k} onClick={() => setTab(k)} className={`flex-1 px-2 py-3 text-[14px] capitalize transition-colors ${tab === k ? "bg-panel text-ink font-bold border-b-2 border-telemetry" : "text-muted hover:text-ink border-b-2 border-transparent"}`}>
-                {k}
+          <div className="flex bg-panel2/80 border-b border-line p-1 gap-1">
+            {[
+              { id: "telemetry", label: "Telemetry" },
+              { id: "sensors", label: "Sensors" },
+              { id: "planner", label: "Planner" },
+              { id: "voice", label: "Voice" },
+            ].map(({ id: k, label }) => (
+              <button
+                key={k}
+                onClick={() => { playSound("tab"); setTab(k); }}
+                className={`flex-1 py-2 text-[12px] font-mono uppercase tracking-wider rounded-lg transition-all ${
+                  tab === k
+                    ? "bg-panel text-ink font-bold shadow-[0_0_8px_rgba(240,85,155,0.3)] border border-telemetry/40 text-telemetry"
+                    : "text-muted hover:text-ink hover:bg-panel/40 border border-transparent"
+                }`}
+              >
+                {label}
               </button>
             ))}
           </div>

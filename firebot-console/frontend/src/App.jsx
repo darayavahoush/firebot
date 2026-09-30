@@ -8,6 +8,7 @@ import History from "./pages/History.jsx";
 import About from "./pages/About.jsx";
 import { connectTelemetry, sendCommand, sendEstop } from "./api/client.js";
 import { notify, notifyEnabled, setNotifyEnabled, notifySupported } from "./lib/notify.js";
+import { playSound } from "./lib/sound.js";
 
 export default function App() {
   const [page, setPage] = useState("live");
@@ -56,8 +57,9 @@ export default function App() {
   // in the scrolling Command Log. Auto-dismisses; a new command replaces the old one immediately.
   const showAck = useCallback((c) => {
     if (ackTimerRef.current) clearTimeout(ackTimerRef.current);
+    playSound(c.valid ? "ack" : "estop");
     setAck({ text: c.text, channel: c.channel, valid: c.valid, message: c.message });
-    ackTimerRef.current = setTimeout(() => setAck(null), 3200);
+    ackTimerRef.current = setTimeout(() => setAck(null), 3400);
   }, []);
   useEffect(() => () => { if (ackTimerRef.current) clearTimeout(ackTimerRef.current); }, []);
 
@@ -172,13 +174,22 @@ export default function App() {
 
         {ack && (
           <div
-            className={`absolute top-3 left-1/2 -translate-x-1/2 z-20 rounded-full border px-4 py-1.5 text-[12px] font-mono shadow-lg bg-panel ${
-              ack.valid ? "border-telemetry text-telemetry" : "border-warn text-warn"
+            className={`absolute top-4 left-1/2 -translate-x-1/2 z-30 rounded-2xl border px-5 py-2.5 text-[12px] font-mono shadow-2xl backdrop-blur-xl flex items-center gap-2.5 transition-all duration-200 animate-fadeIn ${
+              ack.valid
+                ? "border-telemetry/40 bg-panel/95 text-ink shadow-[0_0_20px_rgba(240,85,155,0.35)]"
+                : "border-warn/40 bg-panel/95 text-warn shadow-[0_0_20px_rgba(255,178,56,0.35)]"
             }`}
           >
-            {ack.valid ? "\u2713 command received: " : "\u26a0 not understood: "}
-            <span className="text-ink">{"\u201c"}{ack.text}{"\u201d"}</span>
-            <span className="text-faint"> ({ack.channel})</span>
+            <span className={`text-[14px] font-bold ${ack.valid ? "text-telemetry" : "text-warn"}`}>
+              {ack.valid ? "✓" : "⚠"}
+            </span>
+            <span>
+              {ack.valid ? "Command received: " : "Not understood: "}
+              <b className="text-ink">"{ack.text}"</b>
+            </span>
+            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-panel2 border border-line text-faint uppercase">
+              {ack.channel}
+            </span>
           </div>
         )}
 

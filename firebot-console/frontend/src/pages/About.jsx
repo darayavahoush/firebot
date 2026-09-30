@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useMemo } from "react";
 
 // Every entry mirrors code in this repo; `where` points at the module so the page stays checkable.
 const GROUPS = [
@@ -207,41 +207,127 @@ const GROUPS = [
 const slug = (t) => t.toLowerCase().replace(/[^a-z0-9]+/g, "-");
 
 export default function About() {
+  const [search, setSearch] = useState("");
+
+  const filteredGroups = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return GROUPS;
+    return GROUPS.map((g) => {
+      const items = g.items.filter(
+        (it) =>
+          it.name.toLowerCase().includes(q) ||
+          it.where.toLowerCase().includes(q) ||
+          it.what.toLowerCase().includes(q) ||
+          it.how.some((h) => h.toLowerCase().includes(q))
+      );
+      return { ...g, items };
+    }).filter((g) => g.items.length > 0);
+  }, [search]);
+
   return (
-    <main className="flex-1 overflow-y-auto bg-base">
-      <div className="max-w-[1080px] mx-auto px-6 py-10 grid gap-12 md:grid-cols-[200px_1fr]">
-        <nav aria-label="Sections" className="md:sticky md:top-6 self-start">
-          <p className="text-[13px] text-faint mb-3">On this page</p>
-          <ul className="space-y-2">
-            {GROUPS.map((g) => (
-              <li key={g.title}><a href={`#${slug(g.title)}`} className="text-[14px] text-muted hover:text-telemetry">{g.title}</a></li>
-            ))}
-          </ul>
-        </nav>
-        <div className="space-y-16 min-w-0">
-          <header>
-            <h1 className="font-display font-extrabold text-[44px] leading-[1.05] tracking-tight max-w-[16ch]">How the robot finds a fire and puts it out</h1>
-            <p className="mt-4 text-[17px] leading-relaxed text-muted max-w-[58ch]">Each part below is real code in this repo. The file next to each name tells you where to read it.</p>
-          </header>
-          {GROUPS.map((g) => (
-            <section key={g.title} id={slug(g.title)} className="scroll-mt-6">
-              <h2 className="font-display font-extrabold text-[28px] tracking-tight pb-3 mb-2 border-b-[3px]" style={{ borderImage: "linear-gradient(90deg,#5a1a86,#c4286f,#ff8a2a,#fff2c9) 1" }}>{g.title}</h2>
-              <div className="divide-y divide-line">
-                {g.items.map((it) => (
-                  <article key={it.name} className="py-7 grid gap-x-8 gap-y-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
-                    <div>
-                      <h3 className="font-display font-bold text-[20px] leading-tight">{it.name}</h3>
-                      <code className="data inline-block mt-2 px-2 py-0.5 rounded bg-panel2 text-[12px] text-muted">{it.where}</code>
-                      <p className="mt-3 text-[16px] leading-relaxed text-ink">{it.what}</p>
-                    </div>
-                    <ul className="space-y-3 text-[15px] leading-[1.65] text-muted max-w-[62ch]">
-                      {it.how.map((h, i) => <li key={i} className="pl-4 border-l-2 border-line">{h}</li>)}
-                    </ul>
-                  </article>
-                ))}
+    <main className="flex-1 overflow-y-auto bg-base p-6">
+      <div className="max-w-[1140px] mx-auto space-y-10">
+        {/* Header with Search Input */}
+        <header className="panel p-8 space-y-4">
+          <div className="flex items-center gap-2">
+            <span className="h-2.5 w-2.5 rounded-full bg-telemetry animate-pulse" />
+            <span className="text-[11px] font-mono uppercase tracking-widest text-telemetry font-bold">
+              FIREBOT TECHNICAL MANUAL & ARCHITECTURE
+            </span>
+          </div>
+          <h1 className="font-display font-black text-[36px] lg:text-[44px] leading-[1.05] tracking-tight text-ink max-w-[20ch]">
+            How the robot senses, plans, and suppresses fires
+          </h1>
+          <p className="text-[16px] text-muted max-w-[62ch]">
+            Every module below is implemented as checked-in production code in this repository. Use this reference to trace state estimation, motion planning, and MuJoCo simulation pipelines.
+          </p>
+
+          <div className="pt-2 max-w-md">
+            <div className="relative">
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search algorithms, filters, models, or file paths…"
+                className="w-full bg-panel2 border border-line rounded-xl px-4 py-2.5 pl-10 text-[13px] text-ink font-mono focus:border-telemetry transition-colors outline-none"
+              />
+              <span className="absolute left-3.5 top-3 text-faint">🔍</span>
+              {search && (
+                <button
+                  onClick={() => setSearch("")}
+                  className="absolute right-3 top-2.5 text-[11px] font-mono text-faint hover:text-ink px-1.5 py-0.5 rounded bg-panel"
+                >
+                  CLEAR
+                </button>
+              )}
+            </div>
+          </div>
+        </header>
+
+        {/* Categories Grid */}
+        <div className="grid gap-10 md:grid-cols-[220px_1fr] items-start">
+          <nav aria-label="Sections" className="md:sticky md:top-6 self-start panel p-4 space-y-2">
+            <div className="text-[11px] font-mono uppercase tracking-wider text-faint pb-2 border-b border-line">
+              Subsystems
+            </div>
+            <ul className="space-y-1">
+              {GROUPS.map((g) => (
+                <li key={g.title}>
+                  <a
+                    href={`#${slug(g.title)}`}
+                    className="block text-[12px] font-mono text-muted hover:text-telemetry py-1 px-1.5 rounded transition-colors hover:bg-panel2"
+                  >
+                    {g.title}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </nav>
+
+          <div className="space-y-10 min-w-0">
+            {filteredGroups.length === 0 && (
+              <div className="panel p-12 text-center text-muted font-mono text-[14px]">
+                No subsystems matched "{search}".
               </div>
-            </section>
-          ))}
+            )}
+            {filteredGroups.map((g) => (
+              <section key={g.title} id={slug(g.title)} className="scroll-mt-6 panel p-6 space-y-6">
+                <div className="flex items-center justify-between border-b border-line pb-3">
+                  <h2 className="font-display font-extrabold text-[22px] tracking-tight text-ink">
+                    {g.title}
+                  </h2>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-panel2 text-faint border border-line">
+                    {g.items.length} MODULES
+                  </span>
+                </div>
+
+                <div className="divide-y divide-line/60">
+                  {g.items.map((it) => (
+                    <article key={it.name} className="py-6 first:pt-0 last:pb-0 grid gap-x-8 gap-y-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+                      <div>
+                        <h3 className="font-display font-bold text-[18px] text-ink leading-tight">
+                          {it.name}
+                        </h3>
+                        <code className="data inline-block mt-2 px-2.5 py-1 rounded-md bg-panel2 text-[11px] font-mono text-telemetry border border-line">
+                          {it.where}
+                        </code>
+                        <p className="mt-3 text-[14px] leading-relaxed text-muted">
+                          {it.what}
+                        </p>
+                      </div>
+                      <ul className="space-y-2 text-[13px] leading-relaxed text-ink/80 max-w-[62ch]">
+                        {it.how.map((h, i) => (
+                          <li key={i} className="pl-3.5 border-l-2 border-line hover:border-telemetry transition-colors">
+                            {h}
+                          </li>
+                        ))}
+                      </ul>
+                    </article>
+                  ))}
+                </div>
+              </section>
+            ))}
+          </div>
         </div>
       </div>
     </main>
