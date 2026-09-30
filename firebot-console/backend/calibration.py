@@ -533,7 +533,8 @@ def _train_blocking(user: str, base: dict, trigger: str = "manual") -> dict:
             incumbent = None
     arr = np.stack(feats)
     ckpt, report = personalize(base, arr, names, holdout_idx=holdout_indices(keys, names),
-                               incumbent=incumbent, refit_all=False)
+                               incumbent=incumbent, refit_all=False,
+                               allow_partial=True, min_clips=1)
     fb_total = sum(_fb_counts(user).values())
     report.update(trigger=trigger, trained_at=time.time(), fb_clips=fb_total)
     MODELS_DIR.mkdir(parents=True, exist_ok=True)

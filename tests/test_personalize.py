@@ -115,3 +115,18 @@ def test_saved_model_never_trained_on_its_holdout():
     ho = holdout_indices(keys, names)
     _, rep = personalize(ckpt, feats, names, holdout_idx=ho, refit_all=False)
     assert rep["holdout"] == len(ho) and rep["accepted"]
+
+
+def test_partial_calibration_accepted():
+    ckpt = _base_ckpt()
+    # Operator only recorded 3 commands with 1 take each
+    protos = _protos()
+    feats = np.stack([protos[0], protos[1], protos[3]])
+    names = ["STOP", "EXTINGUISH", "STATUS"]
+    out, rep = personalize(ckpt, feats, names, allow_partial=True, min_clips=1)
+    assert rep["accepted"]
+    assert rep["personal_acc"] >= rep["base_acc"]
+    assert "GOTO_NORTH" in rep["unrecorded"]
+    head = head_from_ckpt(out)
+    assert head is not None
+

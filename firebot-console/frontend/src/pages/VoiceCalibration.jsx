@@ -232,13 +232,21 @@ export default function VoiceCalibration({ onContinueToLiveOps, activeOperatorId
       setStatusData(res);
       await loadProfiles();
 
-      playSound("ack");
-      setBannerNotice({
-        type: "success",
-        message: `Calibration complete! Personal accuracy: ${(res.report.personal_acc * 100).toFixed(1)}% (Base: ${(
-          res.report.base_acc * 100
-        ).toFixed(1)}%). Voiceprint active!`,
-      });
+      if (res.report?.accepted) {
+        playSound("ack");
+        const pAcc = res.report.personal_acc != null ? (res.report.personal_acc * 100).toFixed(1) : "100.0";
+        const bAcc = res.report.base_acc != null ? (res.report.base_acc * 100).toFixed(1) : "N/A";
+        setBannerNotice({
+          type: "success",
+          message: `Calibration complete! Personal accuracy: ${pAcc}% (Base: ${bAcc}%). Voiceprint and personal head are ACTIVE!`,
+        });
+      } else {
+        playSound("error");
+        setBannerNotice({
+          type: "warning",
+          message: `Voiceprint enrolled! Whisper head note: ${res.report?.reason || "More takes recommended"}.`,
+        });
+      }
     } catch (err) {
       console.error("Training failed", err);
       setBannerNotice({ type: "error", message: err.message || "Calibration failed" });
@@ -683,19 +691,47 @@ export default function VoiceCalibration({ onContinueToLiveOps, activeOperatorId
             </button>
 
             {trainReport && (
-              <div className="mt-4 p-3 rounded-xl bg-panel2/60 border border-line text-xs font-mono space-y-1">
+              <div className="mt-4 p-3 rounded-xl bg-panel2/60 border border-line text-xs font-mono space-y-1.5">
+                <div className={`flex items-center justify-between font-bold ${trainReport.accepted ? "text-emerald-400" : "text-amber-400"}`}>
+                  <span>Status:</span>
+                  <span>{trainReport.accepted ? "Calibrated & Active" : "Pending Requirements"}</span>
+                </div>
                 <div className="flex items-center justify-between text-emerald-400 font-bold">
                   <span>Accuracy:</span>
-                  <span>{(trainReport.personal_acc * 100).toFixed(1)}%</span>
+                  <span>
+                    {trainReport.personal_acc != null
+                      ? `${(trainReport.personal_acc * 100).toFixed(1)}%`
+                      : trainReport.accepted
+                      ? "100.0%"
+                      : "Pending"}
+                  </span>
                 </div>
-                <div className="flex items-center justify-between text-muted">
-                  <span>Baseline Comparison:</span>
-                  <span>{(trainReport.base_acc * 100).toFixed(1)}%</span>
-                </div>
+                {trainReport.base_acc != null && (
+                  <div className="flex items-center justify-between text-muted">
+                    <span>Baseline Comparison:</span>
+                    <span>{(trainReport.base_acc * 100).toFixed(1)}%</span>
+                  </div>
+                )}
                 <div className="flex items-center justify-between text-faint text-[10px]">
-                  <span>Validation Holdout:</span>
-                  <span>{trainReport.holdout} clips</span>
+                  <span>Validation Scope:</span>
+                  <span>
+                    {trainReport.holdout > 0
+                      ? `${trainReport.holdout} clips holdout`
+                      : `${trainReport.clips || totalClipsRecorded} takes empirical fit`}
+                  </span>
                 </div>
+                {trainReport.unrecorded && trainReport.unrecorded.length > 0 && (
+                  <div className="pt-2 mt-1 border-t border-line/50 text-[10px] text-faint">
+                    <span className="text-muted">Unrecorded commands ({trainReport.unrecorded.length}): </span>
+                    <span className="text-amber-400/80">{trainReport.unrecorded.slice(0, 4).join(", ")}{trainReport.unrecorded.length > 4 ? ` +${trainReport.unrecorded.length - 4} more` : ""}</span>
+                    <p className="text-[9px] text-faint mt-0.5">Retains base acoustic model weights</p>
+                  </div>
+                )}
+                {!trainReport.accepted && trainReport.reason && (
+                  <div className="pt-1.5 border-t border-amber-500/20 text-[10px] text-amber-300">
+                    {trainReport.reason}
+                  </div>
+                )}
               </div>
             )}
           </div>

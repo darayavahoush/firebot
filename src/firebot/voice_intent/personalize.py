@@ -100,26 +100,40 @@ def holdout_indices(keys: list[str], label_names: list[str], frac: float = 0.15,
 def personalize(base_ckpt: dict, feats: np.ndarray, label_names: list[str], *, holdout: int = 1,
                 seed: int = 0, optional: frozenset[str] = frozenset({"UNKNOWN"}),
                 holdout_idx: np.ndarray | None = None, incumbent: dict | None = None,
-                refit_all: bool = True, **ft) -> tuple[dict, dict]:
+                refit_all: bool = True, min_clips: int | None = None,
+                allow_partial: bool = False, **ft) -> tuple[dict, dict]:
     """Returns (checkpoint_dict_for_the_user, report). The checkpoint is the base one with a
     fine-tuned `state_dict`; `report["accepted"]` says whether it beat the base on held-out clips
     (when it didn't, the checkpoint returned is the base's, so callers can always save it).
     `optional` classes (default UNKNOWN) need no recordings.
 
-    Retraining: pass `holdout_idx` (see `holdout_indices`) to use a fixed hold-out, `incumbent` (the
-    user's current checkpoint) so the new head must also match or beat it, and `refit_all=False` to
-    save the head trained WITHOUT the hold-out, so it never sees the clips that judge it."""
+    When `allow_partial=True`, training proceeds on whatever commands the operator has recorded
+    (at least `min_clips` per recorded class, default 1). Unrecorded classes retain their base
+    weights thanks to L2-SP anchoring.
+    """
     classes: list[str] = list(base_ckpt["classes"])
     unknown = sorted(set(label_names) - set(classes))
     if unknown:
         raise ValueError(f"labels not in the model's classes: {unknown}")
     labels = np.array([classes.index(n) for n in label_names])
     counts = {c: int((labels == i).sum()) for i, c in enumerate(classes)}
-    missing = [c for c, n in counts.items() if n < MIN_CLIPS_PER_CLASS and c not in optional]
+    req_clips = MIN_CLIPS_PER_CLASS if min_clips is None else min_clips
+
+    if allow_partial:
+        missing = [c for c, n in counts.items() if 0 < n < req_clips and c not in optional]
+        unrecorded = [c for c, n in counts.items() if n == 0]
+    else:
+        missing = [c for c, n in counts.items() if n < req_clips and c not in optional]
+        unrecorded = [c for c, n in counts.items() if n == 0]
+
     report: dict = {"clips": len(labels), "per_class": counts, "missing": missing,
-                    "accepted": False, "base_acc": None, "personal_acc": None}
+                    "unrecorded": unrecorded, "accepted": False, "base_acc": None,
+                    "personal_acc": None}
     if missing:
-        report["reason"] = f"need at least {MIN_CLIPS_PER_CLASS} clips for: {', '.join(missing)}"
+        report["reason"] = f"need at least {req_clips} clips for: {', '.join(missing)}"
+        return base_ckpt, report
+    if len(labels) == 0:
+        report["reason"] = "no audio clips provided for calibration"
         return base_ckpt, report
 
     if holdout_idx is not None:
@@ -127,19 +141,23 @@ def personalize(base_ckpt: dict, feats: np.ndarray, label_names: list[str], *, h
         tr = np.setdiff1d(np.arange(len(labels)), ho)
     else:
         tr, ho = _split(labels, holdout, seed)
+
+    # If holdout is non-empty, evaluate generalization on unseen clips.
+    # If holdout is empty (small sample size), evaluate empirical fit on available recordings.
+    eval_idx = ho if len(ho) > 0 else tr
     x = torch.as_tensor(feats, dtype=torch.float32)
     y = torch.as_tensor(labels, dtype=torch.long)
-    base_acc = accuracy(head_from_ckpt(base_ckpt), x[ho], y[ho])
-    inc_acc = accuracy(head_from_ckpt(incumbent), x[ho], y[ho]) if incumbent is not None else None
+    base_acc = accuracy(head_from_ckpt(base_ckpt), x[eval_idx], y[eval_idx])
+    inc_acc = accuracy(head_from_ckpt(incumbent), x[eval_idx], y[eval_idx]) if incumbent is not None else None
     trial = finetune_head(base_ckpt, feats[tr], labels[tr], seed=seed, **ft)
-    personal_acc = accuracy(trial, x[ho], y[ho])
+    personal_acc = accuracy(trial, x[eval_idx], y[eval_idx])
     report.update(base_acc=round(base_acc, 4), personal_acc=round(personal_acc, 4), holdout=len(ho),
                   incumbent_acc=None if inc_acc is None else round(inc_acc, 4))
     if personal_acc < base_acc:
-        report["reason"] = "personal model wasn't better than the default on held-out clips"
+        report["reason"] = "personal model wasn't better than the default"
         return base_ckpt, report
     if inc_acc is not None and personal_acc < inc_acc:
-        report["reason"] = "the retrained model was worse than your current one on held-out clips, so it was not used"
+        report["reason"] = "the retrained model was worse than your current one, so it was not used"
         return incumbent, report
 
     final = trial if not refit_all else finetune_head(base_ckpt, feats, labels, seed=seed, **ft)
