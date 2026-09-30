@@ -536,9 +536,23 @@ async def train(user: str) -> dict[str, Any]:
     user = _user(user)
     base, reason = _base_ckpt()
     if base is None:
-        raise HTTPException(409, reason)
+        return {
+            "report": {
+                "accepted": False,
+                "reason": reason or "No base model configured",
+                "trained_at": time.time(),
+            },
+            **_status(user),
+        }
     if _classifier is None:
-        raise HTTPException(503, "Calibration isn't configured")
+        return {
+            "report": {
+                "accepted": False,
+                "reason": "Calibration isn't configured",
+                "trained_at": time.time(),
+            },
+            **_status(user),
+        }
     if not _lock.acquire(blocking=False):
         raise HTTPException(409, "Calibration is already running")
     try:

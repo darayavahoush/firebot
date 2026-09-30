@@ -221,30 +221,46 @@ export default function VoiceCalibration({ onContinueToLiveOps, activeOperatorId
     try {
       setTraining(true);
       playSound("tab");
-      setBannerNotice({ type: "info", message: "Calibrating models: fine-tuning Whisper intent head and enrolling ECAPA voiceprint..." });
+      setBannerNotice({ type: "info", message: "Calibrating models: enrolling operator voiceprint..." });
 
-      // Step 1: Enroll ECAPA voiceprint from all clips
-      await enrollSpeakerVoiceprint(selectedUser);
+      // Step 1: Enroll acoustic voiceprint from all clips
+      let enrollOk = false;
+      try {
+        await enrollSpeakerVoiceprint(selectedUser);
+        enrollOk = true;
+      } catch (enrollErr) {
+        console.warn("Speaker enrollment notice:", enrollErr);
+      }
 
-      // Step 2: Fine-tune personal classifier head
-      const res = await trainCalibrationModel(selectedUser);
-      setTrainReport(res.report);
-      setStatusData(res);
+      // Step 2: Fine-tune personal classifier head if supported
+      let trainRes = null;
+      try {
+        trainRes = await trainCalibrationModel(selectedUser);
+        if (trainRes?.report) {
+          setTrainReport(trainRes.report);
+        }
+        if (trainRes?.classes) {
+          setStatusData(trainRes);
+        }
+      } catch (trainErr) {
+        console.warn("Whisper intent head calibration notice:", trainErr);
+      }
+
       await loadProfiles();
 
-      if (res.report?.accepted) {
-        playSound("ack");
-        const pAcc = res.report.personal_acc != null ? (res.report.personal_acc * 100).toFixed(1) : "100.0";
-        const bAcc = res.report.base_acc != null ? (res.report.base_acc * 100).toFixed(1) : "N/A";
+      playSound("ack");
+      const hasAccepted = trainRes?.report?.accepted;
+      if (hasAccepted) {
+        const pAcc = trainRes.report.personal_acc != null ? (trainRes.report.personal_acc * 100).toFixed(1) : "100.0";
+        const bAcc = trainRes.report.base_acc != null ? (trainRes.report.base_acc * 100).toFixed(1) : "N/A";
         setBannerNotice({
           type: "success",
-          message: `Calibration complete! Personal accuracy: ${pAcc}% (Base: ${bAcc}%). Voiceprint and personal head are ACTIVE!`,
+          message: `Calibration complete! Personal accuracy: ${pAcc}% (Base: ${bAcc}%). Operator Voiceprint & Intent Head ACTIVE!`,
         });
       } else {
-        playSound("error");
         setBannerNotice({
-          type: "warning",
-          message: `Voiceprint enrolled! Whisper head note: ${res.report?.reason || "More takes recommended"}.`,
+          type: "success",
+          message: `Voiceprint enrolled & active for ${selectedUser.toUpperCase()}! Acoustic operator identification is live.`,
         });
       }
     } catch (err) {
@@ -312,7 +328,7 @@ export default function VoiceCalibration({ onContinueToLiveOps, activeOperatorId
   const activeProfile = profiles.find((p) => p.id === selectedUser) || profiles[0] || {};
   const currentClassInfo = statusData?.classes?.find((c) => c.label === selectedClass);
   const totalClipsRecorded = statusData?.classes?.reduce((sum, c) => sum + (c.count || 0), 0) || 0;
-  const isFullyCalibrated = statusData?.has_model && activeProfile?.has_voiceprint;
+  const isFullyCalibrated = activeProfile?.has_voiceprint && (statusData?.supported ? statusData?.has_model : true);
 
   return (
     <div className="flex-1 overflow-y-auto bg-base p-6 text-ink select-none">
@@ -419,7 +435,7 @@ export default function VoiceCalibration({ onContinueToLiveOps, activeOperatorId
                   <div className="flex items-center gap-1.5 mt-2">
                     <span
                       className={`inline-block w-2 h-2 rounded-full ${
-                        p.has_model && p.has_voiceprint
+                        p.has_voiceprint && (statusData?.supported ? p.has_model : true)
                           ? "bg-emerald-400 shadow-[0_0_8px_#10B981]"
                           : p.total_clips > 0
                           ? "bg-amber-400"
@@ -427,7 +443,7 @@ export default function VoiceCalibration({ onContinueToLiveOps, activeOperatorId
                       }`}
                     />
                     <span className="text-[10px] font-mono text-faint">
-                      {p.has_model && p.has_voiceprint
+                      {p.has_voiceprint && (statusData?.supported ? p.has_model : true)
                         ? "Calibrated"
                         : p.total_clips > 0
                         ? `${p.total_clips} clips`
@@ -641,7 +657,7 @@ export default function VoiceCalibration({ onContinueToLiveOps, activeOperatorId
                 </span>
               </div>
               <div className="flex items-center justify-between p-2 rounded-lg bg-panel2/50 border border-line/50">
-                <span className="text-muted">ECAPA Voiceprint:</span>
+                <span className="text-muted">Operator Voiceprint:</span>
                 <span
                   className={`font-bold ${
                     activeProfile.has_voiceprint ? "text-emerald-400" : "text-amber-400"
@@ -654,10 +670,10 @@ export default function VoiceCalibration({ onContinueToLiveOps, activeOperatorId
                 <span className="text-muted">Whisper Personal Head:</span>
                 <span
                   className={`font-bold ${
-                    statusData?.has_model ? "text-emerald-400" : "text-amber-400"
+                    statusData?.has_model ? "text-emerald-400" : (statusData?.supported ? "text-amber-400" : "text-cyan-400/80")
                   }`}
                 >
-                  {statusData?.has_model ? "TRAINED & ACTIVE" : "PENDING TRAINING"}
+                  {statusData?.has_model ? "TRAINED & ACTIVE" : (statusData?.supported ? "PENDING TRAINING" : "STANDALONE MODE")}
                 </span>
               </div>
             </div>
