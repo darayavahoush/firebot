@@ -41,3 +41,7 @@ data/real_intent/
 
 # downloaded on first use by SpeechBrain (was committed as absolute-path symlinks)
 pretrained_models/
+
+# personal voice recordings (calibration clips are voice data; never commit)
+data/calibration/
+data/real_intent/
