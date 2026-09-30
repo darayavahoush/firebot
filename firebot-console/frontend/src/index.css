@@ -4,6 +4,20 @@
 
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; }
+
+/* Custom Cyber-Tactical Cursors */
+html, body {
+  cursor: url('/cursor-default.svg') 2 2, default;
+}
+
+button, a, select, input[type="checkbox"], input[type="radio"], input[type="button"], input[type="submit"], [role="button"], .cursor-pointer {
+  cursor: url('/cursor-pointer.svg') 14 14, pointer !important;
+}
+
+canvas, .cursor-crosshair, [data-viewport="mujoco"] {
+  cursor: url('/cursor-crosshair.svg') 16 16, crosshair;
+}
+
 body {
   @apply bg-base text-ink font-sans antialiased selection:bg-telemetry/30 selection:text-ink;
   background-image:

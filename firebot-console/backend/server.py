@@ -191,7 +191,13 @@ app.include_router(calibration.router)
 @app.on_event("startup")
 async def startup() -> None:
     global _pool
-    _pool = await asyncpg.create_pool(DATABASE_URL, min_size=1, max_size=5)
+    try:
+        _pool = await asyncpg.create_pool(DATABASE_URL, min_size=1, max_size=5, timeout=3.0)
+    except Exception as e:
+        logging.getLogger("firebot.console").warning(
+            "PostgreSQL not available at %s (%s); historical run logging disabled", DATABASE_URL, e
+        )
+        _pool = None
 
 
 @app.on_event("shutdown")
@@ -211,6 +217,8 @@ def _reshape_thermal(flat: list[float] | None) -> list[list[float]] | None:
 
 @app.get("/api/runs")
 async def list_runs() -> list[dict[str, Any]]:
+    if _pool is None:
+        return []
     query = """
         SELECT s.id, s.robot, s.started_at, s.ended_at, s.notes,
                count(f.seq)                         AS frames,
@@ -232,6 +240,8 @@ async def list_runs() -> list[dict[str, Any]]:
 
 @app.get("/api/runs/{run_id}")
 async def run_detail(run_id: str) -> dict[str, Any]:
+    if _pool is None:
+        raise HTTPException(404, "Database not connected")
     query = """
         SELECT seq, t, x, y, theta, speed, tank, sensors, thermal,
                est_x, est_y, est_sigma, mode, cmd_v, cmd_w, cmd_pump, compute_ms
@@ -791,9 +801,22 @@ async def ws_telemetry(ws: WebSocket) -> None:
         pass
 
 
-# ---- Optional: serve the built frontend from this same app (used by the Azure container) ----
+# ---- Optional: serve the built frontend from this same app ----
 # Same origin means no CORS and wss:// just works. Must stay LAST so it never shadows /api or /ws.
 _WEB_DIR = os.environ.get("FIREBOT_WEB_DIR", "")
+if not _WEB_DIR:
+    for _candidate in (
+        _REPO_ROOT / "firebot-console" / "frontend" / "dist",
+        Path(__file__).resolve().parent.parent / "frontend" / "dist",
+        Path(__file__).resolve().parent / "dist",
+        Path("/app/dist"),
+        Path("/app/frontend/dist"),
+    ):
+        if _candidate.is_dir():
+            _WEB_DIR = str(_candidate)
+            break
+
 if _WEB_DIR and Path(_WEB_DIR).is_dir():
     from fastapi.staticfiles import StaticFiles
     app.mount("/", StaticFiles(directory=_WEB_DIR, html=True), name="web")
+
