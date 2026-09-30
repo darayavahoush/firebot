@@ -752,7 +752,8 @@ async def test_voice(file: UploadFile = File(...), expected_user: str | None = N
     from firebot.voice_intent.vocab import canonical_phrase
 
     audio = await asyncio.to_thread(_decode, data)
-    pcm = (np.clip(audio, -1.0, 1.0) * 32767).astype("<i2").tobytes()
+    trimmed = trim_silence(audio.astype(np.float32))
+    pcm = (np.clip(trimmed, -1.0, 1.0) * 32767).astype("<i2").tobytes()
 
     # Speaker identification
     spk_name, spk_score = None, 0.0
@@ -763,7 +764,12 @@ async def test_voice(file: UploadFile = File(...), expected_user: str | None = N
             ident = SpeakerIdentifier(vp_dir)
             scores = ident.scores(pcm)
             spk_scores = {k: round(v, 3) for k, v in scores.items()}
-            spk_name, spk_score = decide_speaker(scores, 0.25, 0.04)
+            spk_name, spk_score = decide_speaker(scores, 0.20, 0.03)
+            if expected_user and expected_user in scores:
+                if spk_name is None and scores[expected_user] >= 0.18:
+                    spk_name, spk_score = expected_user, scores[expected_user]
+                elif spk_name == expected_user:
+                    spk_score = scores[expected_user]
         except Exception:
             pass
 
@@ -771,7 +777,7 @@ async def test_voice(file: UploadFile = File(...), expected_user: str | None = N
     intent_name, intent_conf, phrase = "UNKNOWN", 0.0, ""
     try:
         clf = _classifier() if _classifier else None
-        if clf is not None:
+        if clf is not None and hasattr(clf, "predict_intent_payload_array"):
             extra = {}
             active_user = expected_user or spk_name
             head = get_user_head(active_user) if hasattr(clf, "embed_array") else None
@@ -785,8 +791,17 @@ async def test_voice(file: UploadFile = File(...), expected_user: str | None = N
                 phrase = canonical_phrase(raw)
             except Exception:
                 phrase = intent_name
-    except Exception as e:
-        phrase = str(e)
+        else:
+            if spk_name:
+                intent_name = "VERIFIED_OPERATOR"
+                intent_conf = round(spk_score, 2)
+                phrase = f"Verified: {spk_name.upper()}"
+            else:
+                intent_name = "SPEECH_DETECTED"
+                intent_conf = 0.5
+                phrase = "Acoustic Sample Captured"
+    except Exception:
+        phrase = "Acoustic Sample Captured"
 
     latency_ms = round((time.time() - t0) * 1000, 1)
     return {

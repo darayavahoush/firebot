@@ -182,9 +182,14 @@ _speaker_last_error: str | None = None
 
 def _get_voice_classifier() -> Any:
     global _voice_classifier
+    if not VOICE_INTENT_CHECKPOINT:
+        return None
     if _voice_classifier is None:
-        from firebot.voice_intent.infer import load_classifier
-        _voice_classifier = load_classifier(VOICE_INTENT_CHECKPOINT)
+        try:
+            from firebot.voice_intent.infer import load_classifier
+            _voice_classifier = load_classifier(VOICE_INTENT_CHECKPOINT)
+        except Exception:
+            _voice_classifier = None
     return _voice_classifier
 
 
