@@ -1,0 +1,27 @@
+{
+  "timestamp": "2026-09-30T11:26:19Z",
+  "num_episodes": 20,
+  "experiments": [
+    {
+      "method": "Rule-Based Baseline",
+      "success_rate": 70.0,
+      "mean_time_s": 34.4,
+      "std_time_s": 23.668514347727264,
+      "loc_rmse_m": 1.9903012508796507,
+      "final_sigma_m": 2.3516813222022357,
+      "mean_collisions": 32.35,
+      "mean_water_used": 0.1248000000000001
+    },
+    {
+      "method": "MM-FusionRL (Active Multimodal)",
+      "success_rate": 90.0,
+      "mean_time_s": 23.96666666666667,
+      "std_time_s": 11.721158456208823,
+      "loc_rmse_m": 2.285883474695344,
+      "final_sigma_m": 1.173885068294247,
+      "mean_collisions": 87.15,
+      "mean_water_used": 0.13500000000000015,
+      "total_info_gain": 197.7516341685356
+    }
+  ]
+}

@@ -109,6 +109,12 @@ def train_multimodal(
         activation_fn=torch.nn.GELU,
     )
 
+    try:
+        import tensorboard  # noqa: F401
+        tb_log = str(out / "tb")
+    except ImportError:
+        tb_log = None
+
     model = PPO(
         "MultiInputPolicy",
         vec_env,
@@ -125,7 +131,7 @@ def train_multimodal(
         verbose=1,
         seed=seed,
         device=device,
-        tensorboard_log=str(out / "tb"),
+        tensorboard_log=tb_log,
     )
 
     checkpoint_callback = CheckpointCallback(

@@ -289,7 +289,8 @@ class MultimodalFireGymEnv(gym.Env):
         if pump:
             self.tank = max(0.0, self.tank - WATER_RATE * DT)
         if spraying_fire:
-            self.fire.extinguish(EXTINGUISH_RATE * DT)
+            dp = min(self.fire.p, EXTINGUISH_RATE * DT)
+            self.fire.p = max(0.0, self.fire.p - dp)
 
         # Read updated sensors & execute Bayesian Information Filter update
         self.last_sensors = read_sensors(self.world, self.fire, *self.robot, self.rng)

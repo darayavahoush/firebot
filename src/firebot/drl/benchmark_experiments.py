@@ -60,7 +60,7 @@ def evaluate_rule_baseline(num_episodes: int = 30, seed_start: int = 1000) -> di
             durations.append(t_step * 0.1)
 
         fx, fy = env.fire.x, env.fire.y
-        m = env.perception.eif.mean
+        m = np.clip(env.perception.eif.mean, [0.0, 0.0], [env.world.width, env.world.height])
         err = float(np.hypot(m[0] - fx, m[1] - fy))
         errors.append(err)
         sigmas.append(env.perception.est["sigma"])
@@ -79,9 +79,18 @@ def evaluate_rule_baseline(num_episodes: int = 30, seed_start: int = 1000) -> di
     }
 
 
-def evaluate_active_fusion_env(num_episodes: int = 30, seed_start: int = 1000) -> dict:
+def evaluate_active_fusion_env(
+    num_episodes: int = 30, seed_start: int = 1000, model_path: str | None = None
+) -> dict:
     """Benchmark Active Information-Theoretic Multi-Sensor Fusion."""
-    print("-> Benchmarking Method 2: Active Information-Theoretic Fusion (MM-FusionRL)...")
+    label = "MM-FusionRL (Trained Policy)" if model_path else "MM-FusionRL (Active Multimodal)"
+    print(f"-> Benchmarking Method 2: {label}...")
+    model = None
+    if model_path and Path(model_path).exists():
+        from stable_baselines3 import PPO
+        model = PPO.load(model_path)
+        print(f"   Loaded policy weights from {model_path}")
+
     successes = 0
     durations = []
     errors = []
@@ -98,38 +107,42 @@ def evaluate_active_fusion_env(num_episodes: int = 30, seed_start: int = 1000) -
         done = False
         t_step = 0
         ep_info_gain = 0.0
+        avoid_dir = 0
 
-        # Heuristic active perception policy when standalone checkpoint not loaded
+        ctrl = RuleController()
         while not done and t_step < 1500:
-            eif = obs["eif_belief"]
-            rel_bearing = eif[2] * np.pi
-            sigma = eif[3] * 4.0
-            flame = obs["flame"]
-            thermal = obs["thermal"]
-
-            # Active triangulation behavior:
-            # If sigma is large, execute wide baseline sweep to triangulate
-            if sigma > 0.8 and thermal[3] == 0.0:
-                v = 0.6
-                w = 0.4 * np.sin(t_step * 0.1)  # sinusoidal triangulation baseline
-                turret = 0.0
-                pump = 0.0
-            elif thermal[3] > 0.5:
-                # Target acquired by thermal: center turret and close in
-                v = 0.7 if abs(rel_bearing) < 0.3 else 0.2
-                w = float(np.clip(rel_bearing * 1.5, -1.0, 1.0))
-                turret = float(np.clip(-rel_bearing, -1.0, 1.0))
-                dist = np.hypot(eif[0] * 10.0, eif[1] * 10.0)
-                pump = 1.0 if dist < 2.2 and abs(rel_bearing) < 0.25 else 0.0
+            if model is not None:
+                action, _ = model.predict(obs, deterministic=True)
             else:
-                # Follow gas/flame cues
-                gas_diff = obs["gas"][2]
-                v = 0.5
-                w = float(np.clip(gas_diff * 2.0, -0.8, 0.8))
-                turret = 0.0
-                pump = 0.0
+                us = obs["ultrasonic"]
+                fl = obs["flame"]
+                gas = obs["gas"][0]
+                seen = obs["thermal"][3]
+                zt = float(obs["thermal"][2] * (0.96 / 2))
+                eif = obs["eif_belief"]
+                eb = float(eif[2])
+                dist = float(np.hypot(eif[0] * 10.0, eif[1] * 10.0))
+                sg = float(eif[3])
+                peak = float(obs["thermal"][0])
+                tank = float(obs["proprio"][1])
+                meas = float(obs["proprio"][0])
+                turret = float(obs["proprio"][2])
 
-            action = np.array([v, w, turret, pump], dtype=np.float32)
+                vec = np.array([
+                    us[0], us[1], us[2], us[3],
+                    fl[0], fl[1], fl[2],
+                    gas, seen, zt / 0.5, eb, min(dist, 10.0) / 10.0, sg, peak,
+                    tank, meas, turret
+                ], dtype=np.float32)
+
+                action = ctrl.act(vec)
+                # Active multimodal augmentation: gas diffusion gradient + active parallax excitation
+                if ctrl.state == "EXPLORE":
+                    gas_diff = float(obs["gas"][2])
+                    sigma = float(eif[3] * 4.0)
+                    parallax = 0.35 * np.sin(t_step * 0.15) if sigma > 0.8 else 0.0
+                    action[1] = float(np.clip(action[1] + gas_diff * 3.5 + parallax, -1.0, 1.0))
+
             obs, r, done, _, step_info = env.step(action)
             ep_info_gain += step_info["info_gain"]
             t_step += 1
@@ -140,7 +153,7 @@ def evaluate_active_fusion_env(num_episodes: int = 30, seed_start: int = 1000) -
             durations.append(t_step * 0.1)
 
         fx, fy = env.fire.x, env.fire.y
-        m = env.eif.mean
+        m = np.clip(env.eif.mean, [0.0, 0.0], [env.world.width, env.world.height])
         err = float(np.hypot(m[0] - fx, m[1] - fy))
         errors.append(err)
         sigmas.append(float(np.sqrt(max(env.eif.cov[0, 0], env.eif.cov[1, 1]))))
@@ -161,7 +174,11 @@ def evaluate_active_fusion_env(num_episodes: int = 30, seed_start: int = 1000) -
     }
 
 
-def run_benchmark(num_episodes: int = 30, out_file: str = "benchmark_results.json") -> dict:
+def run_benchmark(
+    num_episodes: int = 30,
+    out_file: str = "benchmark_results.json",
+    model_path: str | None = None,
+) -> dict:
     """Run full benchmark suite and save JSON report."""
     print("=" * 65)
     print("MM-FusionRL Research Benchmarking Suite")
@@ -169,7 +186,7 @@ def run_benchmark(num_episodes: int = 30, out_file: str = "benchmark_results.jso
     print("=" * 65)
 
     res_rule = evaluate_rule_baseline(num_episodes)
-    res_fusion = evaluate_active_fusion_env(num_episodes)
+    res_fusion = evaluate_active_fusion_env(num_episodes, model_path=model_path)
 
     results = {
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -202,9 +219,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Run MM-FusionRL Benchmark Experiments")
     parser.add_argument("--episodes", type=int, default=25, help="Number of Monte Carlo sorties")
     parser.add_argument("--out", type=str, default="benchmark_results.json", help="Output path")
+    parser.add_argument("--model", type=str, default=None, help="Trained PPO policy zip path")
     args = parser.parse_args()
 
-    run_benchmark(num_episodes=args.episodes, out_file=args.out)
+    run_benchmark(num_episodes=args.episodes, out_file=args.out, model_path=args.model)
 
 
 if __name__ == "__main__":
