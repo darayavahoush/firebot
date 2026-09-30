@@ -5,14 +5,13 @@ __pycache__/
 .ruff_cache/
 *.egg-info/
 build/
-dist/
+/dist/
 *.db
 *.db-wal
 *.db-shm
 .DS_Store
 .env
 firebot-console/frontend/node_modules/
-firebot-console/frontend/dist/
 firebot-console/backend/.venv/
 .venv-ompl/
 runs/
