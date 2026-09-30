@@ -59,6 +59,41 @@ export default function Simulator() {
   const [operator, setOperatorState] = useState(getOperator);
   const [showCalibrate, setShowCalibrate] = useState(false);
   const [personalModel, setPersonalModel] = useState(null);
+  const [pendingClip, setPendingClip] = useState(null);       // last voice clip awaiting the person's reaction
+  const [feedbackCommands, setFeedbackCommands] = useState([]);
+  const [liveAccuracy, setLiveAccuracy] = useState(null);
+  const pendingRef = useRef(null);
+  useEffect(() => { pendingRef.current = pendingClip; }, [pendingClip]);
+
+  // Tell the backend what the person did with the last voice result, so their model can learn from it.
+  const sendFeedback = useCallback(async (body) => {
+    const p = pendingRef.current;
+    if (!p) return null;
+    pendingRef.current = null;
+    setPendingClip(null);
+    try {
+      const res = await fetch("/api/voice/feedback", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user: p.user, clip_id: p.id, ...body }) });
+      const j = res.ok ? await res.json() : null;
+      if (j?.live?.accuracy != null) setLiveAccuracy(j.live.accuracy);
+      return j;
+    } catch { return null; }
+  }, []);
+  const onSent = useCallback((sentText) => { sendFeedback({ sent_text: sentText }); }, [sendFeedback]);
+  const loadFeedbackCommands = useCallback(async () => {
+    const p = pendingRef.current;
+    if (!p || feedbackCommands.length) return;
+    try {
+      const j = await (await fetch(`/api/voice/calibrate/status?user=${encodeURIComponent(p.user)}`)).json();
+      setFeedbackCommands(j.classes || []);
+    } catch { /* picker stays empty; sending as-is still works */ }
+  }, [feedbackCommands.length]);
+  const onFix = useCallback(async (label) => {
+    const phrase = feedbackCommands.find((c) => c.label === label)?.phrase;
+    await sendFeedback({ label });
+    setTextCmd(label === "UNKNOWN" ? "" : phrase || "");
+    cmdInputRef.current?.focus();
+  }, [feedbackCommands, sendFeedback]);
   useEffect(() => {
     let alive = true;
     fetch("/api/voice/status")
@@ -258,8 +293,9 @@ export default function Simulator() {
           const detail = await res.json().catch(() => null);
           throw new Error(detail?.detail || `Transcription failed (${res.status}).`);
         }
-        const { text, speaker, speaker_score, speaker_scores, voice_model } = await res.json();
+        const { text, speaker, speaker_score, speaker_scores, voice_model, clip_id, clip_user } = await res.json();
         setPersonalModel(voice_model || null);
+        setPendingClip(clip_id && text ? { id: clip_id, user: clip_user, text } : null);
         setSpeakerInfo(speaker === undefined ? null : { name: speaker, score: speaker_score, scores: speaker_scores });
         fetch("/api/voice/status").then((r) => (r.ok ? r.json() : null)).then((j) => j && setVoiceMode(j)).catch(() => {});
         setAsrStatus("idle");
@@ -460,6 +496,12 @@ export default function Simulator() {
                 operator={operator}
                 personalModel={personalModel}
                 onCalibrate={() => setShowCalibrate(true)}
+                pendingClip={pendingClip}
+                feedbackCommands={feedbackCommands}
+                onFeedbackOpen={loadFeedbackCommands}
+                onFix={onFix}
+                onSent={onSent}
+                liveAccuracy={liveAccuracy}
                 asrError={asrError}
                 toggleRecording={toggleRecording}
               />

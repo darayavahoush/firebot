@@ -65,6 +65,13 @@ frozen Whisper encoder and fine-tunes only the small classifier head (seconds, C
 only if it beats the default model on clips held out from training. The personal model is saved as
 `checkpoints/users/<name>.pt` and used automatically for that operator (chosen in the UI, or recognised
 by the speaker-ID voiceprints); everyone else keeps the default model. **Reset to default** deletes it.
+**It keeps improving as you use it.** When a known operator speaks, the console shows what it heard with a
+**Not right? Fix it** menu. Sending the text unchanged confirms it; picking the right command corrects it.
+Both go into that person's training set (never the model's own guesses), and after 8 new clips or 3
+corrections the head retrains itself in the background. A retrain is kept only if it matches or beats both
+the default model and the person's current one on a fixed hold-out the trainer never sees; the model it
+replaces is kept as `checkpoints/users/<name>.pt`'s `.prev.pt`. The panel shows live accuracy (right / total
+over the last 50 commands) and the last retrain. Un-reviewed clips are deleted after 6 hours.
 - Needs a current-format checkpoint from `firebot.voice_intent` (not the old 7-label one) and the `voice` extra.
 - Recordings live in `data/calibration/<name>/` on the server (gitignored): they are voice data, don't commit them.
 - There are no user accounts, so anyone who can reach the console can calibrate or reset any operator name.
@@ -109,6 +116,7 @@ and a Stop button. The side panel has four tabs:
 | `GET /api/voice/status`, `POST /api/transcribe` | Speech backend in use; transcription (plus speaker ID) |
 | `GET /api/mujoco/status` | Whether `mujoco` is installed, and the controller names |
 | `GET/POST/DELETE /api/voice/calibrate/{status,clip,train,model}` | Per-user voice calibration (`?user=`) |
+| `POST /api/voice/feedback` | What the person did with a voice result (`clip_id`, and `label` or `sent_text`), which trains their model |
 | `WS /ws/mujoco` | One streamed episode (`?seed=&controller=&speed=&log=`): `scene`, `frame`s, `end` |
 | `WS /ws/telemetry` | Live `frame` and `command` messages, polled from Postgres every 0.4 s |
 

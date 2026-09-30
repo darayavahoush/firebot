@@ -12,6 +12,14 @@ Newest first. Commit messages carry the detail; this is the readable summary.
 - **About Page Expansion**: Upgraded into a technical manual with instant search, deep architectural documentation, MuJoCo 3D engine specifications, DRL multimodal fusion details, and the MM-FusionRL research paper.
 - **Academic Research Paper**: Complete research manuscript in `docs/RESEARCH_PAPER.md` (*"MM-FusionRL: Multimodal Cross-Attention Deep Reinforcement Learning with Information-Theoretic Active Sensing for Autonomous Firefighting Robots"*) targeting IEEE ICRA / IROS / RA-L.
 
+## Voice calibration: keeps improving
+- Voice results for known operators can be confirmed (send as-is) or corrected (**Not right? Fix it**); those
+  clips retrain the person's head automatically in the background (8 new clips or 3 corrections).
+- Guardrails: learns only from human confirmation/correction, judged on a fixed hold-out the trainer never
+  sees, kept only if it beats the default AND the current personal model, previous model kept (`.prev.pt`),
+  live accuracy shown, un-reviewed clips deleted after 6 h.
+- New: `POST /api/transcribe` returns `clip_id`/`clip_user` when learning is possible; `POST /api/voice/feedback`.
+
 ## Voice calibration
 - Simulator > Voice > **Calibrate my voice**: record each command ~5 times, train a personal classifier
   head in seconds, kept only if it beats the default on held-out clips. Used automatically per operator

@@ -1,10 +1,21 @@
-"""Per-user voice calibration for the console (`/api/voice/calibrate/*`).
+"""Per-user voice calibration and continuous improvement (`/api/voice/calibrate/*`, `/api/voice/feedback`).
 
-A user records each command a few times in the browser; the backend embeds the clips with the
-frozen Whisper encoder and fine-tunes only the small classifier head (`firebot.voice_intent.
-personalize`), saving `checkpoints/users/<name>.pt`. `/api/transcribe` then uses that head for the
-named operator (or the speaker the ECAPA voiceprints recognise). Anyone without a personal model
-keeps getting the default one.
+**Calibrate:** a user records each command a few times in the browser; the backend embeds the clips with
+the frozen Whisper encoder and fine-tunes only the small classifier head (`firebot.voice_intent.
+personalize`), saving `checkpoints/users/<name>.pt`. `/api/transcribe` then uses that head for the named
+operator (or the speaker the ECAPA voiceprints recognise). Anyone without a personal model keeps the
+default one.
+
+**Keep improving:** when a personal/known operator speaks, `/api/transcribe` stashes the clip briefly
+(`save_pending`). The console then reports what the person did with the result (`record_feedback`):
+they sent the text unchanged (a confirmation), or picked the right command from "Not right?" (a
+correction). Confirmed and corrected clips join the user's training set, and once enough have arrived the
+head is retrained automatically in the background. The model only ever learns from what a person
+confirmed or corrected -- never from its own guesses, which would just reinforce its mistakes.
+
+**Never worse:** every retrain is judged on a fixed hold-out (clips the trainer never sees) and is only
+kept if it matches or beats BOTH the default model and the user's current one; the previous model is
+kept as `<name>.prev.pt`. A live accuracy figure (predicted vs. what the person finally chose) is tracked.
 
 server.py calls `configure(...)` so this module never imports server (no circular import).
 Recordings are voice data: they live in data/calibration/ (gitignored), never in git.
@@ -16,28 +27,38 @@ import io
 import json
 import re
 import threading
+import time
+import uuid
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
+from pydantic import BaseModel
 
-router = APIRouter(prefix="/api/voice/calibrate")
+router = APIRouter(prefix="/api/voice")
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CLIPS_DIR = REPO_ROOT / "data" / "calibration"
 MODELS_DIR = REPO_ROOT / "checkpoints" / "users"
 TARGET_PER_CLASS = 5
-MAX_PER_CLASS = 12
+MAX_PER_CLASS = 12          # guided recordings per command (feedback clips are capped separately)
 OPTIONAL = {"UNKNOWN"}
+FB_CONFIRM_CAP = 15         # kept "already right" clips per command: more adds little
+FB_CORRECT_CAP = 40         # kept corrections per command: these are the most valuable
+AUTO_MIN_NEW = 8            # new feedback clips before an automatic retrain...
+AUTO_MIN_CORRECTIONS = 3    # ...or this many corrections, whichever comes first
+AUTO_COOLDOWN_S = 120       # never retrain more often than this
+PENDING_TTL_S = 6 * 3600    # un-reviewed clips are deleted after this
+LIVE_WINDOW = 50            # decisions used for the live accuracy figure
 
-# Set by server.configure_calibration(): decode(bytes)->float32 16 kHz, classifier() -> the
-# shared IntentClassifier, checkpoint path of the base model.
 _decode: Callable[[bytes], Any] | None = None
 _classifier: Callable[[], Any] | None = None
 _checkpoint: str | None = None
 _lock = threading.Lock()
 _head_cache: dict[str, tuple[float, Any]] = {}
+_base_cache: tuple[float, dict] | None = None
+_last_auto: dict[str, float] = {}
 
 
 def configure(decode: Callable[[bytes], Any], classifier: Callable[[], Any], checkpoint: str | None) -> None:
@@ -45,6 +66,7 @@ def configure(decode: Callable[[bytes], Any], classifier: Callable[[], Any], che
     _decode, _classifier, _checkpoint = decode, classifier, checkpoint
 
 
+# ------------------------------------------------------------------ names, paths, vocabulary
 def _user(name: str) -> str:
     n = (name or "").strip().lower()
     if not re.fullmatch(r"[a-z0-9_-]{1,32}", n):
@@ -64,8 +86,39 @@ def _label(label: str) -> str:
     return label
 
 
+def _norm(text: str) -> str:
+    return re.sub(r"[^a-z0-9 ]+", "", (text or "").lower()).strip()
+
+
+def _phrase_table() -> dict[str, str]:
+    """normalised canonical phrase -> label (UNKNOWN has no phrase)."""
+    from firebot.voice_intent.vocab import canonical_phrase
+    out = {}
+    for c in _classes():
+        try:
+            out[_norm(canonical_phrase(c))] = c
+        except KeyError:
+            pass
+    return out
+
+
+def label_for_text(text: str | None) -> str | None:
+    """The command a console text box holds, when it is exactly one command's canonical phrase."""
+    return _phrase_table().get(_norm(text or ""))
+
+
+def _udir(user: str) -> Path:
+    return CLIPS_DIR / user
+
+
 def _counts(user: str) -> dict[str, int]:
-    return {c: len(list((CLIPS_DIR / user / c).glob("*.wav"))) for c in _classes()}
+    """Guided-recording counts only (numbered clips); feedback clips are `fb_*.wav`."""
+    return {c: len([p for p in (_udir(user) / c).glob("*.wav") if not p.name.startswith("fb_")])
+            for c in _classes()}
+
+
+def _fb_counts(user: str) -> dict[str, int]:
+    return {c: len(list((_udir(user) / c).glob("fb_*.wav"))) for c in _classes()}
 
 
 def _model_path(user: str) -> Path:
@@ -76,11 +129,28 @@ def _report_path(user: str) -> Path:
     return MODELS_DIR / f"{user}.json"
 
 
+def _history_path(user: str) -> Path:
+    return MODELS_DIR / f"{user}.history.jsonl"
+
+
+def _fblog_path(user: str) -> Path:
+    return _udir(user) / "feedback.jsonl"
+
+
+def _pending_dir(user: str) -> Path:
+    return _udir(user) / "_pending"
+
+
+# ------------------------------------------------------------------ base model / per-user heads
 def _base_ckpt() -> tuple[dict | None, str | None]:
-    """(base checkpoint dict, None) when personalisation is possible, else (None, reason)."""
+    """(base checkpoint dict, None) when personalisation is possible, else (None, reason). Cached by mtime."""
+    global _base_cache
     if not _checkpoint or not Path(_checkpoint).is_file():
         return None, "No trained voice model is configured, so there's nothing to personalise yet."
     try:
+        mtime = Path(_checkpoint).stat().st_mtime
+        if _base_cache and _base_cache[0] == mtime:
+            return _base_cache[1], None
         import torch
         ckpt = torch.load(_checkpoint, map_location="cpu", weights_only=False)
     except Exception as e:  # noqa: BLE001
@@ -88,16 +158,17 @@ def _base_ckpt() -> tuple[dict | None, str | None]:
     if not isinstance(ckpt, dict) or "state_dict" not in ckpt:
         return None, ("The configured voice model is an old-format checkpoint; retrain with "
                       "firebot.voice_intent to enable personal calibration.")
+    _base_cache = (mtime, ckpt)
     return ckpt, None
 
 
 def users_with_models() -> list[str]:
-    return sorted(p.stem for p in MODELS_DIR.glob("*.pt")) if MODELS_DIR.is_dir() else []
+    return sorted(p.stem for p in MODELS_DIR.glob("*.pt") if not p.stem.endswith(".prev")) if MODELS_DIR.is_dir() else []
 
 
 def get_user_head(user: str | None):
     """Cached personal `IntentHead` for `user`, or None (no model / unreadable). Reloaded when the
-    file changes, so a fresh calibration takes effect without restarting the backend."""
+    file changes, so a fresh (re)training takes effect without restarting the backend."""
     if not user:
         return None
     try:
@@ -120,30 +191,195 @@ def get_user_head(user: str | None):
     return head
 
 
+# ------------------------------------------------------------------ live feedback: pending clips
+def _cleanup_pending(user: str) -> None:
+    d = _pending_dir(user)
+    if not d.is_dir():
+        return
+    cutoff = time.time() - PENDING_TTL_S
+    for p in d.glob("*"):
+        try:
+            if p.stat().st_mtime < cutoff:
+                p.unlink()
+        except OSError:
+            pass
+
+
+def save_pending(user: str | None, audio_bytes: bytes, text: str) -> str | None:
+    """Stash the clip that was just read for `user`, so their reaction to the result can teach the model.
+    Returns a clip id, or None when learning isn't possible (unknown user, no current-format model)."""
+    if not user or _decode is None:
+        return None
+    try:
+        user = _user(user)
+    except HTTPException:
+        return None
+    if _base_ckpt()[0] is None:
+        return None
+    try:
+        import soundfile as sf
+        audio = _decode(audio_bytes)
+        if len(audio) < 4000:
+            return None
+        d = _pending_dir(user)
+        d.mkdir(parents=True, exist_ok=True)
+        _cleanup_pending(user)
+        cid = uuid.uuid4().hex[:12]
+        buf = io.BytesIO()
+        sf.write(buf, audio, 16_000, format="WAV", subtype="PCM_16")
+        (d / f"{cid}.wav").write_bytes(buf.getvalue())
+        (d / f"{cid}.json").write_text(json.dumps({"text": text, "ts": time.time()}))
+        return cid
+    except Exception:  # noqa: BLE001 -- learning is best-effort; voice must keep working
+        return None
+
+
+def _live_stats(user: str) -> dict[str, Any]:
+    p = _fblog_path(user)
+    rows: list[dict] = []
+    if p.is_file():
+        for line in p.read_text().splitlines()[-LIVE_WINDOW:]:
+            try:
+                rows.append(json.loads(line))
+            except ValueError:
+                pass
+    scored = [r for r in rows if r.get("predicted")]
+    correct = sum(1 for r in scored if r["predicted"] == r["final"])
+    return {"decisions": len(scored), "correct": correct,
+            "accuracy": round(correct / len(scored), 4) if scored else None}
+
+
+def _new_since_train(user: str) -> dict[str, int]:
+    rp = _report_path(user)
+    used = 0
+    if rp.is_file():
+        try:
+            used = int(json.loads(rp.read_text()).get("fb_clips", 0))
+        except (ValueError, TypeError):
+            used = 0
+    total = sum(_fb_counts(user).values())
+    corrections = 0
+    if _fblog_path(user).is_file():
+        for line in _fblog_path(user).read_text().splitlines():
+            try:
+                corrections += json.loads(line).get("kind") == "correction"
+            except ValueError:
+                pass
+    return {"new": max(0, total - used), "fb_total": total, "corrections_logged": corrections}
+
+
+def should_auto_retrain(user: str) -> bool:
+    if _base_ckpt()[0] is None or _lock.locked():
+        return False
+    if time.time() - _last_auto.get(user, 0) < AUTO_COOLDOWN_S:
+        return False
+    if any(n < 3 and c not in OPTIONAL for c, n in _counts(user).items()):
+        return False   # never calibrated: don't build a model from feedback alone
+    new = _new_since_train(user)["new"]
+    if new <= 0:
+        return False
+    recent_corrections = 0
+    if _fblog_path(user).is_file():
+        rp = _report_path(user)
+        since = rp.stat().st_mtime if rp.is_file() else 0
+        for line in _fblog_path(user).read_text().splitlines():
+            try:
+                r = json.loads(line)
+            except ValueError:
+                continue
+            if r.get("kind") == "correction" and r.get("ts", 0) > since:
+                recent_corrections += 1
+    return new >= AUTO_MIN_NEW or recent_corrections >= AUTO_MIN_CORRECTIONS
+
+
+def record_feedback(user: str, clip_id: str, label: str | None, sent_text: str | None) -> dict[str, Any]:
+    """What the person did with a result. `label` = an explicit correction; otherwise `sent_text` is
+    the text they sent, and if it is exactly one command's phrase, that confirms it."""
+    user = _user(user)
+    if not re.fullmatch(r"[a-f0-9]{12}", clip_id or ""):
+        raise HTTPException(400, "bad clip id")
+    d = _pending_dir(user)
+    wav, meta_p = d / f"{clip_id}.wav", d / f"{clip_id}.json"
+    if not wav.is_file():
+        return {"recorded": False, "reason": "That clip has expired or was already used."}
+    meta = json.loads(meta_p.read_text()) if meta_p.is_file() else {}
+    predicted = label_for_text(meta.get("text"))
+    final = _label(label) if label else label_for_text(sent_text)
+    if final is None:      # they typed something else: we can't tell what the clip was, so learn nothing
+        wav.unlink(missing_ok=True); meta_p.unlink(missing_ok=True)
+        return {"recorded": False, "reason": "not a recognised command"}
+    kind = "confirm" if predicted == final else "correction"
+    cls_dir = _udir(user) / final
+    cls_dir.mkdir(parents=True, exist_ok=True)
+    kept = len(list(cls_dir.glob("fb_*.wav"))) < (FB_CONFIRM_CAP if kind == "confirm" else FB_CORRECT_CAP)
+    if kept:
+        wav.replace(cls_dir / f"fb_{clip_id}.wav")
+    else:
+        wav.unlink(missing_ok=True)
+    meta_p.unlink(missing_ok=True)
+    with _fblog_path(user).open("a") as f:
+        f.write(json.dumps({"ts": time.time(), "predicted": predicted, "final": final, "kind": kind, "kept": kept}) + "\n")
+    started = maybe_auto_retrain(user)
+    return {"recorded": True, "kind": kind, "final": final, "kept": kept,
+            "live": _live_stats(user), "retraining": started}
+
+
+def maybe_auto_retrain(user: str) -> bool:
+    if not should_auto_retrain(user):
+        return False
+    _last_auto[user] = time.time()
+    threading.Thread(target=_auto_retrain_blocking, args=(user,), daemon=True).start()
+    return True
+
+
+def _auto_retrain_blocking(user: str) -> dict | None:
+    if not _lock.acquire(blocking=False):
+        return None
+    try:
+        base, _ = _base_ckpt()
+        return _train_blocking(user, base, trigger="auto") if base else None
+    except Exception:  # noqa: BLE001 -- a failed background retrain must never take voice down
+        return None
+    finally:
+        _lock.release()
+
+
+# ------------------------------------------------------------------ API
 def _status(user: str) -> dict[str, Any]:
     from firebot.voice_intent.vocab import canonical_phrase
     phrase = lambda c: ("anything else (optional)" if c == "UNKNOWN" else canonical_phrase(c))
     _, reason = _base_ckpt()
     classes = _classes()
-    counts = _counts(user)
+    counts, fb = _counts(user), _fb_counts(user)
     rp = _report_path(user)
+    history = []
+    if _history_path(user).is_file():
+        for line in _history_path(user).read_text().splitlines()[-5:]:
+            try:
+                history.append(json.loads(line))
+            except ValueError:
+                pass
     return {
         "user": user, "supported": reason is None, "reason": reason,
-        "classes": [{"label": c, "phrase": phrase(c), "count": counts[c],
+        "classes": [{"label": c, "phrase": phrase(c), "count": counts[c], "feedback": fb[c],
                      "optional": c in OPTIONAL} for c in classes],
         "target_per_class": TARGET_PER_CLASS, "max_per_class": MAX_PER_CLASS,
         "has_model": _model_path(user).is_file(),
         "report": json.loads(rp.read_text()) if rp.is_file() else None,
-        "users": users_with_models(),
+        "live": _live_stats(user), "learning": {**_new_since_train(user),
+                                                 "auto_min_new": AUTO_MIN_NEW,
+                                                 "auto_min_corrections": AUTO_MIN_CORRECTIONS,
+                                                 "retraining": _lock.locked()},
+        "history": history, "users": users_with_models(),
     }
 
 
-@router.get("/status")
+@router.get("/calibrate/status")
 async def status(user: str) -> dict[str, Any]:
     return _status(_user(user))
 
 
-@router.post("/clip")
+@router.post("/calibrate/clip")
 async def add_clip(user: str, label: str, file: UploadFile = File(...)) -> dict[str, Any]:  # noqa: B008
     user, label = _user(user), _label(label)
     if _decode is None:
@@ -159,7 +395,7 @@ async def add_clip(user: str, label: str, file: UploadFile = File(...)) -> dict[
     if len(audio) < 4000:
         raise HTTPException(422, "That recording was too short -- try again")
     import soundfile as sf
-    d = CLIPS_DIR / user / label
+    d = _udir(user) / label
     d.mkdir(parents=True, exist_ok=True)
     nxt = 1 + max([int(p.stem) for p in d.glob("*.wav") if p.stem.isdigit()] or [0])
     buf = io.BytesIO()
@@ -168,16 +404,16 @@ async def add_clip(user: str, label: str, file: UploadFile = File(...)) -> dict[
     return _status(user)
 
 
-@router.delete("/clip")
+@router.delete("/calibrate/clip")
 async def delete_last_clip(user: str, label: str) -> dict[str, Any]:
     user, label = _user(user), _label(label)
-    files = sorted((CLIPS_DIR / user / label).glob("*.wav"))
+    files = sorted(p for p in (_udir(user) / label).glob("*.wav") if not p.name.startswith("fb_"))
     if files:
         files[-1].unlink()
     return _status(user)
 
 
-@router.post("/train")
+@router.post("/calibrate/train")
 async def train(user: str) -> dict[str, Any]:
     user = _user(user)
     base, reason = _base_ckpt()
@@ -188,44 +424,75 @@ async def train(user: str) -> dict[str, Any]:
     if not _lock.acquire(blocking=False):
         raise HTTPException(409, "Calibration is already running")
     try:
-        report = await asyncio.to_thread(_train_blocking, user, base)
+        report = await asyncio.to_thread(_train_blocking, user, base, "manual")
     finally:
         _lock.release()
     return {"report": report, **_status(user)}
 
 
-def _train_blocking(user: str, base: dict) -> dict:
+def _train_blocking(user: str, base: dict, trigger: str = "manual") -> dict:
     import numpy as np
     import soundfile as sf
-    from firebot.voice_intent.personalize import personalize, save_user_ckpt
+    import torch
+    from firebot.voice_intent.personalize import holdout_indices, personalize, save_user_ckpt
 
-    clf = _classifier()
-    if not hasattr(clf, "embed_array"):
+    clf = _classifier() if _classifier else None
+    if clf is None or not hasattr(clf, "embed_array"):
         raise HTTPException(409, "The loaded voice model can't be personalised (old-format).")
-    feats, names = [], []
+    keys, feats, names = [], [], []
     for c in _classes():
-        for wav in sorted((CLIPS_DIR / user / c).glob("*.wav")):
+        for wav in sorted((_udir(user) / c).glob("*.wav")):
             audio, sr = sf.read(str(wav), dtype="float32")
+            keys.append(f"{c}/{wav.name}")
             feats.append(clf.embed_array(audio, sr))
             names.append(c)
     if not feats:
         raise HTTPException(409, "No recordings yet")
-    ckpt, report = personalize(base, np.stack(feats), names)
+    incumbent = None
+    if _model_path(user).is_file():
+        try:
+            incumbent = torch.load(_model_path(user), map_location="cpu", weights_only=False)
+        except Exception:  # noqa: BLE001
+            incumbent = None
+    arr = np.stack(feats)
+    ckpt, report = personalize(base, arr, names, holdout_idx=holdout_indices(keys, names),
+                               incumbent=incumbent, refit_all=False)
+    fb_total = sum(_fb_counts(user).values())
+    report.update(trigger=trigger, trained_at=time.time(), fb_clips=fb_total)
+    MODELS_DIR.mkdir(parents=True, exist_ok=True)
     if report["accepted"]:
+        if _model_path(user).is_file():   # keep the model it replaces, so a bad one can be rolled back
+            (MODELS_DIR / f"{user}.prev.pt").write_bytes(_model_path(user).read_bytes())
         save_user_ckpt(ckpt, _model_path(user))
         _head_cache.pop(user, None)
-    MODELS_DIR.mkdir(parents=True, exist_ok=True)
     _report_path(user).write_text(json.dumps(report))
+    with _history_path(user).open("a") as f:
+        f.write(json.dumps({k: report.get(k) for k in
+                            ("trained_at", "trigger", "accepted", "base_acc", "incumbent_acc", "personal_acc",
+                             "clips", "holdout", "reason")}) + "\n")
     return report
 
 
-@router.delete("/model")
+class FeedbackIn(BaseModel):
+    user: str
+    clip_id: str
+    label: str | None = None
+    sent_text: str | None = None
+
+
+@router.post("/feedback")
+async def feedback(body: FeedbackIn) -> dict[str, Any]:
+    return await asyncio.to_thread(record_feedback, body.user, body.clip_id, body.label, body.sent_text)
+
+
+@router.delete("/calibrate/model")
 async def delete_model(user: str, clips: bool = False) -> dict[str, Any]:
     user = _user(user)
-    for p in (_model_path(user), _report_path(user)):
+    for p in (_model_path(user), _report_path(user), MODELS_DIR / f"{user}.prev.pt", _history_path(user)):
         p.unlink(missing_ok=True)
     _head_cache.pop(user, None)
+    _last_auto.pop(user, None)
     if clips:
         import shutil
-        shutil.rmtree(CLIPS_DIR / user, ignore_errors=True)
+        shutil.rmtree(_udir(user), ignore_errors=True)
     return _status(user)

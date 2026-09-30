@@ -43,6 +43,12 @@ export default function CalibratePanel({ operator, onOperator, onClose, onTraine
     catch (e) { setError(e.message); }
   }, []);
   useEffect(() => { if (active) load(active); }, [active, load]);
+  // while a background retrain runs, refresh so the result shows up by itself
+  useEffect(() => {
+    if (!active || !st?.learning?.retraining) return undefined;
+    const id = setInterval(() => load(active), 3000);
+    return () => clearInterval(id);
+  }, [active, st?.learning?.retraining, load]);
 
   const start = () => {
     const n = cleanOperator(name);
@@ -153,6 +159,26 @@ export default function CalibratePanel({ operator, onOperator, onClose, onTraine
               {st.has_model && <button className="btn !text-alarm" onClick={reset} disabled={busy}>Reset to default</button>}
               {!ready && <span className="text-[11px] text-faint">Needs at least 3 clips of each command.</span>}
             </div>
+
+            {st.has_model && (
+              <div className="text-[12px] space-y-1 rounded-md border border-line px-3 py-2">
+                <div className="text-ink">Keeps improving as you use it</div>
+                <div className="text-muted">
+                  {st.live?.accuracy != null
+                    ? `Right ${Math.round(st.live.accuracy * 100)}% of the time over your last ${st.live.decisions} voice commands.`
+                    : "No feedback yet. Send a voice command as-is to confirm it, or use “Not right? Fix it” when it's wrong."}
+                </div>
+                <div className="text-faint">
+                  {st.learning?.retraining ? "Retraining now…"
+                    : `${st.learning?.new ?? 0} new correction${(st.learning?.new ?? 0) === 1 ? "" : "s"}/confirmation${(st.learning?.new ?? 0) === 1 ? "" : "s"} so far. It retrains itself after ${st.learning?.auto_min_new} (or ${st.learning?.auto_min_corrections} corrections), and only keeps the result if it beats your current model on clips it never trained on.`}
+                </div>
+                {st.history?.length > 0 && (() => {
+                  const h = st.history[st.history.length - 1];
+                  const pct = (v) => (v == null ? "—" : `${Math.round(v * 100)}%`);
+                  return <div className="text-faint">Last {h.trigger === "auto" ? "automatic " : ""}retrain: {h.accepted ? `kept (${pct(h.incumbent_acc ?? h.base_acc)} → ${pct(h.personal_acc)} on held-out clips)` : `not used. ${h.reason || ""}`}</div>;
+                })()}
+              </div>
+            )}
 
             {rep && (
               <div className={`text-[12px] rounded-md border px-3 py-2 ${rep.accepted ? "border-ok/50 text-ok" : "border-warn/50 text-warn"}`}>

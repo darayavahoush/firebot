@@ -56,6 +56,8 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(calibration, "CLIPS_DIR", tmp_path / "clips")
     monkeypatch.setattr(calibration, "MODELS_DIR", tmp_path / "users")
     calibration._head_cache.clear()
+    calibration._base_cache = None
+    calibration._last_auto.clear()
 
     def decode(b):
         a, _ = sf.read(io.BytesIO(b), dtype="float32")
@@ -115,3 +117,81 @@ def test_needs_enough_clips_and_validates_input(client):
     client.delete("/api/voice/calibrate/clip", params={"user": "ann", "label": CLASSES[0]})
     n1 = client.get("/api/voice/calibrate/status", params={"user": "ann"}).json()["classes"][0]["count"]
     assert n1 == n0 - 1
+
+
+# ---------------------------------------------------------------- continuous improvement
+def _pending(user, class_idx, text):
+    cid = calibration.save_pending(user, _wav_bytes(class_idx), text)
+    assert cid, "pending clip should be stashed for a known operator when a model exists"
+    return cid
+
+
+def _calibrated(client, user="ann"):
+    _record_all(client, user=user)
+    assert client.post("/api/voice/calibrate/train", params={"user": user}).json()["report"]["accepted"]
+
+
+def test_confirm_correct_and_ignore_feedback(client):
+    _calibrated(client)
+    stop, north = CLASSES.index("STOP"), CLASSES.index("GOTO_NORTH")
+    # sent unchanged -> confirmation, saved as a training clip for STOP
+    cid = _pending("ann", stop, "stop")
+    r = client.post("/api/voice/feedback", json={"user": "ann", "clip_id": cid, "sent_text": "stop"}).json()
+    assert r["recorded"] and r["kind"] == "confirm" and r["final"] == "STOP"
+    assert list((calibration.CLIPS_DIR / "ann" / "STOP").glob("fb_*.wav"))
+    # the model said "stop" but the person picked GOTO_NORTH -> correction, saved under the RIGHT class
+    cid = _pending("ann", north, "stop")
+    r = client.post("/api/voice/feedback", json={"user": "ann", "clip_id": cid, "label": "GOTO_NORTH"}).json()
+    assert r["kind"] == "correction" and r["final"] == "GOTO_NORTH"
+    assert r["live"]["decisions"] == 2 and r["live"]["accuracy"] == 0.5
+    # they typed something that isn't one command's phrase -> we can't know the label: learn nothing
+    cid = _pending("ann", stop, "stop")
+    r = client.post("/api/voice/feedback", json={"user": "ann", "clip_id": cid, "sent_text": "go somewhere odd"}).json()
+    assert not r["recorded"] and not list((calibration.CLIPS_DIR / "ann" / "_pending").glob(f"{cid}.*"))
+    # a clip can only be used once, and ids are validated
+    assert not client.post("/api/voice/feedback", json={"user": "ann", "clip_id": cid, "label": "STOP"}).json()["recorded"]
+    assert client.post("/api/voice/feedback", json={"user": "ann", "clip_id": "../../x", "label": "STOP"}).status_code == 400
+
+
+def test_no_pending_clip_without_a_usable_model(client, tmp_path):
+    calibration.configure(calibration._decode, calibration._classifier, str(tmp_path / "missing.pt"))
+    assert calibration.save_pending("ann", _wav_bytes(0), "stop") is None
+    assert calibration.save_pending(None, _wav_bytes(0), "stop") is None
+
+
+def test_auto_retrain_after_corrections_and_history(client, monkeypatch):
+    started = []
+    monkeypatch.setattr(calibration, "maybe_auto_retrain", lambda u: started.append(u) or False)  # no thread in tests
+    _calibrated(client)
+    assert not calibration.should_auto_retrain("ann")            # nothing new yet
+    ne = CLASSES.index("GOTO_NORTHEAST")
+    for _ in range(calibration.AUTO_MIN_CORRECTIONS):            # the model kept saying "stop"; the person corrects it
+        cid = _pending("ann", ne, "stop")
+        client.post("/api/voice/feedback", json={"user": "ann", "clip_id": cid, "label": "GOTO_NORTHEAST"})
+    assert started, "record_feedback should ask for an automatic retrain"
+    assert calibration.should_auto_retrain("ann")
+    before = client.get("/api/voice/calibrate/status", params={"user": "ann"}).json()
+    assert before["learning"]["new"] == calibration.AUTO_MIN_CORRECTIONS
+    rep = calibration._auto_retrain_blocking("ann")
+    assert rep and rep["trigger"] == "auto" and rep["incumbent_acc"] is not None
+    after = client.get("/api/voice/calibrate/status", params={"user": "ann"}).json()
+    assert after["learning"]["new"] == 0 and after["history"][-1]["trigger"] == "auto"
+    assert not calibration.should_auto_retrain("ann")            # nothing new since
+
+
+def test_never_learns_from_feedback_alone(client):
+    """No guided calibration yet -> feedback clips must not silently build a model."""
+    cid = _pending("bob", 0, "stop")
+    client.post("/api/voice/feedback", json={"user": "bob", "clip_id": cid, "sent_text": "stop"})
+    for _ in range(calibration.AUTO_MIN_NEW):
+        cid = _pending("bob", 0, "stop")
+        client.post("/api/voice/feedback", json={"user": "bob", "clip_id": cid, "sent_text": "stop"})
+    assert not calibration.should_auto_retrain("bob")
+
+
+def test_reset_removes_model_history_and_backup(client):
+    _calibrated(client)
+    calibration._auto_retrain_blocking("ann")
+    assert (calibration.MODELS_DIR / "ann.pt").is_file()
+    client.delete("/api/voice/calibrate/model", params={"user": "ann"})
+    assert not list(calibration.MODELS_DIR.glob("ann*"))

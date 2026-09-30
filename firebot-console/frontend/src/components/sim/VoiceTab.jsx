@@ -1,6 +1,7 @@
 import React from "react";
 import { PanelHeader } from "../TelemetryGauges.jsx";
 import { COMMAND_HELP } from "../../lib/commandHelp.js";
+import HeardFix from "./HeardFix.jsx";
 
 const MODE_LABEL = { local: "local model", "local-degraded": "local model failing, using fallback", vosk: "Vosk, offline", "vosk-degraded": "Vosk failing, using Groq", groq: "Groq", unavailable: "unavailable" };
 
@@ -8,6 +9,7 @@ export default function VoiceTab({
   t, speechSupported, speechUsable, listening, toggleListening, transcript, voiceError, textCmd, setTextCmd,
   sendCommand, cmdInputRef, suggestions, showSuggestions, setShowSuggestions, fillCommand,
   asrStatus, asrError, toggleRecording, voiceMode, speakerInfo, operator, personalModel, onCalibrate,
+  pendingClip, feedbackCommands, onFeedbackOpen, onFix, onSent, liveAccuracy,
 }) {
   const live = speechUsable ? listening : asrStatus === "recording";
   const busy = asrStatus === "transcribing";
@@ -15,7 +17,7 @@ export default function VoiceTab({
   const state = live ? (speechUsable ? "Listening. Just talk." : "Recording. Tap again to send.") : busy ? "Transcribing…" : speechUsable ? "Tap to start listening" : "Tap to record a command";
   const last = t.commandLog[0];
   const err = speechUsable ? voiceError : asrStatus === "error" ? asrError : "";
-  const submit = () => { sendCommand(textCmd); setTextCmd(""); setShowSuggestions(false); };
+  const submit = () => { sendCommand(textCmd); onSent?.(textCmd); setTextCmd(""); setShowSuggestions(false); };
   return (
     <div>
       <div className="px-4 py-5 flex flex-col items-center gap-2.5">
@@ -29,7 +31,7 @@ export default function VoiceTab({
         {!speechUsable && <div className="text-[11px] text-faint text-center max-w-[240px]">{speechSupported ? "This browser has no working live speech engine (Opera and Brave)." : "This browser has no live speech recognition."} Recordings are transcribed on the server.</div>}
         <div className="flex flex-wrap justify-center gap-1.5">
           {voiceMode && <span className={`chip cursor-default ${voiceMode.mode === "unavailable" ? "!text-alarm" : ""}`}>Speech: {MODE_LABEL[voiceMode.mode] || voiceMode.mode}</span>}
-          {personalModel && <span className="chip cursor-default !text-ok">Voice model: {personalModel}'s</span>}
+          {personalModel && <span className="chip cursor-default !text-ok">Voice model: {personalModel}'s{liveAccuracy != null ? ` · ${Math.round(liveAccuracy * 100)}% right lately` : ""}</span>}
           <button className="chip" onClick={onCalibrate}>{operator ? "Recalibrate my voice" : "Calibrate my voice"}</button>
           {speakerInfo && <span className={`chip cursor-default ${speakerInfo.name ? "!text-ok" : "!text-warn"}`}>Speaker: {speakerInfo.name ?? "not recognised"}</span>}
         </div>
@@ -54,6 +56,7 @@ export default function VoiceTab({
         </div>
         <button onClick={submit} className="btn">Send</button>
       </div>
+      <HeardFix pending={pendingClip} commands={feedbackCommands} onOpen={onFeedbackOpen} onPick={onFix} />
 
       <div className="border-t border-line px-4 py-3">
         <div className="text-[11px] text-muted mb-1.5">Last command</div>

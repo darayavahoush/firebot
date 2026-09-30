@@ -78,12 +78,37 @@ def _split(labels: np.ndarray, holdout: int, seed: int) -> tuple[np.ndarray, np.
     return train, hold
 
 
+def holdout_indices(keys: list[str], label_names: list[str], frac: float = 0.15,
+                    min_class_size: int = 4) -> np.ndarray:
+    """A stable hold-out: per class with enough clips, the ~`frac` of clips whose key hashes lowest.
+    Depends only on the clip's key (its file name), so it does not reshuffle when new clips arrive
+    -- the same clips stay unseen by training, and retrains can be compared fairly."""
+    import hashlib
+    by_class: dict[str, list[int]] = {}
+    for i, c in enumerate(label_names):
+        by_class.setdefault(c, []).append(i)
+    hold: list[int] = []
+    for idx in by_class.values():
+        if len(idx) < min_class_size:
+            continue
+        k = max(1, round(frac * len(idx)))
+        idx = sorted(idx, key=lambda i: hashlib.sha1(keys[i].encode()).hexdigest())
+        hold.extend(idx[:k])
+    return np.array(sorted(hold), dtype=int)
+
+
 def personalize(base_ckpt: dict, feats: np.ndarray, label_names: list[str], *, holdout: int = 1,
-                seed: int = 0, optional: frozenset[str] = frozenset({"UNKNOWN"}), **ft) -> tuple[dict, dict]:
+                seed: int = 0, optional: frozenset[str] = frozenset({"UNKNOWN"}),
+                holdout_idx: np.ndarray | None = None, incumbent: dict | None = None,
+                refit_all: bool = True, **ft) -> tuple[dict, dict]:
     """Returns (checkpoint_dict_for_the_user, report). The checkpoint is the base one with a
     fine-tuned `state_dict`; `report["accepted"]` says whether it beat the base on held-out clips
     (when it didn't, the checkpoint returned is the base's, so callers can always save it).
-    `optional` classes (default UNKNOWN) need no recordings."""
+    `optional` classes (default UNKNOWN) need no recordings.
+
+    Retraining: pass `holdout_idx` (see `holdout_indices`) to use a fixed hold-out, `incumbent` (the
+    user's current checkpoint) so the new head must also match or beat it, and `refit_all=False` to
+    save the head trained WITHOUT the hold-out, so it never sees the clips that judge it."""
     classes: list[str] = list(base_ckpt["classes"])
     unknown = sorted(set(label_names) - set(classes))
     if unknown:
@@ -97,18 +122,27 @@ def personalize(base_ckpt: dict, feats: np.ndarray, label_names: list[str], *, h
         report["reason"] = f"need at least {MIN_CLIPS_PER_CLASS} clips for: {', '.join(missing)}"
         return base_ckpt, report
 
-    tr, ho = _split(labels, holdout, seed)
+    if holdout_idx is not None:
+        ho = np.asarray(holdout_idx, dtype=int)
+        tr = np.setdiff1d(np.arange(len(labels)), ho)
+    else:
+        tr, ho = _split(labels, holdout, seed)
     x = torch.as_tensor(feats, dtype=torch.float32)
     y = torch.as_tensor(labels, dtype=torch.long)
     base_acc = accuracy(head_from_ckpt(base_ckpt), x[ho], y[ho])
+    inc_acc = accuracy(head_from_ckpt(incumbent), x[ho], y[ho]) if incumbent is not None else None
     trial = finetune_head(base_ckpt, feats[tr], labels[tr], seed=seed, **ft)
     personal_acc = accuracy(trial, x[ho], y[ho])
-    report.update(base_acc=round(base_acc, 4), personal_acc=round(personal_acc, 4), holdout=len(ho))
+    report.update(base_acc=round(base_acc, 4), personal_acc=round(personal_acc, 4), holdout=len(ho),
+                  incumbent_acc=None if inc_acc is None else round(inc_acc, 4))
     if personal_acc < base_acc:
         report["reason"] = "personal model wasn't better than the default on held-out clips"
         return base_ckpt, report
+    if inc_acc is not None and personal_acc < inc_acc:
+        report["reason"] = "the retrained model was worse than your current one on held-out clips, so it was not used"
+        return incumbent, report
 
-    final = finetune_head(base_ckpt, feats, labels, seed=seed, **ft)     # refit on every clip
+    final = trial if not refit_all else finetune_head(base_ckpt, feats, labels, seed=seed, **ft)
     out = dict(base_ckpt)
     out["state_dict"] = {k: v.detach().clone() for k, v in final.state_dict().items()}
     out["personalized"] = {"clips": len(labels), "base_acc": report["base_acc"],

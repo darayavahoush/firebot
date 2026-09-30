@@ -171,6 +171,12 @@ React (Vite) --HTTP/WS--> FastAPI bridge (server.py) --SQL--> PostgreSQL   (hist
   then Groq Whisper, and reports the mode in `/api/voice/status`. Speaker ID runs on the same audio.
 - **Simulator page:** a browser-only port of the sim, planner (informed RRT*, standing in for OMPL
   which has no browser build) and command grammar. It shares no state with the real robot.
+- **Continuous improvement:** `save_pending` stashes each clip read for a known operator (6 h TTL);
+  `POST /api/voice/feedback` turns the person's reaction into a label (explicit correction, or the sent text if
+  it is exactly one command's canonical phrase = confirmation). Clips are filed as `fb_<id>.wav` under the right
+  class (caps: 15 confirmations, 40 corrections per class). `should_auto_retrain` fires on 8 new clips or 3
+  corrections, never before a guided calibration, at most every 2 min. `personalize(..., holdout_idx=hash-based,
+  incumbent=current, refit_all=False)` saves the head trained without the hold-out, so comparisons stay fair.
 - **Voice calibration:** `firebot.voice_intent.personalize` fine-tunes a copy of the classifier head on a
   user's own embedded clips (L2-SP pull to the base weights, light noise augmentation) and keeps it only if it
   matches or beats the base on one held-out clip per command. `backend/calibration.py` serves recording, training

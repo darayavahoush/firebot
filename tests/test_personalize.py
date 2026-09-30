@@ -8,6 +8,7 @@ from firebot.voice_intent.model import IntentHead
 from firebot.voice_intent.personalize import (
     MIN_CLIPS_PER_CLASS,
     head_from_ckpt,
+    holdout_indices,
     personalize,
 )
 from firebot.voice_intent.vocab import CLASSES
@@ -75,3 +76,42 @@ def test_unknown_label_rejected():
     feats, names = _user_clips(0.0)
     with pytest.raises(ValueError):
         personalize(ckpt, feats, ["BOGUS"] * len(names))
+
+
+def test_holdout_is_stable_and_leaves_training_data():
+    keys = [f"{c}/{i:03d}.wav" for c in ("A", "B") for i in range(10)]
+    names = [k.split("/")[0] for k in keys]
+    h1 = holdout_indices(keys, names)
+    assert len(h1) == 4 and {names[i] for i in h1} == {"A", "B"}
+    assert list(holdout_indices(keys, names)) == list(h1)                        # deterministic
+    tiny = holdout_indices(keys[:3], names[:3])
+    assert len(tiny) == 0                                                          # too few clips: nothing held out
+
+
+def test_retrain_never_replaces_a_better_model(monkeypatch):
+    from firebot.voice_intent import personalize as P
+    ckpt = _base_ckpt()
+    shift = np.random.default_rng(9).normal(size=D).astype("float32") * 2.5
+    feats, names = _user_clips(shift, n=8)
+    keys = [f"{n}/{i:03d}.wav" for i, n in enumerate(names)]
+    ho = holdout_indices(keys, names)
+    good, rep_good = personalize(ckpt, feats, names, holdout_idx=ho, refit_all=False)
+    assert rep_good["accepted"] and rep_good["personal_acc"] > rep_good["base_acc"]
+    # a retrain that turns out no better than the default (worse than the current model) is rejected
+    monkeypatch.setattr(P, "finetune_head", lambda base, *a, **k: head_from_ckpt(base))
+    out, rep = personalize(ckpt, feats, names, holdout_idx=ho, incumbent=good, refit_all=False)
+    assert not rep["accepted"] and out is good
+    assert rep["incumbent_acc"] == rep_good["personal_acc"] and "current one" in rep["reason"]
+    # ...and with no incumbent the same head is fine (matches the default), so gating is what blocked it
+    _, rep2 = personalize(ckpt, feats, names, holdout_idx=ho, refit_all=False)
+    assert rep2["accepted"] and rep2["incumbent_acc"] is None
+
+
+def test_saved_model_never_trained_on_its_holdout():
+    ckpt = _base_ckpt()
+    shift = np.random.default_rng(3).normal(size=D).astype("float32") * 2.5
+    feats, names = _user_clips(shift, n=8)
+    keys = [f"{n}/{i:03d}.wav" for i, n in enumerate(names)]
+    ho = holdout_indices(keys, names)
+    _, rep = personalize(ckpt, feats, names, holdout_idx=ho, refit_all=False)
+    assert rep["holdout"] == len(ho) and rep["accepted"]

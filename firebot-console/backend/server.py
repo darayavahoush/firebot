@@ -664,6 +664,11 @@ async def transcribe(file: UploadFile = File(...), user: str | None = Form(None)
     out = {"text": text, **(who or {})}
     if used:
         out["voice_model"] = operator
+    # Stash the clip so what the person does next (send as-is / pick the right command) can teach
+    # their model. None (and no extra keys) unless the operator is known and learning is possible.
+    clip_id = await asyncio.to_thread(calibration.save_pending, operator, audio_bytes, text) if operator else None
+    if clip_id:
+        out["clip_id"], out["clip_user"] = clip_id, operator
     return out
 
 
