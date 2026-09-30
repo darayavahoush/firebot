@@ -20,7 +20,7 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import BaseCallback, CheckpointCallback
 from stable_baselines3.common.env_util import make_vec_env
 
-from firebot.drl.curriculum import make_curriculum_env
+from firebot.drl.curriculum import build_stages
 from firebot.drl.multimodal_env import MultimodalFireGymEnv
 from firebot.drl.multimodal_network import MultimodalCrossAttentionExtractor
 
@@ -75,9 +75,19 @@ def train_multimodal(
 
     # Environment setup
     if stage is not None:
-        print(f"-> Curriculum Stage {stage} active")
-        env_fn = lambda: make_curriculum_env(stage=stage, seed=seed)
-        vec_env = make_vec_env(env_fn, n_envs=n_envs, seed=seed)
+        stages = build_stages(timesteps_per_stage=timesteps)
+        if stage < 1 or stage > len(stages):
+            raise ValueError(f"stage must be between 1 and {len(stages)}, got {stage}")
+        active_stage = stages[stage - 1]
+        print(f"-> Curriculum Stage {stage} ({active_stage.name}) active: {active_stage.env_kwargs}")
+        env_kwargs = active_stage.env_kwargs
+        vec_env = make_vec_env(
+            MultimodalFireGymEnv,
+            n_envs=n_envs,
+            seed=seed,
+            env_kwargs=env_kwargs,
+            monitor_dir=str(out / f"monitor_stage_{stage}"),
+        )
     else:
         vec_env = make_vec_env(
             MultimodalFireGymEnv,

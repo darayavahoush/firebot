@@ -19,6 +19,8 @@ firebot-cmd = "firebot.command.run:main"
 firebot-listen = "firebot.speech.run:main"
 firebot-brain = "firebot.link.run:brain_main"
 firebot-pi = "firebot.link.run:pi_main"
+firebot-train-multimodal = "firebot.drl.train_multimodal:main"
+firebot-benchmark = "firebot.drl.benchmark_experiments:main"
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "ruff>=0.5"]
