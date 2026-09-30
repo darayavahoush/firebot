@@ -131,32 +131,47 @@ export default function MuJoCo() {
     let last = 0;
 
     ws.onmessage = (e) => {
-      const m = JSON.parse(e.data);
-      if (m.type === "scene") {
-        sceneRef.current.load(m);
-        setSessionId(m.session_id || null);
-        setPhase("running");
-      } else if (m.type === "warn") {
-        setWarn(m.message);
-      } else if (m.type === "frame") {
-        sceneRef.current.frame(m);
-        const now = performance.now();
-        if (now - last > 80 || m.done) {
-          last = now;
-          setHud(m);
+      try {
+        const m = JSON.parse(e.data);
+        if (m.type === "scene") {
+          sceneRef.current?.load(m);
+          setSessionId(m.session_id || null);
+          setPhase("running");
+        } else if (m.type === "warn") {
+          setWarn(m.message);
+        } else if (m.type === "frame") {
+          sceneRef.current?.frame(m);
+          const now = performance.now();
+          if (now - last > 80 || m.done) {
+            last = now;
+            setHud(m);
+          }
+        } else if (m.type === "end") {
+          setResult(m);
+          setPhase("done");
+          playSound(m.success ? "ack" : "estop");
+        } else if (m.type === "error") {
+          setError(m.message);
+          setPhase("error");
         }
-      } else if (m.type === "end") {
-        setResult(m);
-        setPhase("done");
-        playSound(m.success ? "ack" : "estop");
-      } else if (m.type === "error") {
-        setError(m.message);
+      } catch (err) {
+        console.error("Error processing websocket message:", err);
+        setError("Error rendering simulation: " + err.message);
         setPhase("error");
       }
     };
     ws.onerror = () => {
       setError("WebSocket connection failed. Ensure the MuJoCo backend server is running.");
       setPhase("error");
+    };
+    ws.onclose = (e) => {
+      setPhase((prev) => {
+        if (prev === "loading" || prev === "running") {
+          setError(`Simulation disconnected unexpectedly (${e.code === 1000 ? "stream ended early" : `code ${e.code}`}).`);
+          return "error";
+        }
+        return prev;
+      });
     };
   }, [seed, controller, speed, logRun]);
 

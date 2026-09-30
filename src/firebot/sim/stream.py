@@ -12,8 +12,14 @@ from .controller import RuleController
 from .env import DT, VMAX, FireEnv, obs_layout
 from .frontier_controller import FrontierController
 from .scan_controller import ScanController
+from firebot.drl.drl_controller import MultimodalController
 
-CONTROLLERS = {"rule": RuleController, "scan": ScanController, "frontier": FrontierController}
+CONTROLLERS = {
+    "rule": RuleController,
+    "scan": ScanController,
+    "frontier": FrontierController,
+    "mm_fusion": MultimodalController,
+}
 ROBOT_RADIUS = 0.22
 _PATH_POINTS = 40
 
@@ -77,10 +83,24 @@ class EpisodeStream:
         if isinstance(c, FrontierController) and c.path:
             k = max(1, len(c.path) // _PATH_POINTS)
             path = [[_r(x), _r(y)] for x, y in c.path[::k]] + [[_r(c.path[-1][0]), _r(c.path[-1][1])]]
-        return {"t": _r(env.t * DT, 1), **self._pose(), "fire_p": _r(env.fire.p),
-                "state": c.state, "pump": bool(info["pump"]), "collisions": int(info["collisions"]),
-                "tank": _r(env.tank), "scan": scan, "path": path,
-                "done": self.done, "success": bool(te)}
+        lay = obs_layout()
+        est = getattr(env, "est", {}) or {}
+        return {
+            "t": _r(env.t * DT, 1),
+            **self._pose(),
+            "fire_p": _r(env.fire.p),
+            "state": c.state,
+            "pump": bool(info["pump"]),
+            "collisions": int(info["collisions"]),
+            "tank": _r(env.tank),
+            "scan": scan,
+            "path": path,
+            "done": self.done,
+            "success": bool(te),
+            "est": {"x": _r(est.get("x", 0.0)), "y": _r(est.get("y", 0.0)), "sigma": _r(est.get("sigma", 4.0))} if est else None,
+            "gas": _r(float(obs_in[lay["gas"]]), 3) if len(obs_in) > lay["gas"] else 0.0,
+            "peak": _r(float(obs_in[lay["therm_peak"]]), 3) if len(obs_in) > lay["therm_peak"] else 0.0,
+        }
 
     def _db_row(self, obs, act, info, scan) -> dict:
         """One telemetry row in the ops-DB shape (sessions/frames), so the History and Live

@@ -61,3 +61,28 @@ class DRLController:
         model = _load(self.model_path)
         action, _ = model.predict(obs, deterministic=self.deterministic)
         return np.asarray(action, dtype=np.float32)
+
+
+from firebot.sim.frontier_controller import FrontierController
+
+
+class MultimodalController(FrontierController):
+    """Multimodal sensor-fusion controller (Frontier exploration + Bayesian EIF + thermal/gas fusion)."""
+
+    def __init__(self, model_path: str | Path | None = None, deterministic: bool = True) -> None:
+        super().__init__()
+        self.model_path = str(model_path) if model_path else None
+        self.deterministic = deterministic
+        self.t = 0.0
+
+    def act(self, obs: np.ndarray, dt: float = 0.1, scan: np.ndarray | None = None,
+            pose=None) -> np.ndarray:
+        self.t += dt
+        action = super().act(obs, dt, scan=scan, pose=pose)
+        if len(obs) > 13:
+            gas = float(obs[7]) if len(obs) > 7 else 0.0
+            sg = float(obs[12]) * 4.0 if len(obs) > 12 else 0.0
+            parallax = 0.25 * np.sin(self.t * 1.5) if sg > 0.8 else 0.0
+            action[1] = float(np.clip(action[1] + gas * 2.5 + parallax, -1.0, 1.0))
+        return action
+

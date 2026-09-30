@@ -131,9 +131,13 @@ async def ws_mujoco(ws: WebSocket, seed: int = 0, controller: str = "frontier",
                 await ws.send_json({"type": "end", "success": frame["success"], "t": frame["t"],
                                     "collisions": frame["collisions"]})
                 break
-            await asyncio.sleep(max(0.0, dt / state["speed"] - (time.monotonic() - t0)))
     except WebSocketDisconnect:
         pass
+    except Exception as e:
+        import logging
+        logging.getLogger("firebot.mujoco").exception("MuJoCo simulation stream failed: %s", e)
+        with contextlib.suppress(Exception):
+            await ws.send_json({"type": "error", "message": f"Simulation failed: {e}"})
     finally:
         if sid is not None:  # also runs on disconnect, so an abandoned run never stays "live"
             with contextlib.suppress(Exception):
