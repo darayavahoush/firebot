@@ -218,18 +218,35 @@ export default function VoiceCalibration({ onContinueToLiveOps, activeOperatorId
 
   // Train and calibrate models (both Whisper head and ECAPA voiceprints)
   const handleTrain = async () => {
+    if (totalClipsRecorded === 0) {
+      playSound("error");
+      setBannerNotice({
+        type: "warn",
+        message: "No recordings found yet for this operator. Please record at least one voice take below before calibrating!",
+      });
+      return;
+    }
+
     try {
       setTraining(true);
       playSound("tab");
       setBannerNotice({ type: "info", message: "Calibrating models: enrolling operator voiceprint..." });
 
       // Step 1: Enroll acoustic voiceprint from all clips
-      let enrollOk = false;
+      let enrollRes = null;
       try {
-        await enrollSpeakerVoiceprint(selectedUser);
-        enrollOk = true;
+        enrollRes = await enrollSpeakerVoiceprint(selectedUser);
       } catch (enrollErr) {
         console.warn("Speaker enrollment notice:", enrollErr);
+      }
+
+      if (enrollRes && !enrollRes.enrolled) {
+        playSound("error");
+        setBannerNotice({
+          type: "warn",
+          message: enrollRes.message || "Please record at least one voice take below before calibrating!",
+        });
+        return;
       }
 
       // Step 2: Fine-tune personal classifier head if supported

@@ -685,11 +685,15 @@ async def enroll_speaker_voiceprint(user: str) -> dict[str, Any]:
     recorded clips in data/calibration/<user>/**/*.wav, so speaker identification recognizes them."""
     user = _user(user)
     udir = _udir(user)
-    if not udir.is_dir():
-        raise HTTPException(400, f"No recordings directory found for {user}")
+    udir.mkdir(parents=True, exist_ok=True)
     wavs = sorted(udir.glob("**/*.wav"))
     if not wavs:
-        raise HTTPException(400, f"No audio clips found for '{user}'. Record command clips first.")
+        return {
+            "enrolled": False,
+            "user": user,
+            "clip_count": 0,
+            "message": f"No audio clips found for '{user}'. Please record at least one command take first.",
+        }
 
     import numpy as np
     from firebot.speech.speaker_id import SpeakerIdentifier, trim_silence
@@ -713,7 +717,12 @@ async def enroll_speaker_voiceprint(user: str) -> dict[str, Any]:
             continue
 
     if not pcm_clips:
-        raise HTTPException(422, f"Could not extract usable speech PCM from {len(wavs)} audio clips.")
+        return {
+            "enrolled": False,
+            "user": user,
+            "clip_count": 0,
+            "message": f"Recorded audio was too short or silent. Please re-record a take.",
+        }
 
     try:
         await asyncio.to_thread(ident.enroll_multi, user, pcm_clips)
