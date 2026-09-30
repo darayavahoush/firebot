@@ -12,14 +12,37 @@ from .controller import RuleController
 from .env import DT, VMAX, FireEnv, obs_layout
 from .frontier_controller import FrontierController
 from .scan_controller import ScanController
-from firebot.drl.drl_controller import MultimodalController
+
+
+def _get_mm_controller():
+    try:
+        from firebot.drl.drl_controller import MultimodalController
+        return MultimodalController
+    except (ImportError, Exception):
+        return None
+
+
+def get_controller_class(name: str):
+    if name == "rule":
+        return RuleController
+    if name == "scan":
+        return ScanController
+    if name == "frontier":
+        return FrontierController
+    if name == "mm_fusion":
+        cls = _get_mm_controller()
+        if cls is None:
+            raise ValueError("mm_fusion controller requires gymnasium: pip install 'firebot[drl]'")
+        return cls
+    raise ValueError(f"controller must be one of ['frontier', 'mm_fusion', 'rule', 'scan'], got {name!r}")
+
 
 CONTROLLERS = {
     "rule": RuleController,
     "scan": ScanController,
     "frontier": FrontierController,
-    "mm_fusion": MultimodalController,
 }
+
 ROBOT_RADIUS = 0.22
 _PATH_POINTS = 40
 
@@ -31,8 +54,7 @@ def _r(v, n: int = 2) -> float:
 class EpisodeStream:
     def __init__(self, seed: int = 0, controller: str = "frontier", world: str = "mujoco",
                  max_steps: int = 1500) -> None:
-        if controller not in CONTROLLERS:
-            raise ValueError(f"controller must be one of {sorted(CONTROLLERS)}")
+        ctrl_cls = get_controller_class(controller)
         if world == "mujoco":
             from .mapgen import ALL_ROOM_KINDS
             from .mujoco_world import MuJoCoWorld
@@ -45,7 +67,7 @@ class EpisodeStream:
         self.controller_name, self.seed = controller, seed
         self.env = FireEnv(max_steps=max_steps, world_factory=factory)
         self.obs, _ = self.env.reset(seed=seed)
-        self.ctrl = CONTROLLERS[controller]()
+        self.ctrl = ctrl_cls()
         self.done = False
         self.seq = 0
         self.last_db: dict = {}

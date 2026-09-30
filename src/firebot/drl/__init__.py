@@ -1,3 +1,5 @@
-from .gym_env import FireGymEnv
-
-__all__ = ["FireGymEnv"]
+try:
+    from .gym_env import FireGymEnv
+    __all__ = ["FireGymEnv"]
+except ImportError:
+    __all__ = []
