@@ -1,8 +1,8 @@
 """Measure how well speaker ID separates the enrolled people using their recorded command
 clips (data/commands/<command>/<speaker>_NNN.wav), and rebuild voiceprints from those clips.
 
-    python calibrate_speakers.py            # report only: accuracy + recommended threshold
-    python calibrate_speakers.py --write    # also save averaged voiceprints (old ones -> .bak)
+    python scripts/calibrate_speakers.py            # report only: accuracy + recommended threshold
+    python scripts/calibrate_speakers.py --write    # also save averaged voiceprints (old ones -> .bak)
 
 Voiceprints built from many short command clips match what the console hears at test time
 far better than one long enrolment recording. Leave-one-out: each clip is scored against

@@ -7,8 +7,8 @@ against and blend in.
 USAGE:
     pip install gTTS
 
-    python generate_gtts_baseline.py
-    python generate_gtts_baseline.py --commands stop,go_home,go_left,go_right
+    python scripts/generate_gtts_baseline.py
+    python scripts/generate_gtts_baseline.py --commands stop,go_home,go_left,go_right
 
 Requires internet access (gTTS calls Google's TTS service) and ffmpeg on
 PATH (same requirement Whisper already has for decoding audio).
@@ -57,7 +57,7 @@ def main():
         tts.save(str(out_path))
 
     print(f"\nDone: {len(commands)} baseline clips saved to {args.out_dir}")
-    print("Next: python voice_intent_prototypes.py calibrate --speaker <name>")
+    print("Next: python scripts/voice_intent_prototypes.py calibrate --speaker <name>")
 
 
 if __name__ == "__main__":

@@ -34,7 +34,7 @@ class IntentClassifier:
         ckpt = torch.load(checkpoint_path, map_location=device, weights_only=False)
         if isinstance(ckpt, dict) and "head_state_dict" in ckpt:
             raise ValueError(
-                f"{checkpoint_path} is an OLD-format checkpoint from the root train_voice_intent.py "
+                f"{checkpoint_path} is an OLD-format checkpoint from scripts/train_voice_intent.py "
                 f"(labels {ckpt.get('label_names')}) -- a different command set than this "
                 "console's vocab.CLASSES (STOP, GOTO_NORTH, ...), so it can't be used. Train a new "
                 "one with the firebot.voice_intent pipeline (see src/firebot/voice_intent/README.md)")
@@ -147,7 +147,7 @@ class IntentClassifier:
 
 def load_classifier(checkpoint_path: str | Path, device: str = "cpu"):
     """`IntentClassifier` for a current checkpoint, or `LegacyIntentClassifier` for an
-    old-format one (root train_voice_intent.py: has `head_state_dict`). Same interface."""
+    old-format one (scripts/train_voice_intent.py: has `head_state_dict`). Same interface."""
     ckpt = torch.load(checkpoint_path, map_location=device, weights_only=False)
     if isinstance(ckpt, dict) and "head_state_dict" in ckpt:
         from .legacy import LegacyIntentClassifier

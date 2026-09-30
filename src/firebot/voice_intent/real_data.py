@@ -1,7 +1,7 @@
 """Helpers for real (human) recordings: legacy-clip conversion and recording prompts.
 
 Torch-free and audio-library-free on purpose (stdlib only) so it can be unit-tested and
-shared by `record_voice_intent_data.py` and `convert_legacy_clips.py`.
+shared by `scripts/record_voice_intent_data.py` and `scripts/convert_legacy_clips.py`.
 
 Real clips live in `<root>/<CLASS>/<speaker>_<NNN>.wav`, which is exactly what
 `synth_data --real-dir` merges (speaker parsed from the filename stem).

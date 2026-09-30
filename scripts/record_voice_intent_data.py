@@ -7,9 +7,9 @@ Resumable: existing clips are counted and recording continues after them.
 
     pip install sounddevice soundfile numpy
 
-    python record_voice_intent_data.py --speaker ananya
-    python record_voice_intent_data.py --speaker ananya --only EXTINGUISH,STATUS
-    python record_voice_intent_data.py --speaker ananya --missing-only
+    python scripts/record_voice_intent_data.py --speaker ananya
+    python scripts/record_voice_intent_data.py --speaker ananya --only EXTINGUISH,STATUS
+    python scripts/record_voice_intent_data.py --speaker ananya --missing-only
 
 Per prompt:  Enter=record   s=skip class   q=quit.  After recording: Enter=keep, p=play, r=redo.
 Use a different --speaker name per person: the trainer holds out whole speakers.

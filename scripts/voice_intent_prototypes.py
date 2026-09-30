@@ -29,14 +29,14 @@ SUBCOMMANDS:
 USAGE:
     pip install openai-whisper torch numpy sounddevice soundfile
 
-    # first: python generate_gtts_baseline.py
+    # first: python scripts/generate_gtts_baseline.py
 
-    python voice_intent_prototypes.py calibrate --speaker ananya
-    python voice_intent_prototypes.py calibrate --speaker avinandan
-    python voice_intent_prototypes.py build
+    python scripts/voice_intent_prototypes.py calibrate --speaker ananya
+    python scripts/voice_intent_prototypes.py calibrate --speaker avinandan
+    python scripts/voice_intent_prototypes.py build
 
-    python voice_intent_prototypes.py recognize --live
-    python voice_intent_prototypes.py recognize --audio data/commands/stop/ananya_001.wav
+    python scripts/voice_intent_prototypes.py recognize --live
+    python scripts/voice_intent_prototypes.py recognize --audio data/commands/stop/ananya_001.wav
 """
 
 import argparse
@@ -118,7 +118,7 @@ def cmd_calibrate(args):
 
     baseline_dir = Path(args.baseline_dir)
     if not baseline_dir.exists():
-        print(f"No baseline dir at {baseline_dir}. Run generate_gtts_baseline.py first.")
+        print(f"No baseline dir at {baseline_dir}. Run scripts/generate_gtts_baseline.py first.")
         sys.exit(1)
 
     commands = (

@@ -8,8 +8,8 @@ averaged) matches the acoustic distribution recognition will be tested against, 
 single long clip that scores worse purely from being a different kind of sample -- same
 speaker, mismatched content/duration.
 
-    python enroll_speaker.py --speaker ananya
-    python enroll_speaker.py --speaker avinandan
+    python scripts/enroll_speaker.py --speaker ananya
+    python scripts/enroll_speaker.py --speaker avinandan
 """
 from __future__ import annotations
 

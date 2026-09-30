@@ -156,7 +156,7 @@ _voice_router: ShadowRouter | None = None
 # undecodable clip...). Surfaced by /api/voice/status so a silent Groq fallback is diagnosable.
 _voice_last_error: str | None = None
 
-# Who is speaking (ECAPA voiceprints, `python enroll_speaker.py --speaker NAME`). Identification
+# Who is speaking (ECAPA voiceprints, `python scripts/enroll_speaker.py --speaker NAME`). Identification
 # only -- it labels a command with a speaker, it never blocks one. Off with FIREBOT_SPEAKER_ID=0.
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 SPEAKER_ID_ENABLED = os.environ.get("FIREBOT_SPEAKER_ID", "1") != "0"

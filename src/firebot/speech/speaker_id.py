@@ -7,7 +7,7 @@ command-variant profile would duplicate that for no correctness gain. This modul
 different question -- "who said it", for the audit trail -- not "what did they say".
 
 Uses SpeechBrain's pretrained ECAPA-TDNN (voice-fingerprint embeddings, not trained on your
-specific speakers) exactly as already proven out in `voice_intent_transcribe.py`; this module
+specific speakers) exactly as already proven out in `scripts/voice_intent_transcribe.py`; this module
 just gives it a home in the production `speech/` path instead of the standalone prototype.
 Cosine-similarity threshold matching is hand-rolled (pure numpy) rather than pulled from a
 library, matching `fusion/eif.py`/`fusion/pose_ekf.py`'s existing pattern: the only actually
@@ -24,7 +24,7 @@ import numpy as np
 DEFAULT_VOICEPRINT_DIR = Path("data/voiceprints")
 DEFAULT_THRESHOLD = 0.30  # cosine similarity below this -> "unrecognized", not a guess.
 # Short command-length clips score well below the 0.5+ a long clip gets; run
-# `python calibrate_speakers.py` to pick a value from your own recordings.
+# `python scripts/calibrate_speakers.py` to pick a value from your own recordings.
 
 _model_cache: dict[str, object] = {}
 
@@ -85,7 +85,7 @@ def decide_speaker(scores: dict[str, float], threshold: float = DEFAULT_THRESHOL
 
 class SpeakerIdentifier:
     """`voiceprint_dir`: one `.npy` embedding per enrolled speaker, same on-disk layout
-    `voice_intent_transcribe.py`'s `enroll-voice` already produces -- point this at the same
+    `scripts/voice_intent_transcribe.py`'s `enroll-voice` already produces -- point this at the same
     directory and existing enrollments carry over with zero re-recording.
     """
 

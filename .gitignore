@@ -28,20 +28,16 @@ data/real_intent/
 .numba_cache/
 .azure-firebot.env
 
+# logs
+*.log
+
 # per-user voice calibration recordings (voice data -- never commit)
 data/calibration/
 
-# personal voice data and models: biometric/PII, never commit (enroll locally, see enroll_speaker.py)
+# personal voice data and models: biometric/PII, never commit (enroll locally, see scripts/enroll_speaker.py)
 data/voiceprints/
 data/commands/
 data/real_intent/
-data/calibration/
-# downloaded on first use by SpeechBrain (was committed as absolute-path symlinks)
-pretrained_models/
 
-# personal voice data and downloaded speaker model: never commit
-data/voiceprints/
-data/commands/
-data/real_intent/
-data/calibration/
+# downloaded on first use by SpeechBrain (was committed as absolute-path symlinks)
 pretrained_models/

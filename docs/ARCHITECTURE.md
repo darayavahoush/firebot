@@ -117,7 +117,7 @@ start-up the brain exits with an error; if the audio stream dies later, typed co
 Voice complements a physical e-stop; it does not replace one.
 
 Speaker ID (`firebot.speech.speaker_id`, `firebot-brain --speaker-id`): SpeechBrain ECAPA embeddings
-matched by cosine similarity against enrolled voiceprints (`enroll_speaker.py`, threshold and margin
+matched by cosine similarity against enrolled voiceprints (`scripts/enroll_speaker.py`, threshold and margin
 tunable via `FIREBOT_SPEAKER_*`). It answers "who said it" for the audit trail and never changes
 what a command means: the rule parser stays deterministic. The speaker is recorded in the command
 channel (`voice:<name>`).

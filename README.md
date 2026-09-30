@@ -31,7 +31,7 @@ export FIREBOT_TOKEN=change-me
 firebot-brain --host 0.0.0.0 --db postgresql://user:pw@localhost/firebot   # on the PC; type commands here
 firebot-brain ... --voice-model ~/models/vosk-model-small-en-us-0.15   # + speak to the PC (needs the `speech` extra)
 firebot-brain ... --voice-model ... --speaker-id   # + label each voice command with who said it
-                                                   #   (enrol first: python enroll_speaker.py --speaker <name>)
+                                                   #   (enrol first: python scripts/enroll_speaker.py --speaker <name>)
 firebot-pi --sim --host <pc-ip>          # on the robot (--sim = simulated robot; real drivers: item 8)
 
 # DRL (needs the `drl` extra: pip install -e ".[dev,drl]")
@@ -126,6 +126,7 @@ database named after your macOS user and fails with `database "<you>" does not e
   (FastAPI) and `backend/mujoco_stream.py` (the MuJoCo tab's WebSocket), `deploy/` (Azure scripts)
 - `src/firebot/perception.py` sensor frame -> observation (fusion), shared by the sim and the brain
 - `web/firebot-sim.html` standalone browser visualiser (open in any browser)
+- `scripts/` developer utilities (speaker enrollment, voice data collection, intent training prototypes)
 - `docs/RESEARCH_PAPER.md` academic research paper on MM-FusionRL (IEEE ICRA / IROS / RA-L target)
 - `docs/ARCHITECTURE.md`, `docs/DATABASE.md` design, roadmap, schema reference (the single source;
   `firebot-console/docs/` only points here)

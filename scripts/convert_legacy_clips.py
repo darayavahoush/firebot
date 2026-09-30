@@ -1,8 +1,8 @@
 """Copy the old recorder's clips (data/commands/<stop|go_home|unknown>/) into the new
 class layout (data/real_intent/<STOP|RETURN_HOME|UNKNOWN>/), then report what's still missing.
 
-    python convert_legacy_clips.py                      # data/commands -> data/real_intent
-    python convert_legacy_clips.py --src X --dst Y
+    python scripts/convert_legacy_clips.py                      # data/commands -> data/real_intent
+    python scripts/convert_legacy_clips.py --src X --dst Y
 """
 import argparse
 from pathlib import Path

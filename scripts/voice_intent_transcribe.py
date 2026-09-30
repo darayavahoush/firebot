@@ -52,9 +52,9 @@ USAGE:
     #   (needs a C compiler -- xcode-select --install on macOS)
     # optional: pip install vosk   (+ download a model directory)
 
-    python voice_intent_transcribe.py evaluate --model-size base --use-vad
-    python voice_intent_transcribe.py evaluate --engine vosk --vosk-model-path ./vosk-model-small-en-us-0.15 --use-vad
-    python voice_intent_transcribe.py recognize --live --model-size base --use-vad
+    python scripts/voice_intent_transcribe.py evaluate --model-size base --use-vad
+    python scripts/voice_intent_transcribe.py evaluate --engine vosk --vosk-model-path ./vosk-model-small-en-us-0.15 --use-vad
+    python scripts/voice_intent_transcribe.py recognize --live --model-size base --use-vad
 """
 
 import argparse

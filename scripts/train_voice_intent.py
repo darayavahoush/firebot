@@ -22,7 +22,7 @@ paste those files and I'll align this exactly):
 USAGE:
     pip install -U openai-whisper torch scikit-learn numpy
 
-    python train_voice_intent.py \
+    python scripts/train_voice_intent.py \
         --data-dir ./data/commands \
         --model-size tiny \
         --out checkpoints/intent_head.pt

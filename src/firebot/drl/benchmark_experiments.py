@@ -176,7 +176,7 @@ def evaluate_active_fusion_env(
 
 def run_benchmark(
     num_episodes: int = 30,
-    out_file: str = "benchmark_results.json",
+    out_file: str = "data/benchmark_results.json",
     model_path: str | None = None,
 ) -> dict:
     """Run full benchmark suite and save JSON report."""
@@ -218,7 +218,7 @@ def run_benchmark(
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run MM-FusionRL Benchmark Experiments")
     parser.add_argument("--episodes", type=int, default=25, help="Number of Monte Carlo sorties")
-    parser.add_argument("--out", type=str, default="benchmark_results.json", help="Output path")
+    parser.add_argument("--out", type=str, default="data/benchmark_results.json", help="Output path")
     parser.add_argument("--model", type=str, default=None, help="Trained PPO policy zip path")
     args = parser.parse_args()
 

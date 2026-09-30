@@ -1,4 +1,4 @@
-"""Run the OLD-format checkpoint (root `train_voice_intent.py`: frozen openai-whisper encoder
+"""Run the OLD-format checkpoint (`scripts/train_voice_intent.py`: frozen openai-whisper encoder
 + small MLP head, trained on the recorded data/commands clips) inside the console.
 
 Its labels (forward/backward/go_left/go_right/go_home/stop/unknown) aren't `vocab.CLASSES`,
