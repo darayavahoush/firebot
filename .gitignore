@@ -38,3 +38,10 @@ data/real_intent/
 data/calibration/
 # downloaded on first use by SpeechBrain (was committed as absolute-path symlinks)
 pretrained_models/
+
+# personal voice data and downloaded speaker model: never commit
+data/voiceprints/
+data/commands/
+data/real_intent/
+data/calibration/
+pretrained_models/
