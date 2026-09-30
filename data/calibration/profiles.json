@@ -14,21 +14,5 @@
     "role": "Incident Commander",
     "avatar": "lightning",
     "color": "#00F0FF"
-  },
-  "alex": {
-    "id": "alex",
-    "displayName": "Alex",
-    "callsign": "TITAN-3",
-    "role": "Autonomous Systems Specialist",
-    "avatar": "gear",
-    "color": "#FFB238"
-  },
-  "sarah": {
-    "id": "sarah",
-    "displayName": "Sarah",
-    "callsign": "HAWK-4",
-    "role": "Hazard Response Lead",
-    "avatar": "fire",
-    "color": "#FF4A2B"
   }
 }

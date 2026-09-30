@@ -129,22 +129,6 @@ DEFAULT_PROFILES = {
         "avatar": "lightning",
         "color": "#00F0FF",
     },
-    "alex": {
-        "id": "alex",
-        "displayName": "Alex",
-        "callsign": "TITAN-3",
-        "role": "Autonomous Systems Specialist",
-        "avatar": "gear",
-        "color": "#FFB238",
-    },
-    "sarah": {
-        "id": "sarah",
-        "displayName": "Sarah",
-        "callsign": "HAWK-4",
-        "role": "Hazard Response Lead",
-        "avatar": "fire",
-        "color": "#FF4A2B",
-    },
 }
 
 
@@ -156,9 +140,13 @@ def _load_profiles() -> dict[str, dict]:
     try:
         data = json.loads(PROFILES_FILE.read_text())
         if isinstance(data, dict):
+            # Ensure deleted legacy profiles are pruned
+            data.pop("alex", None)
+            data.pop("sarah", None)
             for k, v in DEFAULT_PROFILES.items():
                 if k not in data:
                     data[k] = v
+            PROFILES_FILE.write_text(json.dumps(data, indent=2))
             return data
     except Exception:
         pass
@@ -736,6 +724,50 @@ async def enroll_speaker_voiceprint(user: str) -> dict[str, Any]:
     }
 
 
+_template_cache: dict[str, dict[str, Any]] = {}
+
+
+def _get_command_templates(user: str) -> dict[str, Any]:
+    """Compute / return cached average acoustic template vectors for each command class recorded by user."""
+    udir = _udir(user)
+    if not udir.is_dir():
+        return {}
+    mtime = udir.stat().st_mtime
+    hit = _template_cache.get(user)
+    if hit and hit.get("__mtime__") == mtime:
+        return {k: v for k, v in hit.items() if k != "__mtime__"}
+
+    import numpy as np
+    from firebot.speech.speaker_id import _fallback_embed, trim_silence
+
+    templates = {}
+    for c in _classes():
+        wavs = list((udir / c).glob("*.wav"))
+        if not wavs:
+            continue
+        embs = []
+        for w in wavs:
+            try:
+                audio, sr = _read_wav_file(str(w))
+                if sr != 16_000:
+                    new_len = int(round(len(audio) * 16_000 / sr))
+                    audio = np.interp(np.linspace(0, len(audio) - 1, new_len), np.arange(len(audio)), audio).astype(np.float32)
+                audio = trim_silence(audio.astype(np.float32))
+                pcm = (np.clip(audio, -1.0, 1.0) * 32767).astype("<i2").tobytes()
+                embs.append(_fallback_embed(pcm))
+            except Exception:
+                continue
+        if embs:
+            vec = np.mean(embs, axis=0)
+            norm = np.linalg.norm(vec)
+            templates[c] = (vec / norm) if norm > 1e-8 else vec
+
+    cache_entry = dict(templates)
+    cache_entry["__mtime__"] = mtime
+    _template_cache[user] = cache_entry
+    return templates
+
+
 @router.post("/test")
 async def test_voice(file: UploadFile = File(...), expected_user: str | None = None) -> dict[str, Any]:
     """Live verification: evaluate a speech clip against both Speaker ID and Intent Classification."""
@@ -748,7 +780,7 @@ async def test_voice(file: UploadFile = File(...), expected_user: str | None = N
         raise HTTPException(503, "Voice processing not configured")
 
     import numpy as np
-    from firebot.speech.speaker_id import SpeakerIdentifier, decide_speaker, trim_silence
+    from firebot.speech.speaker_id import SpeakerIdentifier, _fallback_embed, decide_speaker, trim_silence
     from firebot.voice_intent.vocab import canonical_phrase
 
     audio = await asyncio.to_thread(_decode, data)
@@ -792,14 +824,28 @@ async def test_voice(file: UploadFile = File(...), expected_user: str | None = N
             except Exception:
                 phrase = intent_name
         else:
-            if spk_name:
-                intent_name = "VERIFIED_OPERATOR"
-                intent_conf = round(spk_score, 2)
-                phrase = f"Verified: {spk_name.upper()}"
+            # Standalone acoustic template matching against operator command takes
+            target_user = spk_name or expected_user or "ananya"
+            templates = _get_command_templates(target_user)
+            if not templates and target_user != "ananya":
+                templates = _get_command_templates("ananya")
+
+            test_emb = _fallback_embed(pcm)
+            if templates:
+                scores = {cls: float(np.dot(test_emb, ref) / (np.linalg.norm(test_emb) * np.linalg.norm(ref) + 1e-8))
+                          for cls, ref in templates.items()}
+                ranked = sorted(scores.items(), key=lambda kv: -kv[1])
+                best_cls, best_score = ranked[0]
+                intent_name = best_cls
+                intent_conf = round(float(best_score), 3)
+                try:
+                    phrase = canonical_phrase(best_cls) if best_cls != "UNKNOWN" else "anything else"
+                except Exception:
+                    phrase = best_cls.lower().replace("_", " ")
             else:
-                intent_name = "SPEECH_DETECTED"
-                intent_conf = 0.5
-                phrase = "Acoustic Sample Captured"
+                intent_name = "VERIFIED_OPERATOR" if spk_name else "SPEECH_DETECTED"
+                intent_conf = round(spk_score, 2) if spk_score else 0.5
+                phrase = f"Verified: {spk_name.upper()}" if spk_name else "Acoustic Sample Captured"
     except Exception:
         phrase = "Acoustic Sample Captured"
 
