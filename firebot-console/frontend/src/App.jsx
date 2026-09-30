@@ -4,6 +4,7 @@ import TopBar from "./components/TopBar.jsx";
 import LiveOps from "./pages/LiveOps.jsx";
 import Simulator from "./pages/Simulator.jsx";
 import MuJoCo from "./pages/MuJoCo.jsx";
+import VoiceCalibration from "./pages/VoiceCalibration.jsx";
 import History from "./pages/History.jsx";
 import About from "./pages/About.jsx";
 import { connectTelemetry, sendCommand, sendEstop } from "./api/client.js";
@@ -12,6 +13,7 @@ import { playSound } from "./lib/sound.js";
 
 export default function App() {
   const [page, setPage] = useState("live");
+  const [activeOperator, setActiveOperator] = useState("ananya");
   const [frame, setFrame] = useState(null);
   const [linkOk, setLinkOk] = useState(true);
   const [mode, setModeState] = useState("auto");
@@ -170,7 +172,7 @@ export default function App() {
       <Sidebar page={page} setPage={setPage} linkOk={frame ? linkOk : true} notifOn={notifOn} onToggleNotif={notifySupported() ? toggleNotif : null} />
 
       <div className="flex-1 flex flex-col min-w-0 relative">
-        <TopBar page={page} mode={mode} onEstop={onEstop} />
+        <TopBar page={page} mode={mode} onEstop={onEstop} activeOperator={activeOperator} />
 
         {ack && (
           <div
@@ -193,10 +195,8 @@ export default function App() {
           </div>
         )}
 
-        {/* All three pages stay mounted once visited, toggled with display rather than
-            conditional rendering, so the Simulator's in-memory engine (building, fire, robot
-            position, planner state) survives switching to Live Ops/History and back instead of
-            being torn down and recreated from scratch on every navigation. */}
+        {/* All pages stay mounted once visited, toggled with display rather than
+            conditional rendering, so engine states survive switching tabs. */}
         <div className={page === "live" ? "contents" : "hidden"}>
           <LiveOps
             frame={frame}
@@ -213,6 +213,17 @@ export default function App() {
         </div>
         <div className={page === "mujoco" ? "contents" : "hidden"}>
           <MuJoCo />
+        </div>
+        <div className={page === "voice" ? "contents" : "hidden"}>
+          <VoiceCalibration
+            activeOperatorId={activeOperator}
+            onSelectOperator={(id) => setActiveOperator(id)}
+            onContinueToLiveOps={(id) => {
+              setActiveOperator(id);
+              setPage("live");
+              playSound("tab");
+            }}
+          />
         </div>
         <div className={page === "history" ? "contents" : "hidden"}>
           <History />

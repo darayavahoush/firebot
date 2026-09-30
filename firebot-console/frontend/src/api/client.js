@@ -196,3 +196,89 @@ function mockRunDetail(runId) {
   }));
   return { id: runId, points };
 }
+
+// ---- Voice Studio & Calibration API ----
+
+export async function fetchVoiceProfiles() {
+  const res = await fetch("/api/voice/profiles");
+  if (!res.ok) throw new Error(`fetchVoiceProfiles failed: ${res.status}`);
+  return res.json();
+}
+
+export async function saveVoiceProfile(profile) {
+  const res = await fetch("/api/voice/profiles", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(profile),
+  });
+  if (!res.ok) throw new Error(`saveVoiceProfile failed: ${res.status}`);
+  return res.json();
+}
+
+export async function fetchCalibrationStatus(user) {
+  const res = await fetch(`/api/voice/calibrate/status?user=${encodeURIComponent(user)}`);
+  if (!res.ok) throw new Error(`fetchCalibrationStatus failed: ${res.status}`);
+  return res.json();
+}
+
+export async function uploadCalibrationClip(user, label, audioBlob) {
+  const fd = new FormData();
+  fd.append("file", audioBlob, "clip.wav");
+  const res = await fetch(`/api/voice/calibrate/clip?user=${encodeURIComponent(user)}&label=${encodeURIComponent(label)}`, {
+    method: "POST",
+    body: fd,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Upload failed: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function deleteCalibrationClip(user, label, filename = null) {
+  const url = filename
+    ? `/api/voice/calibrate/clip?user=${encodeURIComponent(user)}&label=${encodeURIComponent(label)}&filename=${encodeURIComponent(filename)}`
+    : `/api/voice/calibrate/clip?user=${encodeURIComponent(user)}&label=${encodeURIComponent(label)}`;
+  const res = await fetch(url, { method: "DELETE" });
+  if (!res.ok) throw new Error(`Delete clip failed: ${res.status}`);
+  return res.json();
+}
+
+export async function trainCalibrationModel(user) {
+  const res = await fetch(`/api/voice/calibrate/train?user=${encodeURIComponent(user)}`, {
+    method: "POST",
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Train model failed: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function enrollSpeakerVoiceprint(user) {
+  const res = await fetch(`/api/voice/calibrate/enroll-speaker?user=${encodeURIComponent(user)}`, {
+    method: "POST",
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Enroll speaker failed: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function testVoiceClip(audioBlob, expectedUser = null) {
+  const fd = new FormData();
+  fd.append("file", audioBlob, "test.wav");
+  const url = expectedUser
+    ? `/api/voice/test?expected_user=${encodeURIComponent(expectedUser)}`
+    : "/api/voice/test";
+  const res = await fetch(url, {
+    method: "POST",
+    body: fd,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Test voice failed: ${res.status}`);
+  }
+  return res.json();
+}

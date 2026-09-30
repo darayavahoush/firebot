@@ -5,11 +5,12 @@ const TITLES = {
   live: { title: "Live Operations", sub: "Real-time telemetry, thermal imaging & teleoperation" },
   sim: { title: "2D Simulator", sub: "Browser simulation engine: RRT* path planner, SLAM & speech" },
   mujoco: { title: "MuJoCo 3D Physics", sub: "High-fidelity rigid-body dynamics & 36-beam lidar sweep" },
+  voice: { title: "Voice Studio & Calibration", sub: "Operator acoustic profiling, avatar selection & custom command enrollment" },
   history: { title: "Run History", sub: "Sortie database, fire-suppression analytics & telemetry replay" },
   about: { title: "System Architecture", sub: "State estimation, planning algorithms & hardware specifications" },
 };
 
-export default function TopBar({ page, mode, onEstop }) {
+export default function TopBar({ page, mode, onEstop, activeOperator }) {
   const { title, sub } = TITLES[page] || TITLES.live;
   const [clock, setClock] = useState("");
 
@@ -54,6 +55,17 @@ export default function TopBar({ page, mode, onEstop }) {
             </svg>
             <span className="text-ink font-semibold tabular-nums">{clock}</span>
           </div>
+
+          {/* Active Operator Chip */}
+          {activeOperator && (
+            <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-panel border border-line text-[12px]">
+              <span className="w-2 h-2 rounded-full bg-telemetry animate-pulse" />
+              <span className="text-muted text-[11px] uppercase tracking-wider font-mono">Pilot</span>
+              <span className="font-mono font-bold text-[11px] text-ink capitalize tracking-wider">
+                {activeOperator}
+              </span>
+            </div>
+          )}
 
           {/* Mode Pill */}
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-panel border border-line text-[12px]">

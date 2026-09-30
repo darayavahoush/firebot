@@ -314,6 +314,78 @@ function createScorchTexture() {
   return new THREE.CanvasTexture(c);
 }
 
+function createFoliageTexture() {
+  const c = document.createElement("canvas");
+  c.width = 256;
+  c.height = 256;
+  const ctx = c.getContext("2d");
+
+  // Deep forest green base
+  ctx.fillStyle = "#1e3d29";
+  ctx.fillRect(0, 0, 256, 256);
+
+  // Variegated leafy mottling and leaf shape silhouettes
+  const greens = ["#265337", "#2d6342", "#183321", "#36754e", "#1b3d27", "#44895c"];
+  for (let i = 0; i < 600; i++) {
+    ctx.fillStyle = greens[i % greens.length];
+    const x = (i * 97) % 256;
+    const y = (i * 151) % 256;
+    const r = 3 + (i % 6);
+    ctx.beginPath();
+    ctx.ellipse(x, y, r, r * 0.6, i * 0.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Dappled leaf highlights
+  ctx.fillStyle = "rgba(100, 180, 110, 0.25)";
+  for (let i = 0; i < 120; i++) {
+    const x = (i * 179) % 256;
+    const y = (i * 223) % 256;
+    ctx.beginPath();
+    ctx.arc(x, y, 2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  return tex;
+}
+
+function createBarkTexture() {
+  const c = document.createElement("canvas");
+  c.width = 256;
+  c.height = 256;
+  const ctx = c.getContext("2d");
+
+  // Dark timber base
+  ctx.fillStyle = "#382417";
+  ctx.fillRect(0, 0, 256, 256);
+
+  // Vertical furrowed bark grooves
+  for (let x = 0; x < 256; x += 4) {
+    const tone = 30 + Math.sin(x * 0.3) * 15 + ((x * 17) % 20);
+    ctx.fillStyle = `rgb(${tone + 25}, ${tone + 8}, ${Math.max(10, tone - 5)})`;
+    ctx.fillRect(x, 0, 3 + (x % 3), 256);
+  }
+
+  // Bark striations
+  ctx.strokeStyle = "rgba(25, 14, 8, 0.6)";
+  ctx.lineWidth = 2;
+  for (let i = 0; i < 40; i++) {
+    const x = (i * 37) % 256;
+    const y = (i * 59) % 256;
+    ctx.beginPath();
+    ctx.ellipse(x, y, 4, 18, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  return tex;
+}
+
 export default class MujocoScene {
   constructor(canvasHost) {
     this.host = canvasHost;
@@ -366,6 +438,8 @@ export default class MujocoScene {
     this.heatTexture = createHeatmapTexture();
     this.groundTexture = createGroundTexture();
     this.scorchTexture = createScorchTexture();
+    this.foliageTexture = createFoliageTexture();
+    this.barkTexture = createBarkTexture();
     this.roomTextures = {};
     for (const k of ["office", "storage", "workshop", "atrium", "datacenter", "hazmat_lab", "control_room"]) {
       this.roomTextures[k] = createRoomTexture(k);
@@ -393,6 +467,8 @@ export default class MujocoScene {
     this.heatTexture.dispose();
     this.groundTexture.dispose();
     this.scorchTexture.dispose();
+    this.foliageTexture.dispose();
+    this.barkTexture.dispose();
     if (this.roomTextures) {
       for (const t of Object.values(this.roomTextures)) t.dispose();
     }
@@ -940,22 +1016,141 @@ export default class MujocoScene {
         tier.position.z = (k / 4) * z;
         g.add(tier);
       }
+    } else if (kind === "tree") {
+      // Realistic Architectural Tree: Planter base, bark trunk, branch limbs, and multi-tonal organic foliage
+      const trunkR = p.r ?? 0.18;
+      const trunkH = z * 0.72;
+      const canopyR = p.canopy ?? Math.max(trunkR * 3.2, 0.95);
+
+      // Stone planter rim and dark mulch bed at base
+      const planterRim = new THREE.Mesh(
+        new THREE.CylinderGeometry(trunkR * 3.4, trunkR * 3.8, 0.12, 16),
+        M(0x4a5160, { roughness: 0.85, metalness: 0.2 })
+      );
+      planterRim.rotation.x = Math.PI / 2;
+      planterRim.position.z = 0.06;
+
+      const soilBed = new THREE.Mesh(
+        new THREE.CylinderGeometry(trunkR * 3.3, trunkR * 3.3, 0.04, 16),
+        M(0x231810, { roughness: 0.98 })
+      );
+      soilBed.rotation.x = Math.PI / 2;
+      soilBed.position.z = 0.11;
+      g.add(planterRim, soilBed);
+
+      // Tapered bark trunk with vertical grain texture
+      const trunkMat = new THREE.MeshStandardMaterial({
+        map: this.barkTexture,
+        roughness: 0.95,
+        metalness: 0.0,
+      });
+      const trunk = new THREE.Mesh(
+        new THREE.CylinderGeometry(trunkR * 0.62, trunkR * 1.15, trunkH, 12),
+        trunkMat
+      );
+      trunk.rotation.x = Math.PI / 2;
+      trunk.position.z = trunkH / 2 + 0.08;
+      g.add(trunk);
+
+      // Angled branch forks splitting into canopy
+      for (const [ba, bp] of [[0.42, 0], [-0.38, Math.PI * 0.68], [0.36, -Math.PI * 0.72]]) {
+        const branch = new THREE.Mesh(
+          new THREE.CylinderGeometry(trunkR * 0.25, trunkR * 0.45, trunkH * 0.45, 8),
+          trunkMat
+        );
+        branch.rotation.x = Math.PI / 2 + ba;
+        branch.rotation.z = bp;
+        branch.position.set(Math.cos(bp) * trunkR * 0.35, Math.sin(bp) * trunkR * 0.35, trunkH * 0.82);
+        g.add(branch);
+      }
+
+      // Multi-tonal faceted foliage clusters (flatShading + procedural foliage texture to break up waxy reflections)
+      const leafMatShadow = new THREE.MeshStandardMaterial({
+        color: 0x183822,
+        map: this.foliageTexture,
+        roughness: 0.98,
+        metalness: 0.0,
+        flatShading: true,
+      });
+      const leafMatMid = new THREE.MeshStandardMaterial({
+        color: 0x2d6a4f,
+        map: this.foliageTexture,
+        roughness: 0.96,
+        metalness: 0.0,
+        flatShading: true,
+      });
+      const leafMatCrown = new THREE.MeshStandardMaterial({
+        color: 0x40916c,
+        map: this.foliageTexture,
+        roughness: 0.92,
+        metalness: 0.0,
+        flatShading: true,
+      });
+
+      // Layered organic foliage clusters using faceted dodecahedrons (no shiny spheres)
+      const foliageClusters = [
+        [0, 0, 0.75, 1.0, leafMatMid, 0.1],
+        [0.42 * canopyR, 0.2 * canopyR, 0.62, 0.74, leafMatShadow, 0.5],
+        [-0.38 * canopyR, 0.28 * canopyR, 0.66, 0.72, leafMatMid, -0.4],
+        [0.1 * canopyR, -0.42 * canopyR, 0.62, 0.76, leafMatShadow, 0.8],
+        [-0.15 * canopyR, -0.15 * canopyR, 0.92, 0.65, leafMatCrown, 1.2],
+        [0.18 * canopyR, 0.1 * canopyR, 1.06, 0.52, leafMatCrown, -0.7],
+      ];
+
+      for (const [cx, cy, fz, fscale, fmat, frot] of foliageClusters) {
+        const cluster = new THREE.Mesh(
+          new THREE.DodecahedronGeometry(canopyR * fscale, 1),
+          fmat
+        );
+        cluster.position.set(cx, cy, trunkH + canopyR * fz);
+        cluster.rotation.set(frot * 0.7, frot * 0.5, frot);
+        g.add(cluster);
+      }
+    } else if (kind === "shrub") {
+      // Dense faceted ornamental bush with mulch base
+      const r = p.r ?? 0.38;
+      const shrubMat1 = new THREE.MeshStandardMaterial({
+        color: 0x1c4428,
+        map: this.foliageTexture,
+        roughness: 0.98,
+        metalness: 0.0,
+        flatShading: true,
+      });
+      const shrubMat2 = new THREE.MeshStandardMaterial({
+        color: 0x2d6844,
+        map: this.foliageTexture,
+        roughness: 0.95,
+        metalness: 0.0,
+        flatShading: true,
+      });
+
+      // Mulch ring
+      const mulch = new THREE.Mesh(
+        new THREE.CylinderGeometry(r * 1.3, r * 1.4, 0.05, 14),
+        M(0x231810, { roughness: 0.95 })
+      );
+      mulch.rotation.x = Math.PI / 2;
+      mulch.position.z = 0.025;
+      g.add(mulch);
+
+      // Clustered leafy lobes using faceted geometry
+      const lobes = [
+        [0, 0, z * 0.5, r * 1.05, shrubMat2],
+        [r * 0.45, r * 0.2, z * 0.42, r * 0.75, shrubMat1],
+        [-r * 0.4, r * 0.35, z * 0.45, r * 0.7, shrubMat2],
+        [0.05, -r * 0.5, z * 0.4, r * 0.78, shrubMat1],
+      ];
+      for (const [lx, ly, lz, lr, lmat] of lobes) {
+        const lobe = new THREE.Mesh(new THREE.DodecahedronGeometry(lr, 1), lmat);
+        lobe.position.set(lx, ly, lz);
+        g.add(lobe);
+      }
     } else if (p.r != null) {
-      // Round props: tree, shrub, etc.
-      const cyl = new THREE.Mesh(new THREE.CylinderGeometry(p.r, p.r, z, 16), M(kind === "tree" ? PROP.tree : (PROP[kind] ?? 0x888888)));
+      // Other round props: generic cylinder
+      const cyl = new THREE.Mesh(new THREE.CylinderGeometry(p.r, p.r, z, 16), M(PROP[kind] ?? 0x888888));
       cyl.rotation.x = Math.PI / 2;
       cyl.position.z = z / 2;
       g.add(cyl);
-
-      if (kind === "tree" || kind === "shrub") {
-        const c = p.canopy ?? Math.max(p.r * 2.2, 0.5);
-        const leaf = M(0x2f8f4a, { roughness: 0.9 });
-        for (const [dx, dy, dz, f] of [[0, 0, 0.6, 1], [0.5, 0.2, 0.35, 0.65], [-0.45, 0.3, 0.4, 0.6], [0.1, -0.5, 0.3, 0.62]]) {
-          const s = new THREE.Mesh(new THREE.SphereGeometry(c * f, 14, 10), leaf);
-          s.position.set(dx * c, dy * c, z + c * dz);
-          g.add(s);
-        }
-      }
     } else {
       // Generic boxes: table, crate, etc.
       const col = PROP[kind] ?? 0x888888;

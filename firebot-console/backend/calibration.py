@@ -34,6 +34,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/voice")
@@ -42,7 +43,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 CLIPS_DIR = REPO_ROOT / "data" / "calibration"
 MODELS_DIR = REPO_ROOT / "checkpoints" / "users"
 TARGET_PER_CLASS = 5
-MAX_PER_CLASS = 12          # guided recordings per command (feedback clips are capped separately)
+MAX_PER_CLASS = 50          # guided recordings per command: unlimited practice & calibration
 OPTIONAL = {"UNKNOWN"}
 FB_CONFIRM_CAP = 15         # kept "already right" clips per command: more adds little
 FB_CORRECT_CAP = 40         # kept corrections per command: these are the most valuable
@@ -67,6 +68,65 @@ def configure(decode: Callable[[bytes], Any], classifier: Callable[[], Any], che
 
 
 # ------------------------------------------------------------------ names, paths, vocabulary
+PROFILES_FILE = CLIPS_DIR / "profiles.json"
+DEFAULT_PROFILES = {
+    "ananya": {
+        "id": "ananya",
+        "displayName": "Ananya",
+        "callsign": "PHOENIX-1",
+        "role": "Lead Robotics Engineer",
+        "avatar": "shield",
+        "color": "#F0559B",
+    },
+    "avinandan": {
+        "id": "avinandan",
+        "displayName": "Avinandan",
+        "callsign": "VANGUARD-2",
+        "role": "Incident Commander",
+        "avatar": "lightning",
+        "color": "#00F0FF",
+    },
+    "alex": {
+        "id": "alex",
+        "displayName": "Alex",
+        "callsign": "TITAN-3",
+        "role": "Autonomous Systems Specialist",
+        "avatar": "gear",
+        "color": "#FFB238",
+    },
+    "sarah": {
+        "id": "sarah",
+        "displayName": "Sarah",
+        "callsign": "HAWK-4",
+        "role": "Hazard Response Lead",
+        "avatar": "fire",
+        "color": "#FF4A2B",
+    },
+}
+
+
+def _load_profiles() -> dict[str, dict]:
+    CLIPS_DIR.mkdir(parents=True, exist_ok=True)
+    if not PROFILES_FILE.is_file():
+        PROFILES_FILE.write_text(json.dumps(DEFAULT_PROFILES, indent=2))
+        return dict(DEFAULT_PROFILES)
+    try:
+        data = json.loads(PROFILES_FILE.read_text())
+        if isinstance(data, dict):
+            for k, v in DEFAULT_PROFILES.items():
+                if k not in data:
+                    data[k] = v
+            return data
+    except Exception:
+        pass
+    return dict(DEFAULT_PROFILES)
+
+
+def _save_profiles(profiles: dict[str, dict]) -> None:
+    CLIPS_DIR.mkdir(parents=True, exist_ok=True)
+    PROFILES_FILE.write_text(json.dumps(profiles, indent=2))
+
+
 def _user(name: str) -> str:
     n = (name or "").strip().lower()
     if not re.fullmatch(r"[a-z0-9_-]{1,32}", n):
@@ -362,7 +422,8 @@ def _status(user: str) -> dict[str, Any]:
     return {
         "user": user, "supported": reason is None, "reason": reason,
         "classes": [{"label": c, "phrase": phrase(c), "count": counts[c], "feedback": fb[c],
-                     "optional": c in OPTIONAL} for c in classes],
+                     "optional": c in OPTIONAL,
+                     "clips": [p.name for p in sorted((_udir(user) / c).glob("*.wav"))]} for c in classes],
         "target_per_class": TARGET_PER_CLASS, "max_per_class": MAX_PER_CLASS,
         "has_model": _model_path(user).is_file(),
         "report": json.loads(rp.read_text()) if rp.is_file() else None,
@@ -377,6 +438,16 @@ def _status(user: str) -> dict[str, Any]:
 @router.get("/calibrate/status")
 async def status(user: str) -> dict[str, Any]:
     return _status(_user(user))
+
+
+@router.get("/calibrate/clip-audio")
+async def get_clip_audio(user: str, label: str, filename: str) -> FileResponse:
+    user, label = _user(user), _label(label)
+    clean_name = Path(filename).name
+    p = _udir(user) / label / clean_name
+    if not p.is_file():
+        raise HTTPException(404, f"Clip {clean_name} not found")
+    return FileResponse(p, media_type="audio/wav")
 
 
 @router.post("/calibrate/clip")
@@ -405,11 +476,17 @@ async def add_clip(user: str, label: str, file: UploadFile = File(...)) -> dict[
 
 
 @router.delete("/calibrate/clip")
-async def delete_last_clip(user: str, label: str) -> dict[str, Any]:
+async def delete_clip(user: str, label: str, filename: str | None = None) -> dict[str, Any]:
     user, label = _user(user), _label(label)
-    files = sorted(p for p in (_udir(user) / label).glob("*.wav") if not p.name.startswith("fb_"))
-    if files:
-        files[-1].unlink()
+    if filename:
+        clean_name = Path(filename).name
+        target = _udir(user) / label / clean_name
+        if target.is_file():
+            target.unlink()
+    else:
+        files = sorted(p for p in (_udir(user) / label).glob("*.wav") if not p.name.startswith("fb_"))
+        if files:
+            files[-1].unlink()
     return _status(user)
 
 
@@ -496,3 +573,162 @@ async def delete_model(user: str, clips: bool = False) -> dict[str, Any]:
         import shutil
         shutil.rmtree(_udir(user), ignore_errors=True)
     return _status(user)
+
+
+# ------------------------------------------------------------------ Operator Profiles
+class ProfileIn(BaseModel):
+    id: str
+    displayName: str
+    callsign: str = ""
+    role: str = ""
+    avatar: str = "shield"
+    color: str = "#00F0FF"
+
+
+@router.get("/profiles")
+async def get_profiles() -> dict[str, Any]:
+    profs = _load_profiles()
+    vp_dir = REPO_ROOT / "data" / "voiceprints"
+    enrolled_set = set(p.stem for p in vp_dir.glob("*.npy")) if vp_dir.is_dir() else set()
+    model_set = set(users_with_models())
+
+    out = []
+    for pid, p in profs.items():
+        user = _user(pid)
+        c_map = _counts(user)
+        total_clips = sum(c_map.values())
+        out.append({
+            **p,
+            "id": user,
+            "total_clips": total_clips,
+            "has_voiceprint": user in enrolled_set,
+            "has_model": user in model_set,
+            "classes_covered": sum(1 for n in c_map.values() if n > 0),
+        })
+    return {"profiles": out}
+
+
+@router.post("/profiles")
+async def save_profile(body: ProfileIn) -> dict[str, Any]:
+    uid = _user(body.id)
+    profs = _load_profiles()
+    profs[uid] = {
+        "id": uid,
+        "displayName": body.displayName.strip() or uid.capitalize(),
+        "callsign": body.callsign.strip().upper() or f"OPERATOR-{len(profs) + 1}",
+        "role": body.role.strip() or "Flight Pilot",
+        "avatar": body.avatar or "shield",
+        "color": body.color or "#00F0FF",
+    }
+    _save_profiles(profs)
+    return {"saved": True, "profile": profs[uid]}
+
+
+@router.post("/calibrate/enroll-speaker")
+async def enroll_speaker_voiceprint(user: str) -> dict[str, Any]:
+    """Enroll the operator's ECAPA voiceprint into data/voiceprints/<user>.npy from all their
+    recorded clips in data/calibration/<user>/**/*.wav, so speaker identification recognizes them."""
+    user = _user(user)
+    udir = _udir(user)
+    if not udir.is_dir():
+        raise HTTPException(400, f"No recordings directory found for {user}")
+    wavs = sorted(udir.glob("**/*.wav"))
+    if not wavs:
+        raise HTTPException(400, f"No audio clips found for '{user}'. Record command clips first.")
+
+    import numpy as np
+    import soundfile as sf
+    from firebot.speech.speaker_id import SpeakerIdentifier, trim_silence
+
+    vp_dir = REPO_ROOT / "data" / "voiceprints"
+    vp_dir.mkdir(parents=True, exist_ok=True)
+    ident = SpeakerIdentifier(vp_dir)
+
+    pcm_clips = []
+    for w in wavs:
+        try:
+            audio, sr = sf.read(str(w), dtype="float32")
+            if sr != 16_000:
+                import librosa
+                audio = librosa.resample(audio, orig_sr=sr, target_sr=16_000)
+            audio = trim_silence(audio.astype(np.float32))
+            pcm = (np.clip(audio, -1.0, 1.0) * 32767).astype("<i2").tobytes()
+            if len(pcm) >= 6400:  # at least 0.2s of speech
+                pcm_clips.append(pcm)
+        except Exception:
+            continue
+
+    if not pcm_clips:
+        raise HTTPException(422, f"Could not extract usable speech PCM from {len(wavs)} audio clips.")
+
+    await asyncio.to_thread(ident.enroll_multi, user, pcm_clips)
+    return {
+        "enrolled": True,
+        "user": user,
+        "clip_count": len(pcm_clips),
+        "voiceprint_path": str(vp_dir / f"{user}.npy"),
+    }
+
+
+@router.post("/test")
+async def test_voice(file: UploadFile = File(...), expected_user: str | None = None) -> dict[str, Any]:
+    """Live verification: evaluate a speech clip against both Speaker ID and Intent Classification."""
+    t0 = time.time()
+    data = await file.read()
+    if not data:
+        raise HTTPException(400, "Empty audio file")
+
+    if _decode is None:
+        raise HTTPException(503, "Voice processing not configured")
+
+    import numpy as np
+    from firebot.speech.speaker_id import SpeakerIdentifier, decide_speaker, trim_silence
+    from firebot.voice_intent.vocab import canonical_phrase
+
+    audio = await asyncio.to_thread(_decode, data)
+    pcm = (np.clip(audio, -1.0, 1.0) * 32767).astype("<i2").tobytes()
+
+    # Speaker identification
+    spk_name, spk_score = None, 0.0
+    spk_scores = {}
+    vp_dir = REPO_ROOT / "data" / "voiceprints"
+    if vp_dir.is_dir() and any(vp_dir.glob("*.npy")):
+        try:
+            ident = SpeakerIdentifier(vp_dir)
+            scores = ident.scores(pcm)
+            spk_scores = {k: round(v, 3) for k, v in scores.items()}
+            spk_name, spk_score = decide_speaker(scores, 0.25, 0.04)
+        except Exception:
+            pass
+
+    # Intent classification
+    intent_name, intent_conf, phrase = "UNKNOWN", 0.0, ""
+    try:
+        clf = _classifier() if _classifier else None
+        if clf is not None:
+            extra = {}
+            active_user = expected_user or spk_name
+            head = get_user_head(active_user) if hasattr(clf, "embed_array") else None
+            if head is not None:
+                extra["head"] = head
+            res = clf.predict_intent_payload_array(audio, sample_rate=16_000, min_confidence=0.1, **extra)
+            intent_name = res.get("name", "UNKNOWN")
+            intent_conf = round(float(res.get("confidence", 0.0)), 3)
+            raw = res.get("raw_label", intent_name)
+            try:
+                phrase = canonical_phrase(raw)
+            except Exception:
+                phrase = intent_name
+    except Exception as e:
+        phrase = str(e)
+
+    latency_ms = round((time.time() - t0) * 1000, 1)
+    return {
+        "speaker": spk_name,
+        "speaker_score": round(spk_score, 3) if spk_score else 0.0,
+        "speaker_scores": spk_scores,
+        "intent": intent_name,
+        "confidence": intent_conf,
+        "phrase": phrase,
+        "latency_ms": latency_ms,
+    }
