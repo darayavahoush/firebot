@@ -65,23 +65,287 @@ function createSoftDiscTexture() {
   return new THREE.CanvasTexture(c);
 }
 
+function createRoomTexture(kind) {
+  const c = document.createElement("canvas");
+  c.width = 256;
+  c.height = 256;
+  const ctx = c.getContext("2d");
+
+  if (kind === "datacenter") {
+    // High-tech server room floor tiles with underfloor LED conduit glow
+    ctx.fillStyle = "#121a24";
+    ctx.fillRect(0, 0, 256, 256);
+
+    ctx.strokeStyle = "#1b2736";
+    ctx.lineWidth = 3;
+    for (let i = 0; i <= 256; i += 64) {
+      ctx.beginPath();
+      ctx.moveTo(i, 0); ctx.lineTo(i, 256);
+      ctx.moveTo(0, i); ctx.lineTo(256, i);
+      ctx.stroke();
+    }
+    // Perforated vent pattern
+    ctx.fillStyle = "#16202c";
+    for (let x = 8; x < 256; x += 64) {
+      for (let y = 8; y < 256; y += 64) {
+        ctx.fillRect(x + 4, y + 4, 48, 48);
+      }
+    }
+    // Glowing cyan intersection nodes
+    ctx.fillStyle = "#00d4ff";
+    ctx.shadowColor = "#00f0ff";
+    ctx.shadowBlur = 8;
+    for (let x = 64; x < 256; x += 64) {
+      for (let y = 64; y < 256; y += 64) {
+        ctx.beginPath();
+        ctx.arc(x, y, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    ctx.shadowBlur = 0;
+  } else if (kind === "hazmat_lab") {
+    // High-gloss sterile laboratory epoxy with hazard perimeter warning stripes
+    ctx.fillStyle = "#e9edf2";
+    ctx.fillRect(0, 0, 256, 256);
+
+    ctx.strokeStyle = "#d0d7e2";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(2, 2, 126, 126);
+    ctx.strokeRect(130, 2, 124, 126);
+    ctx.strokeRect(2, 130, 126, 124);
+    ctx.strokeRect(130, 130, 124, 124);
+
+    ctx.save();
+    ctx.strokeStyle = "#d69e2e";
+    ctx.lineWidth = 6;
+    for (let i = -256; i < 512; i += 28) {
+      ctx.beginPath();
+      ctx.moveTo(i, 0); ctx.lineTo(i + 20, 20);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(i, 236); ctx.lineTo(i + 20, 256);
+      ctx.stroke();
+    }
+    ctx.restore();
+  } else if (kind === "control_room") {
+    // Tactical command center dark slate panels with illuminated telemetry traces
+    ctx.fillStyle = "#1a222e";
+    ctx.fillRect(0, 0, 256, 256);
+
+    ctx.strokeStyle = "#253245";
+    ctx.lineWidth = 2;
+    for (let x = 0; x < 256; x += 64) {
+      for (let y = 0; y < 256; y += 64) {
+        ctx.strokeRect(x + 2, y + 2, 60, 60);
+      }
+    }
+    ctx.strokeStyle = "#00b4d8";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(0, 128); ctx.lineTo(64, 128); ctx.lineTo(96, 160); ctx.lineTo(256, 160);
+    ctx.moveTo(160, 0); ctx.lineTo(160, 96); ctx.lineTo(192, 128); ctx.lineTo(192, 256);
+    ctx.stroke();
+  } else if (kind === "workshop") {
+    // Industrial steel tread plate with diamond pattern
+    ctx.fillStyle = "#333b47";
+    ctx.fillRect(0, 0, 256, 256);
+
+    ctx.fillStyle = "#4a5568";
+    const drawDiamond = (cx, cy, angle) => {
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(angle);
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 9, 3, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    };
+    for (let x = 16; x < 256; x += 32) {
+      for (let y = 16; y < 256; y += 32) {
+        drawDiamond(x, y, Math.PI / 4);
+        drawDiamond(x + 16, y + 16, -Math.PI / 4);
+      }
+    }
+  } else if (kind === "storage") {
+    // Sealed logistics slab with yellow forklift aisle guide dashes
+    ctx.fillStyle = "#424852";
+    ctx.fillRect(0, 0, 256, 256);
+
+    ctx.strokeStyle = "#2d333b";
+    ctx.lineWidth = 3;
+    ctx.strokeRect(2, 2, 252, 252);
+    ctx.beginPath();
+    ctx.moveTo(128, 0); ctx.lineTo(128, 256);
+    ctx.stroke();
+
+    ctx.fillStyle = "#eab308";
+    for (let y = 12; y < 256; y += 40) {
+      ctx.fillRect(8, y, 10, 22);
+      ctx.fillRect(238, y, 10, 22);
+    }
+  } else if (kind === "office") {
+    // Warm parquet hardwood planks
+    ctx.fillStyle = "#6d4c33";
+    ctx.fillRect(0, 0, 256, 256);
+
+    for (let bx = 0; bx < 4; bx++) {
+      for (let by = 0; by < 4; by++) {
+        const isHoriz = (bx + by) % 2 === 0;
+        const ox = bx * 64;
+        const oy = by * 64;
+
+        ctx.strokeStyle = "#4e3522";
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(ox, oy, 64, 64);
+
+        for (let p = 0; p < 4; p++) {
+          const shade = ((bx * 7 + by * 13 + p * 19) % 35) - 17;
+          ctx.fillStyle = `rgb(${109 + shade}, ${76 + Math.round(shade * 0.7)}, ${51 + Math.round(shade * 0.5)})`;
+          if (isHoriz) {
+            ctx.fillRect(ox + 1, oy + p * 16 + 1, 62, 14);
+          } else {
+            ctx.fillRect(ox + p * 16 + 1, oy + 1, 14, 62);
+          }
+        }
+      }
+    }
+  } else if (kind === "atrium") {
+    // Terrazzo marble with polished brass inlays
+    ctx.fillStyle = "#e3e8ee";
+    ctx.fillRect(0, 0, 256, 256);
+
+    const speckles = ["#b0bac6", "#8d9ba8", "#cfd7df", "#707d8a"];
+    for (let i = 0; i < 180; i++) {
+      ctx.fillStyle = speckles[i % speckles.length];
+      const rx = (i * 73) % 256;
+      const ry = (i * 137) % 256;
+      const rw = 2 + (i % 4);
+      const rh = 2 + ((i + 2) % 3);
+      ctx.fillRect(rx, ry, rw, rh);
+    }
+
+    ctx.strokeStyle = "#c69c4e";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(0, 0, 256, 256);
+    ctx.beginPath();
+    ctx.moveTo(128, 0); ctx.lineTo(128, 256);
+    ctx.moveTo(0, 128); ctx.lineTo(256, 128);
+    ctx.stroke();
+  } else {
+    ctx.fillStyle = "#3a414e";
+    ctx.fillRect(0, 0, 256, 256);
+    ctx.strokeStyle = "#2b313c";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(0, 0, 256, 256);
+  }
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  return tex;
+}
+
+function createGroundTexture() {
+  const c = document.createElement("canvas");
+  c.width = 512;
+  c.height = 512;
+  const ctx = c.getContext("2d");
+
+  // Dark asphalt tarmac
+  ctx.fillStyle = "#14171e";
+  ctx.fillRect(0, 0, 512, 512);
+
+  // Speckled asphalt aggregate grain
+  for (let i = 0; i < 400; i++) {
+    const rx = (i * 89) % 512;
+    const ry = (i * 193) % 512;
+    ctx.fillStyle = (i % 2 === 0) ? "#1f242d" : "#0e1015";
+    ctx.fillRect(rx, ry, 2, 2);
+  }
+
+  // Perimeter parking and road border
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.14)";
+  ctx.lineWidth = 4;
+  ctx.strokeRect(8, 8, 496, 496);
+
+  // Yellow corridor center safety dashes
+  ctx.strokeStyle = "rgba(234, 179, 8, 0.5)";
+  ctx.lineWidth = 4;
+  ctx.setLineDash([24, 24]);
+  ctx.beginPath();
+  ctx.moveTo(256, 0); ctx.lineTo(256, 512);
+  ctx.moveTo(0, 256); ctx.lineTo(512, 256);
+  ctx.stroke();
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  return tex;
+}
+
+function createScorchTexture() {
+  const c = document.createElement("canvas");
+  c.width = 256;
+  c.height = 256;
+  const ctx = c.getContext("2d");
+
+  const g = ctx.createRadialGradient(128, 128, 10, 128, 128, 120);
+  g.addColorStop(0, "rgba(10, 10, 12, 0.95)");
+  g.addColorStop(0.35, "rgba(25, 22, 20, 0.85)");
+  g.addColorStop(0.65, "rgba(60, 45, 35, 0.45)");
+  g.addColorStop(0.88, "rgba(90, 70, 50, 0.15)");
+  g.addColorStop(1, "rgba(0, 0, 0, 0)");
+
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 256, 256);
+
+  // Carbon ash soot flecks
+  ctx.fillStyle = "rgba(15, 12, 10, 0.7)";
+  for (let i = 0; i < 90; i++) {
+    const angle = i * 2.399;
+    const r = Math.sqrt(i / 90) * 110;
+    const x = 128 + Math.cos(angle) * r;
+    const y = 128 + Math.sin(angle) * r;
+    ctx.beginPath();
+    ctx.arc(x, y, 1.5 + (i % 3), 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  return new THREE.CanvasTexture(c);
+}
+
 export default class MujocoScene {
   constructor(canvasHost) {
     this.host = canvasHost;
-    this.renderer = new THREE.WebGLRenderer({ antialias: true });
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    this.renderer.setClearColor(0x0e0919);
+    this.renderer.setClearColor(0x0a0714);
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.25;
+
     this.host.appendChild(this.renderer.domElement);
     this.scene = new THREE.Scene();
-    this.scene.fog = new THREE.Fog(0x0e0919, 30, 75);
+    this.scene.fog = new THREE.Fog(0x0a0714, 30, 80);
     this.camera = new THREE.PerspectiveCamera(50, 1, 0.1, 200);
     this.camera.up.set(0, 0, 1);
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
-    this.scene.add(new THREE.HemisphereLight(0xdfe6ff, 0x30203f, 0.95));
-    const sun = new THREE.DirectionalLight(0xffffff, 1.15);
-    sun.position.set(8, -10, 15);
-    this.scene.add(sun);
+
+    // Atmospheric lighting with realistic shadows
+    this.hemiLight = new THREE.HemisphereLight(0xe5edff, 0x221832, 0.85);
+    this.scene.add(this.hemiLight);
+
+    this.sun = new THREE.DirectionalLight(0xfff5ea, 1.25);
+    this.sun.position.set(12, 10, 18);
+    this.sun.castShadow = true;
+    this.sun.shadow.mapSize.width = 2048;
+    this.sun.shadow.mapSize.height = 2048;
+    this.sun.shadow.bias = -0.0008;
+    this.scene.add(this.sun);
+    this.scene.add(this.sun.target);
+
     this.world = new THREE.Group();
     this.scene.add(this.world);
 
@@ -100,6 +364,12 @@ export default class MujocoScene {
 
     this.softTexture = createSoftDiscTexture();
     this.heatTexture = createHeatmapTexture();
+    this.groundTexture = createGroundTexture();
+    this.scorchTexture = createScorchTexture();
+    this.roomTextures = {};
+    for (const k of ["office", "storage", "workshop", "atrium", "datacenter", "hazmat_lab", "control_room"]) {
+      this.roomTextures[k] = createRoomTexture(k);
+    }
 
     this._ro = new ResizeObserver(() => this.resize());
     this._ro.observe(this.host);
@@ -121,6 +391,11 @@ export default class MujocoScene {
     this.controls.dispose();
     this.softTexture.dispose();
     this.heatTexture.dispose();
+    this.groundTexture.dispose();
+    this.scorchTexture.dispose();
+    if (this.roomTextures) {
+      for (const t of Object.values(this.roomTextures)) t.dispose();
+    }
     this.clear();
     this.renderer.dispose();
     this.renderer.domElement.remove();
@@ -141,44 +416,120 @@ export default class MujocoScene {
     this.clear();
     this.sc = sc;
     const { width: W, height: H, wall_height: WH } = sc;
+    const maxDim = Math.max(W, H);
 
-    // Ground plane
-    const ground = new THREE.Mesh(new THREE.PlaneGeometry(W + 24, H + 24), M(0x130d20));
+    // Adjust sun shadows to encompass the episode space
+    if (this.sun) {
+      this.sun.position.set(W * 0.35, -H * 0.25, 18);
+      this.sun.target.position.set(W / 2, H / 2, 0);
+      this.sun.shadow.camera.left = -maxDim * 0.8;
+      this.sun.shadow.camera.right = maxDim * 0.8;
+      this.sun.shadow.camera.top = maxDim * 0.8;
+      this.sun.shadow.camera.bottom = -maxDim * 0.8;
+      this.sun.shadow.camera.near = 1;
+      this.sun.shadow.camera.far = 60;
+      this.sun.shadow.camera.updateProjectionMatrix();
+    }
+
+    // Exterior Ground plane with realistic tarmac texture
+    const groundTex = this.groundTexture.clone();
+    groundTex.needsUpdate = true;
+    groundTex.wrapS = THREE.RepeatWrapping;
+    groundTex.wrapT = THREE.RepeatWrapping;
+    groundTex.repeat.set(Math.max(2, Math.round((W + 24) / 4)), Math.max(2, Math.round((H + 24) / 4)));
+    const ground = new THREE.Mesh(
+      new THREE.PlaneGeometry(W + 24, H + 24),
+      new THREE.MeshStandardMaterial({ map: groundTex, roughness: 0.9, metalness: 0.1 })
+    );
+    ground.receiveShadow = true;
     ground.position.set(W / 2, H / 2, -0.01);
     this.world.add(ground);
 
-    // Floor rooms
+    // Architectural Floor Rooms with procedural materials
     for (const r of sc.rooms || []) {
-      const col = FLOOR[r.kind] ?? 0x444444;
-      const f = new THREE.Mesh(new THREE.PlaneGeometry(r.w, r.h), M(col, { roughness: 0.9 }));
+      const tex = this.roomTextures[r.kind] || this.roomTextures.workshop;
+      const roomTex = tex.clone();
+      roomTex.needsUpdate = true;
+      roomTex.wrapS = THREE.RepeatWrapping;
+      roomTex.wrapT = THREE.RepeatWrapping;
+      roomTex.repeat.set(Math.max(1, Math.round(r.w / 1.5)), Math.max(1, Math.round(r.h / 1.5)));
+
+      const roughness = r.kind === "hazmat_lab" ? 0.25 : (r.kind === "datacenter" ? 0.4 : 0.75);
+      const metalness = r.kind === "workshop" ? 0.6 : (r.kind === "datacenter" ? 0.45 : 0.08);
+
+      const f = new THREE.Mesh(
+        new THREE.PlaneGeometry(r.w, r.h),
+        new THREE.MeshStandardMaterial({ map: roomTex, roughness, metalness })
+      );
+      f.receiveShadow = true;
       f.position.set(r.x + r.w / 2, r.y + r.h / 2, 0);
       this.world.add(f);
 
-      // Add architectural doorway/room border line
+      // Distinct architectural room border line
       const borderGeom = new THREE.BufferGeometry().setFromPoints([
-        new THREE.Vector3(-r.w / 2, -r.h / 2, 0.002),
-        new THREE.Vector3(r.w / 2, -r.h / 2, 0.002),
-        new THREE.Vector3(r.w / 2, r.h / 2, 0.002),
-        new THREE.Vector3(-r.w / 2, r.h / 2, 0.002),
-        new THREE.Vector3(-r.w / 2, -r.h / 2, 0.002),
+        new THREE.Vector3(-r.w / 2, -r.h / 2, 0.003),
+        new THREE.Vector3(r.w / 2, -r.h / 2, 0.003),
+        new THREE.Vector3(r.w / 2, r.h / 2, 0.003),
+        new THREE.Vector3(-r.w / 2, r.h / 2, 0.003),
+        new THREE.Vector3(-r.w / 2, -r.h / 2, 0.003),
       ]);
-      const border = new THREE.Line(borderGeom, new THREE.LineBasicMaterial({ color: 0x3d3552, transparent: true, opacity: 0.45 }));
+      const border = new THREE.Line(borderGeom, new THREE.LineBasicMaterial({ color: 0x1f2733, transparent: true, opacity: 0.6 }));
       border.position.set(r.x + r.w / 2, r.y + r.h / 2, 0);
       this.world.add(border);
     }
 
-    // Walls
-    const wallMat = M(0xd5cfe0, { transparent: true, opacity: 0.76, roughness: 0.7, metalness: 0.1 });
+    // Architectural Walls with Solid Core, Baseboard Skirting, and Crown Cap Trim
+    const wallMat = new THREE.MeshStandardMaterial({
+      color: 0x3d4654,
+      roughness: 0.72,
+      metalness: 0.12,
+    });
+    const baseboardMat = new THREE.MeshStandardMaterial({
+      color: 0x161a22,
+      roughness: 0.5,
+      metalness: 0.35,
+    });
+    const crownMat = new THREE.MeshStandardMaterial({
+      color: 0x687486,
+      roughness: 0.4,
+      metalness: 0.6,
+    });
+
     for (const [x, y, w, h] of sc.walls) {
-      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, WH), wallMat);
-      m.position.set(x + w / 2, y + h / 2, WH / 2);
-      this.world.add(m);
+      // Main wall block
+      const wallMesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, WH), wallMat);
+      wallMesh.position.set(x + w / 2, y + h / 2, WH / 2);
+      wallMesh.castShadow = true;
+      wallMesh.receiveShadow = true;
+      this.world.add(wallMesh);
+
+      // Baseboard kickplate (0.12m tall, slightly protruding)
+      const bw = w > h ? w : w + 0.04;
+      const bh = h > w ? h : h + 0.04;
+      const baseboard = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, 0.12), baseboardMat);
+      baseboard.position.set(x + w / 2, y + h / 2, 0.06);
+      baseboard.castShadow = true;
+      baseboard.receiveShadow = true;
+      this.world.add(baseboard);
+
+      // Crown molding cap (0.04m tall)
+      const cap = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, 0.04), crownMat);
+      cap.position.set(x + w / 2, y + h / 2, WH - 0.02);
+      this.world.add(cap);
     }
 
     // Procedural Props
     for (const p of sc.props || []) {
       this.world.add(this.createProp(p));
     }
+
+    // Realistic carbon soot/scorch burn decal
+    const scorch = new THREE.Mesh(
+      new THREE.PlaneGeometry(2.4, 2.4),
+      new THREE.MeshBasicMaterial({ map: this.scorchTexture, transparent: true, opacity: 0.82, depthWrite: false })
+    );
+    scorch.position.set(sc.fire.x, sc.fire.y, 0.003);
+    this.world.add(scorch);
 
     // Thermal Heatmap Floor Footprint
     this.thermalDisc = new THREE.Mesh(
@@ -188,7 +539,31 @@ export default class MujocoScene {
     this.thermalDisc.position.set(sc.fire.x, sc.fire.y, 0.004);
     this.world.add(this.thermalDisc);
 
-    // Fire flame core: layered flame cones + point light
+    // Ceiling Emergency Hazard Alarm Strobe Beacon
+    const beaconG = new THREE.Group();
+    beaconG.position.set(sc.fire.x, sc.fire.y, WH - 0.05);
+    const beaconMount = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.14, 0.05, 16), M(0x222222, { metalness: 0.7 }));
+    beaconMount.rotation.x = Math.PI / 2;
+    const beaconDome = new THREE.Mesh(
+      new THREE.SphereGeometry(0.09, 14, 10, 0, Math.PI * 2, 0, Math.PI / 2),
+      new THREE.MeshStandardMaterial({
+        color: 0xff1e00,
+        emissive: 0xff2800,
+        emissiveIntensity: 0.9,
+        roughness: 0.2,
+        transparent: true,
+        opacity: 0.88,
+      })
+    );
+    beaconDome.rotation.x = Math.PI / 2;
+    beaconG.add(beaconMount, beaconDome);
+    this.world.add(beaconG);
+
+    this.alarmLight = new THREE.PointLight(0xff2200, 0, 14, 1.4);
+    this.alarmLight.position.set(sc.fire.x, sc.fire.y, WH - 0.18);
+    this.world.add(this.alarmLight);
+
+    // Fire flame core: layered flame cones + point light with shadows
     this.fire = new THREE.Group();
     const flame = (r, h, c, o) => {
       const m = new THREE.Mesh(new THREE.ConeGeometry(r, h, 14), new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: o }));
@@ -201,8 +576,12 @@ export default class MujocoScene {
       flame(0.22, 0.65, 0xffb533, 0.92),
       flame(0.1, 0.38, 0xfff6cf, 0.98)
     );
-    this.fireLight = new THREE.PointLight(0xff7a2a, 2.5, 7.5);
+    this.fireLight = new THREE.PointLight(0xff6e26, 3.2, 9.0, 1.4);
     this.fireLight.position.z = 0.65;
+    this.fireLight.castShadow = true;
+    this.fireLight.shadow.bias = -0.001;
+    this.fireLight.shadow.mapSize.width = 512;
+    this.fireLight.shadow.mapSize.height = 512;
     this.fire.add(this.fireLight);
     this.fire.position.set(sc.fire.x, sc.fire.y, 0);
     this.world.add(this.fire);
@@ -587,38 +966,69 @@ export default class MujocoScene {
 
     g.position.set(p.x, p.y, 0);
     g.rotation.z = p.yaw ?? 0;
+    g.traverse((obj) => {
+      if (obj.isMesh) {
+        obj.castShadow = true;
+        obj.receiveShadow = true;
+      }
+    });
     return g;
   }
 
   buildRover(R) {
     this.rover = new THREE.Group();
 
-    // Chassis body
-    const body = new THREE.Mesh(new THREE.BoxGeometry(R * 1.9, R * 1.3, 0.12), M(0x9aa3b5, { metalness: 0.5, roughness: 0.35 }));
+    // Chassis body with shadow casting and metallic bevel
+    const body = new THREE.Mesh(new THREE.BoxGeometry(R * 1.9, R * 1.3, 0.12), M(0x9aa3b5, { metalness: 0.55, roughness: 0.35 }));
     body.position.z = 0.14;
+    body.castShadow = true;
+    body.receiveShadow = true;
 
     // High-visibility front bumper
     const nose = new THREE.Mesh(new THREE.BoxGeometry(0.08, R * 1.3, 0.1), M(0xff4a2b, { roughness: 0.4 }));
     nose.position.set(R * 0.95, 0, 0.16);
+    nose.castShadow = true;
 
     // Front sensor mast head (FPV camera anchor)
     const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.14, 10), M(0x2a2f3a, { metalness: 0.8 }));
     mast.rotation.x = Math.PI / 2;
     mast.position.set(R * 0.65, 0, 0.27);
+    mast.castShadow = true;
+
     const cameraHead = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.1, 0.05), M(0x1e2430));
     cameraHead.position.set(R * 0.65, 0, 0.34);
+    cameraHead.castShadow = true;
+
     // Thermal lens optic glowing cyan
     const optic = new THREE.Mesh(new THREE.CircleGeometry(0.02, 12), new THREE.MeshBasicMaterial({ color: 0x00f0ff }));
     optic.rotation.y = Math.PI / 2;
     optic.position.set(R * 0.68 + 0.001, 0, 0.34);
     this.rover.add(body, nose, mast, cameraHead, optic);
 
-    // 4 Wheels
+    // Dual high-intensity LED headlights with realistic forward illumination
+    for (const sy of [-R * 0.42, R * 0.42]) {
+      const lens = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.022, 0.022, 0.02, 12),
+        new THREE.MeshBasicMaterial({ color: 0xe8f6ff })
+      );
+      lens.rotation.z = Math.PI / 2;
+      lens.position.set(R * 0.98, sy, 0.15);
+      this.rover.add(lens);
+
+      const spot = new THREE.SpotLight(0xedf6ff, 3.2, 9.5, Math.PI / 5, 0.35, 1.2);
+      spot.position.set(R * 0.98, sy, 0.15);
+      spot.target.position.set(R * 0.98 + 4.0, sy, 0.04);
+      this.rover.add(spot);
+      this.rover.add(spot.target);
+    }
+
+    // 4 Heavy-duty all-terrain wheels with rim detailing
     for (const sx of [-1, 1]) {
       for (const sy of [-1, 1]) {
-        const w = new THREE.Mesh(new THREE.CylinderGeometry(0.058, 0.058, 0.055, 14), M(0x151518, { roughness: 0.8 }));
+        const w = new THREE.Mesh(new THREE.CylinderGeometry(0.058, 0.058, 0.055, 16), M(0x18181c, { roughness: 0.85, metalness: 0.2 }));
         w.rotation.x = Math.PI / 2;
         w.position.set(sx * R * 0.65, sy * R * 0.72, 0.06);
+        w.castShadow = true;
         this.rover.add(w);
       }
     }
@@ -633,9 +1043,11 @@ export default class MujocoScene {
     this.turretG.position.set(0, 0, 0.24);
     const base = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.065, 0.065, 16), M(0x2e3440, { metalness: 0.6 }));
     base.rotation.x = Math.PI / 2;
+    base.castShadow = true;
     const noz = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.028, 0.24, 12), M(0x3da5ff, { metalness: 0.7, roughness: 0.3 }));
     noz.rotation.z = -Math.PI / 2;
     noz.position.x = 0.13;
+    noz.castShadow = true;
     this.turretG.add(base, noz);
 
     // Translucent high-speed water jet cone
@@ -780,13 +1192,14 @@ export default class MujocoScene {
       }
     }
 
-    // Fire flame & Thermal Heatmap animation
+    // Fire flame & Thermal Heatmap animation with dynamic flicker and flame swirl
     if (this.fire) {
       const pw = this.firePower ?? 1;
-      const fl = 1 + 0.12 * Math.sin(tt * 18) + 0.08 * Math.sin(tt * 31);
+      const fl = 1 + 0.14 * Math.sin(tt * 19) + 0.08 * Math.sin(tt * 33);
       this.fire.visible = pw > 0.01;
-      this.fire.scale.set(pw * fl * 0.9 + 0.1, pw * fl * 0.9 + 0.1, pw * (0.9 + 0.1 * fl) + 0.05);
-      this.fireLight.intensity = 2.4 * pw * fl;
+      this.fire.scale.set(pw * fl * 0.9 + 0.1, pw * fl * 0.9 + 0.1, pw * (0.9 + 0.12 * fl) + 0.05);
+      this.fire.rotation.z = Math.sin(tt * 3.8) * 0.07;
+      this.fireLight.intensity = 3.2 * pw * fl;
 
       if (this.thermalDisc) {
         this.thermalDisc.visible = this.showHeatmap && pw > 0.01;
@@ -794,6 +1207,15 @@ export default class MujocoScene {
         this.thermalDisc.scale.set(discScale, discScale, 1);
         this.thermalDisc.material.opacity = 0.85 * pw * fl;
       }
+    }
+
+    // Emergency Hazard Alarm Strobe flashing in the fire zone
+    if (this.alarmLight && (this.firePower ?? 1) > 0.01) {
+      const cycle = (tt * 3.2) % 1.0;
+      const flash = (cycle < 0.12) || (cycle > 0.22 && cycle < 0.34);
+      this.alarmLight.intensity = flash ? 4.2 : 0.15;
+    } else if (this.alarmLight) {
+      this.alarmLight.intensity = 0;
     }
 
     // Spray water jet animation
