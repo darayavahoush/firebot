@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <linearGradient id="shieldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#141E30" />
+      <stop offset="100%" stop-color="#0B0F17" />
+    </linearGradient>
+    <linearGradient id="flameGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#FF3366" />
+      <stop offset="50%" stop-color="#F0559B" />
+      <stop offset="100%" stop-color="#00F0FF" />
+    </linearGradient>
+    <linearGradient id="glowRing" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00F0FF" />
+      <stop offset="100%" stop-color="#F0559B" />
+    </linearGradient>
+    <filter id="neonGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="2.5" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Hexagonal Shield Outer Hull -->
+  <polygon points="32,4 56,15 56,43 32,59 8,43 8,15" fill="url(#shieldGrad)" stroke="url(#glowRing)" stroke-width="2.5" stroke-linejoin="round" />
+  
+  <!-- Cyberpunk Inner Grid Accents -->
+  <polygon points="32,10 50,19 50,40 32,53 14,40 14,19" fill="#0E1624" fill-opacity="0.8" stroke="#00F0FF" stroke-width="0.8" stroke-opacity="0.4" stroke-dasharray="3 2" />
+
+  <!-- Stylized Robotic Fire Core -->
+  <path d="M32 15C32 15 39 25 39 33C39 37.5 35.8 41 32 41C28.2 41 25 37.5 25 33C25 25 32 15 32 15Z" fill="url(#flameGrad)" filter="url(#neonGlow)" />
+  <path d="M32 23C32 23 35.5 28 35.5 32C35.5 34.2 33.9 36 32 36C30.1 36 28.5 34.2 28.5 32C28.5 28 32 23 32 23Z" fill="#FFFFFF" fill-opacity="0.9" />
+
+  <!-- Tactical Crosshair Apertures -->
+  <line x1="32" y1="4" x2="32" y2="10" stroke="#00F0FF" stroke-width="2" stroke-linecap="round" />
+  <line x1="32" y1="53" x2="32" y2="59" stroke="#00F0FF" stroke-width="2" stroke-linecap="round" />
+  <line x1="8" y1="29" x2="14" y2="29" stroke="#F0559B" stroke-width="2" stroke-linecap="round" />
+  <line x1="50" y1="29" x2="56" y2="29" stroke="#F0559B" stroke-width="2" stroke-linecap="round" />
+
+  <!-- Center Target Core -->
+  <circle cx="32" cy="33" r="2" fill="#00F0FF" />
+</svg>

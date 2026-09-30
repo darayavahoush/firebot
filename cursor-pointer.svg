@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 28 28" fill="none">
+  <defs>
+    <filter id="pointerGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="0" stdDeviation="1.5" flood-color="#F0559B" flood-opacity="0.8"/>
+    </filter>
+  </defs>
+  <!-- Reticle Outer Bracket Corners -->
+  <path d="M4 10V5C4 4.4 4.4 4 5 4H10" stroke="#00F0FF" stroke-width="1.8" stroke-linecap="round"/>
+  <path d="M18 4H23C23.6 4 24 4.4 24 5V10" stroke="#00F0FF" stroke-width="1.8" stroke-linecap="round"/>
+  <path d="M24 18V23C24 23.6 23.6 24 23 24H18" stroke="#00F0FF" stroke-width="1.8" stroke-linecap="round"/>
+  <path d="M10 24H5C4.4 24 4 23.6 4 23V18" stroke="#00F0FF" stroke-width="1.8" stroke-linecap="round"/>
+
+  <!-- Inner Diamond & Target Pin -->
+  <polygon points="14,9 19,14 14,19 9,14" fill="#0E1624" stroke="#F0559B" stroke-width="1.2" filter="url(#pointerGlow)" />
+  <circle cx="14" cy="14" r="2" fill="#00F0FF" />
+</svg>
