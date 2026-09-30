@@ -107,12 +107,15 @@ def generate_building(rng: np.random.Generator, width_range=(15.0, 22.0),
 # furnish it (generate_props), so the map reads like a building instead of random clutter.
 ROOM_KINDS = {
     # kind: (floor style, {prop kind: weight}, prop density multiplier)
-    "office":   ("wood",     {"table": 4, "shrub": 2, "shelf": 1, "crate": 1}, 0.8),
-    "storage":  ("concrete", {"shelf": 4, "crate": 4, "barrel": 3}, 1.3),
-    "workshop": ("tile",     {"barrel": 3, "crate": 2, "table": 3, "shelf": 1}, 1.0),
-    "atrium":   ("grass",    {"tree": 4, "shrub": 4, "barrel": 0.3}, 1.2),
+    "office":       ("wood",         {"table": 4, "shrub": 2, "shelf": 1, "crate": 1}, 0.8),
+    "storage":      ("concrete",     {"shelf": 3, "crate": 3, "barrel": 2, "pallet": 3}, 1.3),
+    "workshop":     ("tile",         {"barrel": 2, "crate": 2, "table": 2, "generator": 2, "column": 1}, 1.0),
+    "atrium":       ("grass",        {"tree": 4, "shrub": 4, "bench": 2}, 1.2),
+    "datacenter":   ("server_grid",  {"server_rack": 5, "generator": 1, "column": 1}, 1.3),
+    "hazmat_lab":   ("epoxy_hazard", {"gas_cylinder": 4, "barrel": 3, "table": 2}, 1.1),
+    "control_room": ("tech_deck",    {"console": 4, "shelf": 2, "table": 2}, 0.9),
 }
-_KIND_ORDER = ("office", "storage", "workshop", "atrium")
+_KIND_ORDER = ("office", "storage", "workshop", "atrium", "datacenter", "hazmat_lab", "control_room")
 
 
 def generate_layout(rng: np.random.Generator, width_range=(15.0, 22.0),
@@ -183,15 +186,33 @@ def is_connected(width: float, height: float, walls: list, res: float = 0.1,
     return best >= min_fraction * total
 
 
-# ---- freestanding scenery (trees, shrubs, barrels, shelves, tables, crates) -------------------
+# ---- freestanding scenery (trees, shrubs, barrels, shelves, tables, crates, tech) ------------
 # Kept separate from `walls` on purpose: walls are the (x, y, w, h) rectangles every existing
 # consumer (World grid, planners, DB scenario config) already understands, while props carry a
 # kind/shape/yaw so a physics-backed world (`MuJoCoWorld`) can build proper 3-D bodies for them.
 PROP_CLEARANCE = 0.6     # min free gap kept between a prop and any wall / other prop, m
-_ROUND = {"tree": (0.12, 0.2, 1.3), "shrub": (0.25, 0.45, 0.8), "barrel": (0.22, 0.3, 0.9)}
-_BOXES = {"shelf": ((0.9, 1.6), (0.35, 0.5), 1.8), "table": ((0.8, 1.2), (0.6, 0.9), 0.75),
-          "crate": ((0.4, 0.8), (0.4, 0.8), 0.6)}
-_KIND_WEIGHTS = {"tree": 3, "shrub": 3, "barrel": 2, "shelf": 1, "table": 1, "crate": 2}
+_ROUND = {
+    "tree": (0.12, 0.2, 1.3),
+    "shrub": (0.25, 0.45, 0.8),
+    "barrel": (0.22, 0.3, 0.9),
+    "gas_cylinder": (0.12, 0.18, 1.25),
+    "column": (0.20, 0.32, 2.5),
+}
+_BOXES = {
+    "shelf": ((0.9, 1.6), (0.35, 0.5), 1.8),
+    "table": ((0.8, 1.2), (0.6, 0.9), 0.75),
+    "crate": ((0.4, 0.8), (0.4, 0.8), 0.6),
+    "server_rack": ((0.7, 1.0), (0.7, 0.9), 2.1),
+    "generator": ((1.0, 1.4), (0.6, 0.9), 1.1),
+    "pallet": ((1.0, 1.2), (0.9, 1.1), 0.85),
+    "console": ((1.1, 1.5), (0.5, 0.7), 0.85),
+    "bench": ((1.0, 1.4), (0.4, 0.5), 0.45),
+}
+_KIND_WEIGHTS = {
+    "tree": 3, "shrub": 3, "barrel": 2, "shelf": 1, "table": 1, "crate": 2,
+    "server_rack": 2, "generator": 1, "gas_cylinder": 2, "column": 1, "pallet": 2,
+    "console": 1, "bench": 1,
+}
 
 
 def _bound_radius(p: dict) -> float:
@@ -255,7 +276,7 @@ def generate_props(rng: np.random.Generator, width: float, height: float, walls:
                 bound = _bound_radius(prop)
             if rx1 <= rx0 or ry1 <= ry0:
                 break
-            if room_k is not None and kind in ("shelf", "crate"):
+            if room_k is not None and kind in ("shelf", "crate", "server_rack", "console", "pallet", "bench"):
                 prop["yaw"] = float(rng.choice([0.0, np.pi / 2]))   # square to the room
             px, py = float(rng.uniform(rx0, rx1)), float(rng.uniform(ry0, ry1))
             if any(_dist_to_rect(px, py, w) < bound + PROP_CLEARANCE for w in walls):

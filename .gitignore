@@ -30,3 +30,11 @@ data/real_intent/
 
 # per-user voice calibration recordings (voice data -- never commit)
 data/calibration/
+
+# personal voice data and models: biometric/PII, never commit (enroll locally, see enroll_speaker.py)
+data/voiceprints/
+data/commands/
+data/real_intent/
+data/calibration/
+# downloaded on first use by SpeechBrain (was committed as absolute-path symlinks)
+pretrained_models/

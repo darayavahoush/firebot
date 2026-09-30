@@ -94,3 +94,30 @@ def test_without_resume_a_stale_partial_manifest_is_discarded(fake_tts, tmp_path
     fake_tts.calls.clear()
     _gen(tmp_path)                                       # fresh run, not --resume
     assert len(fake_tts.calls) == (2 + 3) * 2
+
+
+def test_real_clips_survive_resume_and_do_not_break_adoption(tmp_path, fake_tts):
+    """Merged `real_*.wav` files share the class folder: they must not count toward the sweep's
+    expected size (which would stop a finished class being adopted) nor be deleted when an
+    unfinished class is regenerated."""
+    out = tmp_path
+    _gen(out)
+    label_dir = out / "audio" / "STOP"
+    real = label_dir / "real_00000_ananya_001.wav"
+    sf.write(str(real), np.zeros(1600, dtype=np.float32), 16000, subtype="PCM_16")
+    (out / synth_data.PARTIAL_MANIFEST).unlink()  # force the "adopt from disk" path
+    rows = _gen(out, resume=True)
+    assert real.exists()
+    assert any(r[1] == "STOP" for r in rows)
+    # now make STOP look unfinished: the stale sweep files go, the real clip stays
+    next(iter(sorted(label_dir.glob("[0-9]*_*.wav")))).unlink()
+    (out / synth_data.PARTIAL_MANIFEST).unlink()
+    _gen(out, resume=True)
+    assert real.exists()
+
+
+def test_second_run_on_same_folder_is_refused(tmp_path):
+    # a second open file description conflicts with the first, even inside one process
+    with (synth_data.exclusive_run(tmp_path), pytest.raises(SystemExit),
+          synth_data.exclusive_run(tmp_path)):
+        pass

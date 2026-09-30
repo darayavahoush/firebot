@@ -31,6 +31,7 @@ on Linux if `pyttsx3.init()` errors with "no voices found".
 from __future__ import annotations
 
 import argparse
+import contextlib
 import csv
 import itertools
 import re
@@ -302,6 +303,16 @@ def _append_partial(out_dir: Path, rows: list[tuple[Path, str, str, str, str]]) 
             w.writerow([str(p.relative_to(out_dir)), label, source, speaker, phrase])
 
 
+def _synth_files(label_dir: Path) -> list[Path]:
+    """The sweep's own clips (`00000_tts.wav`, `00001_aug.wav`, ...) in a class folder.
+
+    Deliberately excludes merged real recordings (`real_*.wav`): resuming must neither count
+    them toward a class's expected size nor delete them when it regenerates the class."""
+    if not label_dir.is_dir():
+        return []
+    return sorted(label_dir.glob("[0-9][0-9][0-9][0-9][0-9]_*.wav"))
+
+
 def adopt_existing_class(label_dir: Path, label: str, phrases: list[str], voices: list,
                          variants: int, augment: int) -> list[tuple[Path, str, str, str, str]] | None:
     """Rebuild a class's manifest rows from clips already on disk, or None if they don't match.
@@ -315,7 +326,7 @@ def adopt_existing_class(label_dir: Path, label: str, phrases: list[str], voices
     unit = ["tts"] + ["aug"] * augment
     combos = [(ph, v) for ph in phrases for v in voices for _ in range(variants)]
     expected = len(combos) * len(unit)
-    files = sorted(label_dir.glob("*.wav")) if label_dir.is_dir() else []
+    files = _synth_files(label_dir)
     if not files or len(files) != expected:
         return None
     rows: list[tuple[Path, str, str, str, str]] = []
@@ -380,8 +391,8 @@ def generate_synthetic(out_dir: Path, variants_per_voice: int, augment: int,
                 rows += adopted
                 print(f"  {label:16s} -> {len(adopted)} clips (adopted from disk)")
                 continue
-            for stale in label_dir.glob("*.wav") if label_dir.is_dir() else []:
-                stale.unlink()  # an unfinished class: regenerate it cleanly
+            for stale in _synth_files(label_dir):
+                stale.unlink()  # an unfinished class: regenerate it cleanly (real clips stay)
         # A per-class generator, so a resumed run makes the same clips for a class as an
         # uninterrupted one would, whichever classes were skipped before it.
         rng = np.random.default_rng([seed, zlib.crc32(label.encode())])
@@ -489,6 +500,29 @@ def write_manifest(rows: list[tuple[Path, str, str, str, str]], out_dir: Path) -
         print(f"  {label:16s} {n:5d}{flag}")
 
 
+@contextlib.contextmanager
+def exclusive_run(out_dir: Path):
+    """Refuse to run two sweeps against the same output folder at once.
+
+    Two concurrent `--resume` runs delete each other's half-written classes and append the same
+    rows twice to the partial manifest. An advisory `flock` on `<out>/.synth.lock` is released
+    by the OS if the process dies, so a crash never leaves a stale lock. (No-op where `fcntl`
+    doesn't exist, i.e. Windows.)"""
+    try:
+        import fcntl
+    except ImportError:
+        yield
+        return
+    out_dir.mkdir(parents=True, exist_ok=True)
+    with (out_dir / ".synth.lock").open("w") as fh:
+        try:
+            fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            sys.exit(f"another synth_data run is already writing to {out_dir} -- wait for it "
+                     f"(or stop it) before starting a second one")
+        yield
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--out", type=Path, required=True, help="output directory")
@@ -518,6 +552,9 @@ def main() -> None:
     ap.add_argument("--skip-synth", action="store_true",
                      help="only merge --real-dir, skip TTS generation (e.g. re-running after adding recordings)")
     args = ap.parse_args()
+
+    lock = contextlib.ExitStack()  # held until the process exits
+    lock.enter_context(exclusive_run(args.out))
 
     exclude = {n.strip().lower() for n in args.exclude_voices.split(",") if n.strip()}
     if args.no_novelty_voices:
