@@ -2,6 +2,14 @@
 
 Newest first. Commit messages carry the detail; this is the readable summary.
 
+## Voice calibration
+- Simulator > Voice > **Calibrate my voice**: record each command ~5 times, train a personal classifier
+  head in seconds, kept only if it beats the default on held-out clips. Used automatically per operator
+  (UI selection or speaker ID); everyone else keeps the default model. Reset to default at any time.
+- Backend: `backend/calibration.py`, `firebot.voice_intent.personalize` (L2-SP fine-tune of the head),
+  `IntentClassifier.embed_array` and a per-user `head` override; `/api/transcribe` takes an optional `user`.
+- Recordings are stored in `data/calibration/` (gitignored).
+
 ## MuJoCo tab
 - New page: a live 3-D episode from the MuJoCo-backed sim, streamed over `/ws/mujoco` and drawn
   with three.js. Seed and controller pickers, speed, pause, orbit / top-down / follow cameras,

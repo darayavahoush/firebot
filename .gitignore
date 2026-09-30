@@ -27,3 +27,6 @@ data/voice_intent/
 data/real_intent/
 .numba_cache/
 .azure-firebot.env
+
+# per-user voice calibration recordings (voice data -- never commit)
+data/calibration/

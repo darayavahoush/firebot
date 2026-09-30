@@ -71,12 +71,9 @@ class IntentClassifier:
         self.head.eval()
 
     @torch.no_grad()
-    def predict_array(self, audio: np.ndarray, sample_rate: int = 16_000
-                       ) -> tuple[str, float, dict[str, float]]:
-        """Same pipeline as `predict`, but for audio already decoded into memory (e.g. a
-        browser-recorded clip loaded via `librosa.load(..., sr=16_000)`) rather than a
-        file on disk -- avoids a round-trip through a temp .wav for the server's live
-        request path. `audio` must already be mono float32 at `sample_rate`."""
+    def embed_array(self, audio: np.ndarray, sample_rate: int = 16_000) -> np.ndarray:
+        """Frozen-encoder embedding of one clip (what the head sees). Used by per-user
+        calibration to fine-tune a head without touching the encoder."""
         inputs = self.extractor([np.asarray(audio, dtype="float32")],
                                 sampling_rate=sample_rate, return_tensors="pt")
         hidden = self.encoder(inputs.input_features.to(self.device)).last_hidden_state
@@ -84,7 +81,18 @@ class IntentClassifier:
             pooled = hidden[:, :valid_frame_count(len(audio), sample_rate)].mean(dim=1)
         else:
             pooled = hidden.mean(dim=1)
-        logits = self.head(pooled)[0]
+        return pooled[0].cpu().numpy()
+
+    @torch.no_grad()
+    def predict_array(self, audio: np.ndarray, sample_rate: int = 16_000, head=None
+                       ) -> tuple[str, float, dict[str, float]]:
+        """Same pipeline as `predict`, but for audio already decoded into memory (e.g. a
+        browser-recorded clip loaded via `librosa.load(..., sr=16_000)`) rather than a
+        file on disk -- avoids a round-trip through a temp .wav for the server's live
+        request path. `audio` must already be mono float32 at `sample_rate`.
+        `head`: an optional per-user `IntentHead` (same classes) used instead of the base head."""
+        pooled = torch.from_numpy(self.embed_array(audio, sample_rate)).unsqueeze(0).to(self.device)
+        logits = (head or self.head)(pooled)[0]
         probs = torch.softmax(logits, dim=0).cpu().numpy()
         idx = int(probs.argmax())
         scores = {c: float(p) for c, p in zip(self.classes, probs)}
@@ -130,10 +138,10 @@ class IntentClassifier:
 
     def predict_intent_payload_array(self, audio: np.ndarray, sample_rate: int = 16_000,
                                       min_confidence: float = 0.6,
-                                      class_min_confidence: dict[str, float] | None = None
-                                      ) -> dict:
+                                      class_min_confidence: dict[str, float] | None = None,
+                                      head=None) -> dict:
         """`predict_intent_payload`, but for an in-memory clip -- see `predict_array`."""
-        label, confidence, scores = self.predict_array(audio, sample_rate)
+        label, confidence, scores = self.predict_array(audio, sample_rate, head=head)
         return self._payload(label, confidence, scores, min_confidence, class_min_confidence)
 
 

@@ -36,7 +36,7 @@ from typing import Any
 
 import asyncpg
 import httpx
-from fastapi import FastAPI, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -69,6 +69,7 @@ from firebot.fusion.anomaly import detect_anomalies
 from firebot.link.protocol import THERM_COLS, THERM_ROWS
 from firebot.voice_intent.router import ShadowRouter
 from firebot.voice_intent.vocab import LABEL_TO_IDX, canonical_phrase
+import calibration  # noqa: E402
 from mujoco_stream import router as mujoco_router  # noqa: E402
 
 DATABASE_URL = os.environ.get("FIREBOT_DB", "postgresql://firebot:firebot@localhost:5432/firebot")
@@ -180,6 +181,11 @@ def _get_voice_router() -> ShadowRouter:
     if _voice_router is None:
         _voice_router = ShadowRouter.load(VOICE_INTENT_ROUTER_STATE)
     return _voice_router
+
+
+calibration.configure(lambda b: _decode_audio_16k(b), lambda: _get_voice_classifier(),
+                      VOICE_INTENT_CHECKPOINT)
+app.include_router(calibration.router)
 
 
 @app.on_event("startup")
@@ -540,7 +546,7 @@ def _same_intent(local_phrase: str, groq_text: str) -> bool:
     return a.name == b.name and norm(a.params) == norm(b.params)
 
 
-def _local_intent_phrase(audio_bytes: bytes) -> tuple[str, float] | None:
+def _local_intent_phrase(audio_bytes: bytes, user: str | None = None) -> tuple[str, float] | None:
     """Try the local classifier on a raw uploaded clip. Returns (canonical_phrase,
     confidence) on a usable prediction, or None -- for *any* reason the local path isn't
     available (no checkpoint configured, decode failure, missing optional deps, low
@@ -556,6 +562,9 @@ def _local_intent_phrase(audio_bytes: bytes) -> tuple[str, float] | None:
         clf = _get_voice_classifier()
         extra = ({"class_min_confidence": VOICE_INTENT_CLASS_THRESHOLDS}
                  if VOICE_INTENT_CLASS_THRESHOLDS else {})
+        head = calibration.get_user_head(user) if hasattr(clf, "embed_array") else None
+        if head is not None:  # this operator calibrated their own voice
+            extra["head"] = head
         payload = clf.predict_intent_payload_array(audio, sample_rate=16_000,
                                                     min_confidence=VOICE_INTENT_MIN_CONFIDENCE,
                                                     **extra)
@@ -642,17 +651,22 @@ def _identify_speaker(audio_bytes: bytes) -> dict[str, Any] | None:
 
 
 @app.post("/api/transcribe")
-async def transcribe(file: UploadFile = File(...)) -> dict[str, Any]:
+async def transcribe(file: UploadFile = File(...), user: str | None = Form(None)) -> dict[str, Any]:
     audio_bytes = await file.read()
-    text = await _transcribe_text(audio_bytes, file.filename or "clip.webm",
-                                  file.content_type or "audio/webm")
+    # Who is speaking decides which personal voice model (if any) reads the command: an explicit
+    # operator picked in the UI wins, else the speaker the voiceprints recognise.
     who = await asyncio.to_thread(_identify_speaker, audio_bytes)
-    return {"text": text, **(who or {})}
+    operator = (user or "").strip().lower() or (who or {}).get("speaker")
+    text = await _transcribe_text(audio_bytes, file.filename or "clip.webm",
+                                  file.content_type or "audio/webm", user=operator)
+    used = bool(operator and calibration.get_user_head(operator))
+    return {"text": text, **(who or {}), "voice_model": operator if used else None}
 
 
-async def _transcribe_text(audio_bytes: bytes, filename: str, content_type: str) -> str:
+async def _transcribe_text(audio_bytes: bytes, filename: str, content_type: str,
+                           user: str | None = None) -> str:
 
-    local = _local_intent_phrase(audio_bytes)
+    local = _local_intent_phrase(audio_bytes, user)
     if local is None:
         offline_text = _vosk_text(audio_bytes)
         if offline_text:

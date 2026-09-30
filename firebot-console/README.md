@@ -58,6 +58,17 @@ Click a run to get:
 - **What happened:** the summary text. Add `?narrate_text=true` to the summary endpoint (with
   `FIREBOT_SLM_CMD` set) for a local-model rewording; numbers are verified against the facts.
 
+## Voice calibration (personal voice model)
+On the Simulator page's Voice tab, **Calibrate my voice** opens a guided panel: enter a name, say each
+command about 5 times (2.6 s per clip), then **Train my model**. The backend embeds the clips with the
+frozen Whisper encoder and fine-tunes only the small classifier head (seconds, CPU), keeping the result
+only if it beats the default model on clips held out from training. The personal model is saved as
+`checkpoints/users/<name>.pt` and used automatically for that operator (chosen in the UI, or recognised
+by the speaker-ID voiceprints); everyone else keeps the default model. **Reset to default** deletes it.
+- Needs a current-format checkpoint from `firebot.voice_intent` (not the old 7-label one) and the `voice` extra.
+- Recordings live in `data/calibration/<name>/` on the server (gitignored): they are voice data, don't commit them.
+- There are no user accounts, so anyone who can reach the console can calibrate or reset any operator name.
+
 ## MuJoCo page
 Runs the MuJoCo-backed simulator on the backend and streams it to the browser.
 - Controls: map seed, controller (Frontier, Scan, Rule baseline), speed 0.5x to 8x, pause and
@@ -91,6 +102,7 @@ and a Stop button. The side panel has four tabs:
 | `POST /api/command/estop` | Emergency stop via the brain bridge |
 | `GET /api/voice/status`, `POST /api/transcribe` | Speech backend in use; transcription (plus speaker ID) |
 | `GET /api/mujoco/status` | Whether `mujoco` is installed, and the controller names |
+| `GET/POST/DELETE /api/voice/calibrate/{status,clip,train,model}` | Per-user voice calibration (`?user=`) |
 | `WS /ws/mujoco` | One streamed episode (`?seed=&controller=&speed=&log=`): `scene`, `frame`s, `end` |
 | `WS /ws/telemetry` | Live `frame` and `command` messages, polled from Postgres every 0.4 s |
 
@@ -127,7 +139,7 @@ scales to zero and a small Postgres, and saves names to `.azure-firebot.env` (gi
 you only pay for storage. Deleting the Postgres server is the only way to stop its billing fully.
 
 ## Layout
-- `backend/server.py`: the FastAPI bridge (routes above); `backend/mujoco_stream.py`: the MuJoCo tab's
+- `backend/calibration.py`: per-user voice calibration API; `backend/server.py`: the FastAPI bridge (routes above); `backend/mujoco_stream.py`: the MuJoCo tab's
   WebSocket and run logging
 - `frontend/src/pages/`: `LiveOps`, `Simulator`, `MuJoCo`, `History`, `About`
 - `frontend/src/components/`: shared pieces (`ThermalHero`, `Ring`, `Joystick`, `RunReplay`,

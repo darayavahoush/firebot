@@ -9,6 +9,8 @@ import { PanelHeader } from "../components/TelemetryGauges.jsx";
 import { SimController } from "../lib/simController.js";
 import { blobToWav16k } from "../lib/wav";
 import { playSound } from "../lib/sound.js";
+import CalibratePanel from "../components/sim/CalibratePanel.jsx";
+import { getOperator } from "../lib/operator.js";
 
 const SPEEDS = [0.5, 1, 2, 4];
 
@@ -54,6 +56,9 @@ export default function Simulator() {
   const [voiceMode, setVoiceMode] = useState(null);
   // Who the server thinks just spoke: {name|null, score} from /api/transcribe, or null if not checked.
   const [speakerInfo, setSpeakerInfo] = useState(null);
+  const [operator, setOperatorState] = useState(getOperator);
+  const [showCalibrate, setShowCalibrate] = useState(false);
+  const [personalModel, setPersonalModel] = useState(null);
   useEffect(() => {
     let alive = true;
     fetch("/api/voice/status")
@@ -247,12 +252,14 @@ export default function Simulator() {
         try { upload = await blobToWav16k(blob); uploadName = "clip.wav"; } catch { /* raw fallback */ }
         const form = new FormData();
         form.append("file", upload, uploadName);
+        if (operator) form.append("user", operator);
         const res = await fetch("/api/transcribe", { method: "POST", body: form });
         if (!res.ok) {
           const detail = await res.json().catch(() => null);
           throw new Error(detail?.detail || `Transcription failed (${res.status}).`);
         }
-        const { text, speaker, speaker_score, speaker_scores } = await res.json();
+        const { text, speaker, speaker_score, speaker_scores, voice_model } = await res.json();
+        setPersonalModel(voice_model || null);
         setSpeakerInfo(speaker === undefined ? null : { name: speaker, score: speaker_score, scores: speaker_scores });
         fetch("/api/voice/status").then((r) => (r.ok ? r.json() : null)).then((j) => j && setVoiceMode(j)).catch(() => {});
         setAsrStatus("idle");
@@ -264,7 +271,7 @@ export default function Simulator() {
     };
     recorder.start();
     setAsrStatus("recording");
-  }, [asrStatus]);
+  }, [asrStatus, operator]);
 
   useEffect(() => () => {
     mediaRecorderRef.current?.state === "recording" && mediaRecorderRef.current.stop();
@@ -450,6 +457,9 @@ export default function Simulator() {
                 asrStatus={asrStatus}
                 voiceMode={voiceMode}
                 speakerInfo={speakerInfo}
+                operator={operator}
+                personalModel={personalModel}
+                onCalibrate={() => setShowCalibrate(true)}
                 asrError={asrError}
                 toggleRecording={toggleRecording}
               />
@@ -458,6 +468,11 @@ export default function Simulator() {
           <EventLog events={t.events} />
         </div>
       </div>
+      {showCalibrate && (
+        <CalibratePanel operator={operator} onOperator={setOperatorState}
+          onClose={() => setShowCalibrate(false)}
+          onTrained={(r) => setPersonalModel(r?.has_model ? operator : null)} />
+      )}
     </main>
   );
 }

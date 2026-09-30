@@ -7,7 +7,7 @@ const MODE_LABEL = { local: "local model", "local-degraded": "local model failin
 export default function VoiceTab({
   t, speechSupported, speechUsable, listening, toggleListening, transcript, voiceError, textCmd, setTextCmd,
   sendCommand, cmdInputRef, suggestions, showSuggestions, setShowSuggestions, fillCommand,
-  asrStatus, asrError, toggleRecording, voiceMode, speakerInfo,
+  asrStatus, asrError, toggleRecording, voiceMode, speakerInfo, operator, personalModel, onCalibrate,
 }) {
   const live = speechUsable ? listening : asrStatus === "recording";
   const busy = asrStatus === "transcribing";
@@ -29,6 +29,8 @@ export default function VoiceTab({
         {!speechUsable && <div className="text-[11px] text-faint text-center max-w-[240px]">{speechSupported ? "This browser has no working live speech engine (Opera and Brave)." : "This browser has no live speech recognition."} Recordings are transcribed on the server.</div>}
         <div className="flex flex-wrap justify-center gap-1.5">
           {voiceMode && <span className={`chip cursor-default ${voiceMode.mode === "unavailable" ? "!text-alarm" : ""}`}>Speech: {MODE_LABEL[voiceMode.mode] || voiceMode.mode}</span>}
+          {personalModel && <span className="chip cursor-default !text-ok">Voice model: {personalModel}'s</span>}
+          <button className="chip" onClick={onCalibrate}>{operator ? "Recalibrate my voice" : "Calibrate my voice"}</button>
           {speakerInfo && <span className={`chip cursor-default ${speakerInfo.name ? "!text-ok" : "!text-warn"}`}>Speaker: {speakerInfo.name ?? "not recognised"}</span>}
         </div>
         {voiceMode?.last_error && <div className="text-[11px] text-warn text-center">{voiceMode.last_error}</div>}

@@ -164,6 +164,10 @@ React (Vite) --HTTP/WS--> FastAPI bridge (server.py) --SQL--> PostgreSQL   (hist
   then Groq Whisper, and reports the mode in `/api/voice/status`. Speaker ID runs on the same audio.
 - **Simulator page:** a browser-only port of the sim, planner (informed RRT*, standing in for OMPL
   which has no browser build) and command grammar. It shares no state with the real robot.
+- **Voice calibration:** `firebot.voice_intent.personalize` fine-tunes a copy of the classifier head on a
+  user's own embedded clips (L2-SP pull to the base weights, light noise augmentation) and keeps it only if it
+  matches or beats the base on one held-out clip per command. `backend/calibration.py` serves recording, training
+  and reset; `/api/transcribe` picks the head for the operator (`user` form field, else the speaker-ID result).
 - **MuJoCo page:** `WS /ws/mujoco?seed=&controller=&speed=&log=` (`backend/mujoco_stream.py`). The
   server runs `firebot.sim.stream.EpisodeStream` in a worker thread and sends the map once (a
   `scene` message), then a small `frame` about every 0.1 s of sim time and a final `end`. The
