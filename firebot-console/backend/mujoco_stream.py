@@ -81,6 +81,33 @@ def mujoco_status() -> dict:
         return {"available": False, "controllers": list(CONTROLLERS), "detail": f"Status check failed: {e}"}
 
 
+@router.get("/api/mujoco/test")
+def mujoco_test(seed: int = 0, controller: str = "frontier") -> dict:
+    import traceback
+    try:
+        from firebot.sim.stream import EpisodeStream
+        s = EpisodeStream(seed=seed, controller=controller, world="mujoco")
+        sc = s.scene()
+        st = s.step()
+        return {
+            "ok": True,
+            "seed": seed,
+            "controller": controller,
+            "width": sc.get("width"),
+            "height": sc.get("height"),
+            "dt": sc.get("dt"),
+            "step_t": st.get("t"),
+            "robot_x": st.get("x"),
+            "robot_y": st.get("y"),
+        }
+    except Exception as e:
+        return {
+            "ok": False,
+            "error": str(e),
+            "traceback": traceback.format_exc(),
+        }
+
+
 @router.websocket("/ws/mujoco")
 async def ws_mujoco(ws: WebSocket, seed: int = 0, controller: str = "frontier",
                     speed: float = 1.0, max_steps: int = 1500, log: int = 0) -> None:
@@ -110,8 +137,18 @@ async def ws_mujoco(ws: WebSocket, seed: int = 0, controller: str = "frontier",
     pool = get_pool() if (log and get_pool) else None
     sid, buf, success = None, [], None
     try:
-        stream = await asyncio.to_thread(EpisodeStream, seed, controller, "mujoco",
-                                         min(max_steps, 5000))
+        # Keepalive while compiling scene so cloud proxies (Cloudflare, Render) don't drop silent WebSockets
+        await ws.send_json({"type": "status", "message": "Compiling simulation world..."})
+        init_task = asyncio.create_task(
+            asyncio.to_thread(EpisodeStream, seed, controller, "mujoco", min(max_steps, 5000))
+        )
+        while not init_task.done():
+            done, _ = await asyncio.wait([init_task], timeout=1.5)
+            if not done:
+                with contextlib.suppress(Exception):
+                    await ws.send_json({"type": "ping"})
+        stream = await init_task
+
         if pool is not None:
             try:
                 sid = await _db_start(pool, seed, controller)
@@ -119,7 +156,7 @@ async def ws_mujoco(ws: WebSocket, seed: int = 0, controller: str = "frontier",
                 pool = None
                 await ws.send_json({"type": "warn", "message": f"Not logging this run: {e}"})
         await ws.send_json({"type": "scene", "session_id": sid, **stream.scene()})
-        dt = stream.scene()["dt"]
+        dt = stream.scene().get("dt", 0.1)
         while not state.get("gone"):
             if state["paused"]:
                 await asyncio.sleep(0.05)
@@ -138,6 +175,11 @@ async def ws_mujoco(ws: WebSocket, seed: int = 0, controller: str = "frontier",
                 await ws.send_json({"type": "end", "success": frame["success"], "t": frame["t"],
                                     "collisions": frame["collisions"]})
                 break
+            # Pace the stream according to dt and speed multiplier so we don't saturate the socket
+            elapsed = time.monotonic() - t0
+            target_dt = dt / max(state.get("speed", 1.0), 0.25)
+            delay = max(0.005, target_dt - elapsed)
+            await asyncio.sleep(delay)
     except WebSocketDisconnect:
         pass
     except Exception as e:
@@ -145,6 +187,7 @@ async def ws_mujoco(ws: WebSocket, seed: int = 0, controller: str = "frontier",
         logging.getLogger("firebot.mujoco").exception("MuJoCo simulation stream failed: %s", e)
         with contextlib.suppress(Exception):
             await ws.send_json({"type": "error", "message": f"Simulation failed: {e}"})
+            await asyncio.sleep(0.5)
     finally:
         if sid is not None:  # also runs on disconnect, so an abandoned run never stays "live"
             with contextlib.suppress(Exception):

@@ -490,21 +490,56 @@ def _vosk_text(audio_bytes: bytes) -> str | None:
 
 
 def _decode_wav_without_librosa(audio_bytes: bytes):
-    """WAV -> 16 kHz mono float32 using only soundfile + scipy (both already librosa deps), so a
-    broken numba/librosa import can't take the local voice model down with it."""
+    """WAV -> 16 kHz mono float32 using soundfile+scipy if available, or pure wave+numpy fallback."""
     import io
-    from math import gcd
-
     import numpy as np
-    import soundfile as sf
-    from scipy.signal import resample_poly
 
-    data, sr = sf.read(io.BytesIO(audio_bytes), dtype="float32", always_2d=True)
-    mono = data.mean(axis=1)
-    if sr != 16_000:
-        g = gcd(int(sr), 16_000)
-        mono = resample_poly(mono, 16_000 // g, int(sr) // g)
-    return np.ascontiguousarray(mono, dtype="float32")
+    # 1. Try soundfile + scipy if installed
+    try:
+        from math import gcd
+        import soundfile as sf
+        from scipy.signal import resample_poly
+
+        data, sr = sf.read(io.BytesIO(audio_bytes), dtype="float32", always_2d=True)
+        mono = data.mean(axis=1)
+        if sr != 16_000:
+            g = gcd(int(sr), 16_000)
+            mono = resample_poly(mono, 16_000 // g, int(sr) // g)
+        return np.ascontiguousarray(mono, dtype="float32")
+    except Exception:
+        pass
+
+    # 2. Pure Python standard library wave + numpy fallback
+    import wave
+
+    with wave.open(io.BytesIO(audio_bytes), "rb") as wf:
+        n_channels = wf.getnchannels()
+        sampwidth = wf.getsampwidth()
+        framerate = wf.getframerate()
+        n_frames = wf.getnframes()
+        raw = wf.readframes(n_frames)
+
+    if sampwidth == 2:
+        samples = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
+    elif sampwidth == 4:
+        samples = np.frombuffer(raw, dtype=np.int32).astype(np.float32) / 2147483648.0
+    elif sampwidth == 1:
+        samples = (np.frombuffer(raw, dtype=np.uint8).astype(np.float32) - 128.0) / 128.0
+    else:
+        raise ValueError(f"Unsupported WAV sample width: {sampwidth}")
+
+    if n_channels > 1:
+        samples = samples.reshape(-1, n_channels).mean(axis=1)
+
+    if framerate != 16_000:
+        new_len = int(round(len(samples) * 16_000 / framerate))
+        samples = np.interp(
+            np.linspace(0, len(samples) - 1, new_len),
+            np.arange(len(samples)),
+            samples,
+        ).astype(np.float32)
+
+    return np.ascontiguousarray(samples, dtype="float32")
 
 
 def _decode_audio_16k(audio_bytes: bytes):

@@ -143,8 +143,10 @@ export default function MuJoCo() {
           sceneRef.current?.load(m);
           setSessionId(m.session_id || null);
           setPhase("running");
-        } else if (m.type === "warn") {
+        } else if (m.type === "warn" || m.type === "status") {
           setWarn(m.message);
+        } else if (m.type === "ping") {
+          // Keepalive ping from server, no-op
         } else if (m.type === "frame") {
           sceneRef.current?.frame(m);
           const now = performance.now();
@@ -173,7 +175,8 @@ export default function MuJoCo() {
     ws.onclose = (e) => {
       setPhase((prev) => {
         if (prev === "loading" || prev === "running") {
-          setError(`Simulation disconnected unexpectedly (${e.code === 1000 ? "stream ended early" : `code ${e.code}`}).`);
+          const detail = e.reason ? `: ${e.reason}` : ` (${e.code === 1000 ? "stream ended early" : `code ${e.code}`})`;
+          setError(`Simulation disconnected${detail}.`);
           return "error";
         }
         return prev;

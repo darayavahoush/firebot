@@ -67,6 +67,49 @@ def configure(decode: Callable[[bytes], Any], classifier: Callable[[], Any], che
     _decode, _classifier, _checkpoint = decode, classifier, checkpoint
 
 
+def _write_wav_file(path_or_buf, audio, sr: int = 16_000) -> None:
+    try:
+        import soundfile as sf
+        sf.write(path_or_buf, audio, sr, format="WAV", subtype="PCM_16")
+        return
+    except Exception:
+        pass
+    import wave
+    import numpy as np
+    pcm = np.clip(np.asarray(audio, dtype=np.float32) * 32767.0, -32768, 32767).astype(np.int16)
+    with wave.open(path_or_buf, "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(sr)
+        wf.writeframes(pcm.tobytes())
+
+
+def _read_wav_file(path_or_buf) -> tuple[Any, int]:
+    try:
+        import soundfile as sf
+        return sf.read(path_or_buf, dtype="float32")
+    except Exception:
+        pass
+    import wave
+    import numpy as np
+    with wave.open(path_or_buf, "rb") as wf:
+        n_channels = wf.getnchannels()
+        sampwidth = wf.getsampwidth()
+        sr = wf.getframerate()
+        raw = wf.readframes(wf.getnframes())
+    if sampwidth == 2:
+        samples = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
+    elif sampwidth == 4:
+        samples = np.frombuffer(raw, dtype=np.int32).astype(np.float32) / 2147483648.0
+    elif sampwidth == 1:
+        samples = (np.frombuffer(raw, dtype=np.uint8).astype(np.float32) - 128.0) / 128.0
+    else:
+        raise ValueError(f"Unsupported sample width: {sampwidth}")
+    if n_channels > 1:
+        samples = samples.reshape(-1, n_channels).mean(axis=1)
+    return samples, sr
+
+
 # ------------------------------------------------------------------ names, paths, vocabulary
 PROFILES_FILE = CLIPS_DIR / "profiles.json"
 DEFAULT_PROFILES = {
@@ -277,7 +320,6 @@ def save_pending(user: str | None, audio_bytes: bytes, text: str) -> str | None:
     if _base_ckpt()[0] is None:
         return None
     try:
-        import soundfile as sf
         audio = _decode(audio_bytes)
         if len(audio) < 4000:
             return None
@@ -286,7 +328,7 @@ def save_pending(user: str | None, audio_bytes: bytes, text: str) -> str | None:
         _cleanup_pending(user)
         cid = uuid.uuid4().hex[:12]
         buf = io.BytesIO()
-        sf.write(buf, audio, 16_000, format="WAV", subtype="PCM_16")
+        _write_wav_file(buf, audio, 16_000)
         (d / f"{cid}.wav").write_bytes(buf.getvalue())
         (d / f"{cid}.json").write_text(json.dumps({"text": text, "ts": time.time()}))
         return cid
@@ -465,12 +507,11 @@ async def add_clip(user: str, label: str, file: UploadFile = File(...)) -> dict[
         raise HTTPException(422, f"Couldn't decode that recording: {e}") from e
     if len(audio) < 4000:
         raise HTTPException(422, "That recording was too short -- try again")
-    import soundfile as sf
     d = _udir(user) / label
     d.mkdir(parents=True, exist_ok=True)
     nxt = 1 + max([int(p.stem) for p in d.glob("*.wav") if p.stem.isdigit()] or [0])
     buf = io.BytesIO()
-    sf.write(buf, audio, 16_000, format="WAV", subtype="PCM_16")
+    _write_wav_file(buf, audio, 16_000)
     (d / f"{nxt:03d}.wav").write_bytes(buf.getvalue())
     return _status(user)
 
@@ -509,7 +550,6 @@ async def train(user: str) -> dict[str, Any]:
 
 def _train_blocking(user: str, base: dict, trigger: str = "manual") -> dict:
     import numpy as np
-    import soundfile as sf
     import torch
     from firebot.voice_intent.personalize import holdout_indices, personalize, save_user_ckpt
 
@@ -519,7 +559,7 @@ def _train_blocking(user: str, base: dict, trigger: str = "manual") -> dict:
     keys, feats, names = [], [], []
     for c in _classes():
         for wav in sorted((_udir(user) / c).glob("*.wav")):
-            audio, sr = sf.read(str(wav), dtype="float32")
+            audio, sr = _read_wav_file(str(wav))
             keys.append(f"{c}/{wav.name}")
             feats.append(clf.embed_array(audio, sr))
             names.append(c)
@@ -638,7 +678,6 @@ async def enroll_speaker_voiceprint(user: str) -> dict[str, Any]:
         raise HTTPException(400, f"No audio clips found for '{user}'. Record command clips first.")
 
     import numpy as np
-    import soundfile as sf
     from firebot.speech.speaker_id import SpeakerIdentifier, trim_silence
 
     vp_dir = REPO_ROOT / "data" / "voiceprints"
@@ -648,10 +687,10 @@ async def enroll_speaker_voiceprint(user: str) -> dict[str, Any]:
     pcm_clips = []
     for w in wavs:
         try:
-            audio, sr = sf.read(str(w), dtype="float32")
+            audio, sr = _read_wav_file(str(w))
             if sr != 16_000:
-                import librosa
-                audio = librosa.resample(audio, orig_sr=sr, target_sr=16_000)
+                new_len = int(round(len(audio) * 16_000 / sr))
+                audio = np.interp(np.linspace(0, len(audio) - 1, new_len), np.arange(len(audio)), audio).astype(np.float32)
             audio = trim_silence(audio.astype(np.float32))
             pcm = (np.clip(audio, -1.0, 1.0) * 32767).astype("<i2").tobytes()
             if len(pcm) >= 6400:  # at least 0.2s of speech
