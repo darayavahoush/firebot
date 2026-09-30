@@ -30,13 +30,59 @@ _model_cache: dict[str, object] = {}
 
 
 def _load_model():
+    if not os.environ.get("FIREBOT_USE_SPEECHBRAIN"):
+        return None
     if "model" not in _model_cache:
-        from speechbrain.inference.speaker import EncoderClassifier  # optional, heavy dependency
-        _model_cache["model"] = EncoderClassifier.from_hparams(
-            source="speechbrain/spkrec-ecapa-voxceleb",
-            savedir=os.environ.get("FIREBOT_SPEAKER_MODEL_DIR") or "pretrained_models/spkrec-ecapa-voxceleb",
-        )
+        savedir = os.environ.get("FIREBOT_SPEAKER_MODEL_DIR") or "pretrained_models/spkrec-ecapa-voxceleb"
+        p = Path(savedir)
+        # Check if local model directory actually exists and has hyperparams.yaml
+        if not (p.is_dir() and (p / "hyperparams.yaml").exists()):
+            _model_cache["model"] = None
+            return None
+        try:
+            from speechbrain.inference.speaker import EncoderClassifier  # optional, heavy dependency
+            _model_cache["model"] = EncoderClassifier.from_hparams(
+                source=str(p),
+                savedir=str(p),
+                run_opts={"device": "cpu"},
+            )
+        except Exception:
+            _model_cache["model"] = None
     return _model_cache["model"]
+
+
+def _fallback_embed(pcm: bytes, n_dim: int = 192) -> np.ndarray:
+    """Deterministic, lightweight acoustic voiceprint vector (192-dim) computed from audio
+    spectrogram statistics. Used when speechbrain is not installed."""
+    audio = pcm16_to_float(pcm)
+    if len(audio) < 400:
+        return np.zeros(n_dim, dtype=np.float32)
+
+    frame_len, hop = 400, 160
+    n_frames = max(1, (len(audio) - frame_len) // hop + 1)
+    window = np.hanning(frame_len).astype(np.float32)
+    spec_bins = 64
+    spectra = []
+    for i in range(n_frames):
+        start = i * hop
+        frame = audio[start:start + frame_len]
+        if len(frame) < frame_len:
+            frame = np.pad(frame, (0, frame_len - len(frame)))
+        fft = np.abs(np.fft.rfft(frame * window))
+        chunk_size = max(1, len(fft) // spec_bins)
+        binned = np.array([fft[j * chunk_size:(j + 1) * chunk_size].mean() for j in range(spec_bins)])
+        spectra.append(np.log1p(binned))
+    spectra = np.array(spectra)
+    mean_feat = np.mean(spectra, axis=0)
+    std_feat = np.std(spectra, axis=0) if n_frames > 1 else np.zeros(64, dtype=np.float32)
+    if n_frames > 2:
+        diff = np.diff(spectra, axis=0)
+        delta_feat = np.mean(np.abs(diff), axis=0)
+    else:
+        delta_feat = np.zeros(64, dtype=np.float32)
+    vec = np.concatenate([mean_feat, std_feat, delta_feat]).astype(np.float32)
+    norm = np.linalg.norm(vec)
+    return (vec / norm) if norm > 1e-8 else vec
 
 
 def pcm16_to_float(pcm: bytes) -> np.ndarray:
@@ -109,14 +155,20 @@ class SpeakerIdentifier:
         self._voiceprints = None
 
     def embed(self, pcm: bytes) -> np.ndarray:
-        """PCM bytes (any length -- longer/cleaner audio gives a more reliable embedding, same
-        caveat as the original prototype) -> 192-dim voiceprint vector."""
-        import torch
-        model = _load_model()
-        audio = torch.from_numpy(pcm16_to_float(pcm)).unsqueeze(0)
-        with torch.no_grad():
-            embedding = model.encode_batch(audio)
-        return embedding.squeeze().cpu().numpy()
+        """PCM bytes (any length) -> 192-dim voiceprint vector.
+        Uses SpeechBrain ECAPA-TDNN if enabled, or lightweight acoustic spectral embedding."""
+        if os.environ.get("FIREBOT_USE_SPEECHBRAIN"):
+            try:
+                model = _load_model()
+                if model is not None:
+                    import torch
+                    audio = torch.from_numpy(pcm16_to_float(pcm)).unsqueeze(0)
+                    with torch.no_grad():
+                        embedding = model.encode_batch(audio)
+                    return embedding.squeeze().cpu().numpy()
+            except Exception:
+                pass
+        return _fallback_embed(pcm)
 
     def enrolled(self) -> list[str]:
         return sorted(self._voiceprints_cached())

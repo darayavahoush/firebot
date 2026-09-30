@@ -701,7 +701,10 @@ async def enroll_speaker_voiceprint(user: str) -> dict[str, Any]:
     if not pcm_clips:
         raise HTTPException(422, f"Could not extract usable speech PCM from {len(wavs)} audio clips.")
 
-    await asyncio.to_thread(ident.enroll_multi, user, pcm_clips)
+    try:
+        await asyncio.to_thread(ident.enroll_multi, user, pcm_clips)
+    except Exception as e:
+        raise HTTPException(500, f"Enrollment error: {e}")
     return {
         "enrolled": True,
         "user": user,

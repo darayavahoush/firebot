@@ -6,11 +6,13 @@ export class AudioRecorder {
   constructor() {
     this.stream = null;
     this.audioCtx = null;
+    this.workletNode = null;
     this.processor = null;
     this.source = null;
     this.samples = [];
     this.isRecording = false;
     this.analyser = null;
+    this.animFrame = null;
   }
 
   async start(onVolume) {
@@ -34,19 +36,55 @@ export class AudioRecorder {
     this.analyser.fftSize = 256;
     this.source.connect(this.analyser);
 
-    // Buffer size 4096 gives smooth updates ~10-12 times per second
-    this.processor = this.audioCtx.createScriptProcessor(4096, 1, 1);
-    this.source.connect(this.processor);
-    this.processor.connect(this.audioCtx.destination);
+    // Prefer modern AudioWorkletNode to avoid ScriptProcessorNode deprecation
+    let workletReady = false;
+    if (this.audioCtx.audioWorklet) {
+      try {
+        const code = `
+          class RecorderProcessor extends AudioWorkletProcessor {
+            process(inputs) {
+              const input = inputs[0];
+              if (input && input[0]) {
+                this.port.postMessage(input[0]);
+              }
+              return true;
+            }
+          }
+          registerProcessor('recorder-worklet', RecorderProcessor);
+        `;
+        const blob = new Blob([code], { type: "application/javascript" });
+        const blobUrl = URL.createObjectURL(blob);
+        await this.audioCtx.audioWorklet.addModule(blobUrl);
+        URL.revokeObjectURL(blobUrl);
 
-    const dataArray = new Uint8Array(this.analyser.frequencyBinCount);
+        this.workletNode = new AudioWorkletNode(this.audioCtx, "recorder-worklet");
+        this.workletNode.port.onmessage = (e) => {
+          if (!this.isRecording) return;
+          this.samples.push(new Float32Array(e.data));
+        };
+        this.source.connect(this.workletNode);
+        workletReady = true;
+      } catch (err) {
+        console.warn("AudioWorklet fallback:", err);
+      }
+    }
 
-    this.processor.onaudioprocess = (e) => {
-      if (!this.isRecording) return;
-      const input = e.inputBuffer.getChannelData(0);
-      this.samples.push(new Float32Array(input));
+    if (!workletReady) {
+      // Legacy fallback for environments lacking AudioWorklet
+      this.processor = this.audioCtx.createScriptProcessor(4096, 1, 1);
+      this.source.connect(this.processor);
+      this.processor.connect(this.audioCtx.destination);
+      this.processor.onaudioprocess = (e) => {
+        if (!this.isRecording) return;
+        const input = e.inputBuffer.getChannelData(0);
+        this.samples.push(new Float32Array(input));
+      };
+    }
 
-      if (onVolume && this.analyser) {
+    if (onVolume && this.analyser) {
+      const dataArray = new Uint8Array(this.analyser.frequencyBinCount);
+      const pollVolume = () => {
+        if (!this.isRecording) return;
         this.analyser.getByteFrequencyData(dataArray);
         let sum = 0;
         for (let i = 0; i < dataArray.length; i++) {
@@ -54,8 +92,10 @@ export class AudioRecorder {
         }
         const avg = sum / dataArray.length;
         onVolume(Math.min(1.0, avg / 128.0));
-      }
-    };
+        this.animFrame = requestAnimationFrame(pollVolume);
+      };
+      this.animFrame = requestAnimationFrame(pollVolume);
+    }
 
     this.isRecording = true;
     this.inputSampleRate = inputSampleRate;
@@ -65,9 +105,18 @@ export class AudioRecorder {
     if (!this.isRecording) return null;
     this.isRecording = false;
 
+    if (this.animFrame) {
+      cancelAnimationFrame(this.animFrame);
+      this.animFrame = null;
+    }
+    if (this.workletNode) {
+      this.workletNode.disconnect();
+      this.workletNode = null;
+    }
     if (this.processor) {
       this.processor.disconnect();
       this.processor.onaudioprocess = null;
+      this.processor = null;
     }
     if (this.source) {
       this.source.disconnect();
