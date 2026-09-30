@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 router = APIRouter()
-CONTROLLERS = ("rule", "scan", "frontier")
+CONTROLLERS = ("rule", "scan", "frontier", "mm_fusion")
 ROBOT_NAME = "mujoco-sim"
 FLUSH_EVERY = 10  # frames per DB batch (~1 s of sim time)
 

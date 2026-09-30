@@ -4,6 +4,13 @@ import { playSound } from "../lib/sound.js";
 
 const CONTROLLERS = [
   {
+    id: "mm_fusion",
+    label: "Multimodal DRL Fusion",
+    tag: "DEEP RL",
+    desc: "Deep actor-critic policy fusing 36-beam Lidar, thermal camera, 4x ultrasonic sonar, and gas sensors with Bayesian EIF estimation.",
+    sensor: "Lidar + Therm + Sonar + Gas (EIF)",
+  },
+  {
     id: "frontier",
     label: "Frontier Exploration",
     tag: "RECOMMENDED",
@@ -34,18 +41,31 @@ const STATE_CONFIG = {
   SPRAY: { label: "FIRE SUPPRESSION ACTIVE", cls: "text-telemetry bg-telemetry/15 border-telemetry/40 animate-pulse" },
 };
 
+const ROOM_NAMES = {
+  datacenter: "Datacenter Server Hall",
+  hazmat_lab: "Hazmat Containment Lab",
+  control_room: "Operations Control Center",
+  workshop: "Industrial Fabrication Bay",
+  storage: "Warehouse Depot",
+  office: "Administrative Office",
+  atrium: "Central Botanical Atrium",
+};
+
 export default function MuJoCo() {
   const hostRef = useRef(null);
   const sceneRef = useRef(null);
   const wsRef = useRef(null);
   const [status, setStatus] = useState(null);
   const [seed, setSeed] = useState(3);
-  const [controller, setController] = useState("frontier");
+  const [controller, setController] = useState("mm_fusion");
   const [speed, setSpeed] = useState(1);
   const [paused, setPaused] = useState(false);
   const [camMode, setCamMode] = useState("orbit");
   const [lidar, setLidar] = useState(true);
   const [pathOn, setPathOn] = useState(true);
+  const [particles, setParticles] = useState(true);
+  const [sensors, setSensors] = useState(true);
+  const [heatmap, setHeatmap] = useState(true);
   const [logRun, setLogRun] = useState(false);
   const [sessionId, setSessionId] = useState(null);
   const [warn, setWarn] = useState("");
@@ -80,8 +100,11 @@ export default function MuJoCo() {
     if (s) {
       s.showLidar = lidar;
       s.showPath = pathOn;
+      s.showParticles = particles;
+      s.showSensors = sensors;
+      s.showHeatmap = heatmap;
     }
-  }, [lidar, pathOn]);
+  }, [lidar, pathOn, particles, sensors, heatmap]);
 
   useEffect(() => {
     sceneRef.current?.setCamera(camMode);
@@ -165,10 +188,21 @@ export default function MuJoCo() {
     cls: "text-muted bg-panel2 border-line",
   };
 
+  // Resolve current active room
+  const currentRoom = sceneRef.current?.sc?.rooms?.find(
+    (r) => hud && hud.x >= r.x && hud.x <= r.x + r.w && hud.y >= r.y && hud.y <= r.y + r.h
+  );
+  const roomTitle = currentRoom ? (ROOM_NAMES[currentRoom.kind] || currentRoom.kind.toUpperCase()) : "Transit Corridor";
+
+  // Gas status badge
+  const gasVal = hud?.gas ?? 0;
+  const gasLevel = gasVal > 0.6 ? "HAZARD" : gasVal > 0.2 ? "ELEVATED" : "NOMINAL";
+  const gasCls = gasVal > 0.6 ? "text-alarm border-alarm/40 bg-alarm/10" : gasVal > 0.2 ? "text-warn border-warn/40 bg-warn/10" : "text-ok border-ok/40 bg-ok/10";
+
   return (
-    <div className="flex-1 min-h-0 p-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px] items-start">
+    <div className="flex-1 min-h-0 p-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px] items-start">
       {/* 3D Viewport Station */}
-      <div className="panel flex flex-col min-h-[580px] h-[calc(100vh-140px)] relative overflow-hidden">
+      <div className="panel flex flex-col min-h-[600px] h-[calc(100vh-140px)] relative overflow-hidden">
         {/* Viewport Top Bar */}
         <div className="px-4 py-3 bg-panel2/70 border-b border-line flex items-center justify-between z-10 gap-2 flex-wrap">
           <div className="flex items-center gap-2.5">
@@ -177,21 +211,23 @@ export default function MuJoCo() {
               MuJoCo 3D Rigid-Body Physics Sim
             </span>
             <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-panel border border-line text-faint uppercase">
-              36-Ray Lidar • 60Hz
+              Multimodal Sensors • 60Hz
             </span>
           </div>
 
           {/* Quick HUD Camera Controls */}
-          <div className="flex items-center gap-1.5 bg-panel/90 backdrop-blur p-1 rounded-xl border border-line">
+          <div className="flex items-center gap-1 bg-panel/90 backdrop-blur p-1 rounded-xl border border-line flex-wrap">
             {[
               { id: "orbit", label: "Orbit 3D" },
               { id: "top", label: "Top-Down" },
               { id: "follow", label: "Chase Cam" },
+              { id: "fpv", label: "FPV Mast" },
+              { id: "turret", label: "Turret Cam" },
             ].map((c) => (
               <button
                 key={c.id}
                 onClick={() => { playSound("click"); setCamMode(c.id); }}
-                className={`px-2.5 py-1 text-[11px] font-mono rounded-lg transition-all ${
+                className={`px-2.5 py-1 text-[11px] font-mono rounded-lg transition-all cursor-pointer ${
                   camMode === c.id
                     ? "bg-telemetry text-base font-bold shadow-[0_0_8px_rgba(240,85,155,0.4)]"
                     : "text-muted hover:text-ink"
@@ -215,10 +251,10 @@ export default function MuJoCo() {
             WORLD_GEOMS ┐
           </div>
           <div className="absolute bottom-14 left-3 text-[10px] font-mono text-ink/30 select-none pointer-events-none">
-            └ RAYCAST_SCANNER
+            └ MULTIMODAL_FUSION
           </div>
           <div className="absolute bottom-14 right-3 text-[10px] font-mono text-ink/30 select-none pointer-events-none">
-            STEP_DT: 0.016s ┘
+            PHYSICS_DT: 0.016s ┘
           </div>
 
           {/* Idle Prompt */}
@@ -270,34 +306,64 @@ export default function MuJoCo() {
             </div>
           )}
 
-          {/* Bottom Left Sensor Toggles */}
-          <div className="absolute bottom-3 left-3 flex gap-2 z-10">
+          {/* Bottom Left Tactical Sensor & Layer Toggles */}
+          <div className="absolute bottom-3 left-3 flex flex-wrap gap-1.5 z-10">
             <button
               onClick={() => { playSound("click"); setLidar((v) => !v); }}
-              className={`px-3 py-1.5 rounded-xl text-[12px] font-mono border backdrop-blur-md transition-all ${
+              className={`px-2.5 py-1.5 rounded-xl text-[11px] font-mono border backdrop-blur-md transition-all cursor-pointer ${
                 lidar
-                  ? "border-telemetry bg-telemetry/20 text-white shadow-[0_0_12px_rgba(240,85,155,0.4)]"
+                  ? "border-telemetry bg-telemetry/20 text-white shadow-[0_0_10px_rgba(240,85,155,0.35)]"
                   : "border-line bg-panel/80 text-muted hover:text-ink"
               }`}
             >
-              Lidar Rays ({lidar ? "ON" : "OFF"})
+              Lidar ({lidar ? "ON" : "OFF"})
             </button>
             <button
               onClick={() => { playSound("click"); setPathOn((v) => !v); }}
-              className={`px-3 py-1.5 rounded-xl text-[12px] font-mono border backdrop-blur-md transition-all ${
+              className={`px-2.5 py-1.5 rounded-xl text-[11px] font-mono border backdrop-blur-md transition-all cursor-pointer ${
                 pathOn
-                  ? "border-ok bg-ok/20 text-white shadow-[0_0_12px_rgba(125,227,176,0.4)]"
+                  ? "border-ok bg-ok/20 text-white shadow-[0_0_10px_rgba(125,227,176,0.35)]"
                   : "border-line bg-panel/80 text-muted hover:text-ink"
               }`}
             >
-              Planned Path ({pathOn ? "ON" : "OFF"})
+              Path ({pathOn ? "ON" : "OFF"})
+            </button>
+            <button
+              onClick={() => { playSound("click"); setParticles((v) => !v); }}
+              className={`px-2.5 py-1.5 rounded-xl text-[11px] font-mono border backdrop-blur-md transition-all cursor-pointer ${
+                particles
+                  ? "border-[#ffaa33] bg-[#ffaa33]/20 text-white shadow-[0_0_10px_rgba(255,170,51,0.35)]"
+                  : "border-line bg-panel/80 text-muted hover:text-ink"
+              }`}
+            >
+              FX Particles ({particles ? "ON" : "OFF"})
+            </button>
+            <button
+              onClick={() => { playSound("click"); setSensors((v) => !v); }}
+              className={`px-2.5 py-1.5 rounded-xl text-[11px] font-mono border backdrop-blur-md transition-all cursor-pointer ${
+                sensors
+                  ? "border-[#00f0ff] bg-[#00f0ff]/20 text-white shadow-[0_0_10px_rgba(0,240,255,0.35)]"
+                  : "border-line bg-panel/80 text-muted hover:text-ink"
+              }`}
+            >
+              Sonar/EIF ({sensors ? "ON" : "OFF"})
+            </button>
+            <button
+              onClick={() => { playSound("click"); setHeatmap((v) => !v); }}
+              className={`px-2.5 py-1.5 rounded-xl text-[11px] font-mono border backdrop-blur-md transition-all cursor-pointer ${
+                heatmap
+                  ? "border-[#ff4a2b] bg-[#ff4a2b]/20 text-white shadow-[0_0_10px_rgba(255,74,43,0.35)]"
+                  : "border-line bg-panel/80 text-muted hover:text-ink"
+              }`}
+            >
+              Heatmap ({heatmap ? "ON" : "OFF"})
             </button>
           </div>
         </div>
       </div>
 
       {/* Control Station & Telemetry Column */}
-      <div className="flex flex-col gap-5">
+      <div className="flex flex-col gap-4">
         {/* Simulation Configuration Card */}
         <div className="panel space-y-4 p-5">
           <div className="flex items-center justify-between border-b border-line pb-3">
@@ -323,7 +389,7 @@ export default function MuJoCo() {
               <button
                 onClick={handleRandomSeed}
                 title="Generate random seed"
-                className="h-8 w-8 rounded-lg border border-line bg-panel2 text-faint hover:text-ink flex items-center justify-center transition-colors"
+                className="h-8 w-8 rounded-lg border border-line bg-panel2 text-faint hover:text-ink flex items-center justify-center transition-colors cursor-pointer"
               >
                 🎲
               </button>
@@ -386,7 +452,7 @@ export default function MuJoCo() {
                 <button
                   key={v}
                   onClick={() => changeSpeed(v)}
-                  className={`flex-1 py-1.5 text-[12px] font-mono rounded-lg transition-all ${
+                  className={`flex-1 py-1.5 text-[12px] font-mono rounded-lg transition-all cursor-pointer ${
                     speed === v
                       ? "bg-telemetry text-base font-bold shadow-[0_0_8px_rgba(240,85,155,0.4)]"
                       : "text-muted hover:text-ink"
@@ -406,7 +472,7 @@ export default function MuJoCo() {
                 checked={logRun}
                 disabled={phase === "running"}
                 onChange={(e) => { playSound("click"); setLogRun(e.target.checked); }}
-                className="h-4 w-4 rounded accent-telemetry"
+                className="h-4 w-4 rounded accent-telemetry cursor-pointer"
               />
               <div className="flex flex-col min-w-0">
                 <span className="text-[12px] font-medium text-ink group-hover:text-telemetry transition-colors">
@@ -505,6 +571,64 @@ export default function MuJoCo() {
                 : "bg-panel text-faint border border-line"
             }`}>
               {hud?.pump ? "DISPENSING JET" : "STANDBY"}
+            </span>
+          </div>
+        </div>
+
+        {/* Environmental & Bayesian Sensor Diagnostics Card */}
+        <div className="panel p-5 space-y-3">
+          <div className="flex items-center justify-between border-b border-line pb-2.5">
+            <span className="font-display font-bold text-[14px] tracking-tight text-ink flex items-center gap-2">
+              <span className="h-2 w-2 rounded-full bg-[#00f0ff] animate-ping" />
+              ENVIRONMENTAL DIAGNOSTICS
+            </span>
+            <span className="text-[10px] font-mono text-faint">
+              EIF FUSION
+            </span>
+          </div>
+
+          {/* Sector Location */}
+          <div className="p-3 rounded-xl bg-panel2/60 border border-line space-y-1">
+            <div className="text-[10px] font-mono uppercase tracking-wider text-faint">Rover Sector Location</div>
+            <div className="text-[13px] font-display font-extrabold text-ink flex items-center gap-2">
+              <span className="text-telemetry">◈</span>
+              <span>{roomTitle}</span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2.5">
+            {/* Gas Sensor */}
+            <div className="p-2.5 rounded-xl bg-panel2/60 border border-line space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-mono uppercase tracking-wider text-faint">Gas Sensor</span>
+                <span className={`text-[9px] font-mono px-1 py-0.2 rounded font-bold border ${gasCls}`}>
+                  {gasLevel}
+                </span>
+              </div>
+              <div className="data text-[18px] font-bold text-ink">
+                {(gasVal * 100).toFixed(1)}<span className="text-[10px] font-mono text-faint ml-1">%</span>
+              </div>
+            </div>
+
+            {/* Thermal Peak */}
+            <div className="p-2.5 rounded-xl bg-panel2/60 border border-line space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-mono uppercase tracking-wider text-faint">Peak Heat</span>
+                <span className="text-[9px] font-mono text-faint">THERMAL</span>
+              </div>
+              <div className={`data text-[18px] font-bold ${hud?.peak > 0.4 ? "text-warn" : "text-ink"}`}>
+                {((hud?.peak ?? 0) * 100).toFixed(0)}<span className="text-[10px] font-mono text-faint ml-1">%</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Bayesian EIF Belief Target */}
+          <div className="p-2.5 rounded-xl bg-panel2/40 border border-line text-[11px] font-mono text-faint flex items-center justify-between">
+            <span>EIF Target Belief:</span>
+            <span className="text-ink font-bold">
+              {hud?.est
+                ? `(${hud.est.x.toFixed(1)}, ${hud.est.y.toFixed(1)}) ±${hud.est.sigma.toFixed(1)}m`
+                : "Acquiring..."}
             </span>
           </div>
         </div>

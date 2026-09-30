@@ -17,7 +17,9 @@ SUN = (0.16, -0.11)              # shadow drift per metre of height (world x, y)
 LIFT = (-0.05, 0.09)             # how far a top face appears shifted per metre of height
 BG = (34, 37, 44)
 FLOORS = {                       # room kind -> floor style (mirrors mapgen.ROOM_KINDS)
-    "office": "wood", "storage": "concrete", "workshop": "tile", "atrium": "grass"}
+    "office": "wood", "storage": "concrete", "workshop": "tile", "atrium": "grass",
+    "datacenter": "tile", "hazmat_lab": "concrete", "control_room": "tile",
+}
 
 
 def _hash(a: np.ndarray, b: np.ndarray | float = 0.0, seed: float = 0.0) -> np.ndarray:
@@ -258,9 +260,14 @@ def _draw_prop(cv: _Canvas, q: dict, idx: int) -> None:
             _paint(cv, b, _shade_disc((int(46 * g), int(130 * g), int(54 * g)), 1.28, 0.7)(
                 b, tx, ty), tx * 0.8, ty * 0.8)
         return
-    if kind == "barrel":
-        palette = [(178, 62, 48), (52, 98, 160), (196, 150, 46)]
-        col = palette[idx % 3]
+    if kind in ("barrel", "gas_cylinder", "column"):
+        if kind == "gas_cylinder":
+            col = (210, 185, 45)
+        elif kind == "column":
+            col = (150, 155, 165)
+        else:
+            palette = [(178, 62, 48), (52, 98, 160), (196, 150, 46)]
+            col = palette[idx % 3]
         _extrude(cv, s, z, tuple(int(c * 0.5) for c in col), tuple(int(c * 0.85) for c in col))
         top = _Shape(q["x"], q["y"], r=q["r"])
         _paint(cv, top, _shade_disc(col, 1.12, 0.9)(top, tx, ty), tx, ty)
@@ -270,9 +277,17 @@ def _draw_prop(cv: _Canvas, q: dict, idx: int) -> None:
             _Shape(q["x"], q["y"], r=q["r"] * 0.72), tx, ty), tx, ty)
         return
     # boxes ------------------------------------------------------------------------------
-    body = {"shelf": ((88, 66, 46), (150, 118, 84), (176, 140, 100)),
-            "table": ((120, 88, 58), (190, 150, 104), (214, 176, 128)),
-            "crate": ((124, 88, 36), (190, 142, 66), (214, 166, 84))}[kind]
+    body_map = {
+        "shelf": ((88, 66, 46), (150, 118, 84), (176, 140, 100)),
+        "table": ((120, 88, 58), (190, 150, 104), (214, 176, 128)),
+        "crate": ((124, 88, 36), (190, 142, 66), (214, 166, 84)),
+        "server_rack": ((24, 30, 42), (40, 52, 70), (55, 72, 95)),
+        "generator": ((50, 55, 60), (90, 95, 105), (120, 128, 140)),
+        "pallet": ((110, 85, 50), (160, 130, 85), (185, 155, 105)),
+        "console": ((35, 40, 50), (65, 75, 90), (95, 110, 130)),
+        "bench": ((90, 70, 50), (140, 110, 80), (170, 135, 100)),
+    }
+    body = body_map.get(kind, ((100, 100, 100), (150, 150, 150), (180, 180, 180)))
     _extrude(cv, s, z, body[0], body[1])
     _paint(cv, s, body[2], tx, ty)
     inner = _Shape(q["x"], q["y"], w=q["w"] - 0.08, h=q["h"] - 0.08, yaw=q.get("yaw", 0.0))

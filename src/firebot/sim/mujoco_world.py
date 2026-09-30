@@ -35,17 +35,32 @@ LIDAR_Z = 0.15            # height of the simulated scan plane, m
 ROBOT_RADIUS, ROBOT_HEIGHT = 0.22, 0.25
 SOLID, VISUAL, PROBE = 0, 1, 2   # geom groups; rays only see SOLID
 _SOLID_MASK = None
-_FLOOR_RGBA = {"office": (0.80, 0.65, 0.47), "storage": (0.68, 0.68, 0.66),
-               "workshop": (0.80, 0.83, 0.85), "atrium": (0.41, 0.61, 0.33)}
-_RGBA = {"wall": (0.72, 0.70, 0.66), "tree": (0.36, 0.24, 0.14), "canopy": (0.16, 0.5, 0.2),
-         "shrub": (0.2, 0.55, 0.25), "barrel": (0.75, 0.3, 0.2), "shelf": (0.55, 0.42, 0.3),
-         "table": (0.65, 0.5, 0.35), "crate": (0.8, 0.6, 0.25)}
+_FLOOR_RGBA = {
+    "office": (0.80, 0.65, 0.47), "storage": (0.68, 0.68, 0.66),
+    "workshop": (0.80, 0.83, 0.85), "atrium": (0.41, 0.61, 0.33),
+    "datacenter": (0.18, 0.26, 0.38), "hazmat_lab": (0.75, 0.70, 0.25),
+    "control_room": (0.28, 0.32, 0.42),
+}
+_RGBA = {
+    "wall": (0.72, 0.70, 0.66), "tree": (0.36, 0.24, 0.14), "canopy": (0.16, 0.5, 0.2),
+    "shrub": (0.2, 0.55, 0.25), "barrel": (0.75, 0.3, 0.2), "shelf": (0.55, 0.42, 0.3),
+    "table": (0.65, 0.5, 0.35), "crate": (0.8, 0.6, 0.25),
+    "server_rack": (0.18, 0.22, 0.28), "generator": (0.40, 0.45, 0.50),
+    "gas_cylinder": (0.85, 0.75, 0.20), "column": (0.60, 0.62, 0.65),
+    "pallet": (0.70, 0.55, 0.35), "console": (0.25, 0.30, 0.38),
+    "bench": (0.55, 0.40, 0.25),
+}
 
-
-_NEON = {"wall": (0.20, 0.14, 0.36, 1), "tree": (0.28, 0.16, 0.30, 1),
-         "canopy": (0.20, 0.85, 0.62, 0.92), "shrub": (0.22, 0.80, 0.55, 1),
-         "barrel": (0.95, 0.30, 0.65, 1), "shelf": (0.30, 0.48, 0.88, 1),
-         "table": (0.72, 0.62, 0.95, 1), "crate": (0.30, 0.85, 0.85, 0.95)}
+_NEON = {
+    "wall": (0.20, 0.14, 0.36, 1), "tree": (0.28, 0.16, 0.30, 1),
+    "canopy": (0.20, 0.85, 0.62, 0.92), "shrub": (0.22, 0.80, 0.55, 1),
+    "barrel": (0.95, 0.30, 0.65, 1), "shelf": (0.30, 0.48, 0.88, 1),
+    "table": (0.72, 0.62, 0.95, 1), "crate": (0.30, 0.85, 0.85, 0.95),
+    "server_rack": (0.12, 0.55, 0.88, 1), "generator": (0.35, 0.30, 0.60, 1),
+    "gas_cylinder": (0.95, 0.85, 0.20, 1), "column": (0.30, 0.25, 0.50, 1),
+    "pallet": (0.75, 0.45, 0.25, 1), "console": (0.20, 0.65, 0.75, 1),
+    "bench": (0.55, 0.35, 0.65, 1),
+}
 
 
 # (label, rgb, where it sits) -- drives both the beam colours in the scene and the legend
@@ -194,12 +209,13 @@ class MuJoCoWorld(World):
     # ---- construction ---------------------------------------------------------------------
     @classmethod
     def random(cls, rng: np.random.Generator | None = None, seed: int | None = None,
-               area_per_prop: float = 9.0) -> MuJoCoWorld:
+               area_per_prop: float = 9.0,
+               room_kinds: tuple[str, ...] | None = None) -> MuJoCoWorld:
         """A fresh procedurally generated building, filled with clutter (denser = smaller
         `area_per_prop`)."""
         from .mapgen import generate_layout, generate_props
         rng = rng if rng is not None else np.random.default_rng(seed)
-        width, height, walls, rooms = generate_layout(rng)   # typed rooms, all reachable
+        width, height, walls, rooms = generate_layout(rng, room_kinds=room_kinds)   # typed rooms, all reachable
         props = generate_props(rng, width, height, walls, area_per_prop=area_per_prop,
                                rooms=rooms)
         return cls(walls=walls, width=width, height=height, props=props, rooms=rooms)

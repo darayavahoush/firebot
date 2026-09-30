@@ -115,12 +115,14 @@ ROOM_KINDS = {
     "hazmat_lab":   ("epoxy_hazard", {"gas_cylinder": 4, "barrel": 3, "table": 2}, 1.1),
     "control_room": ("tech_deck",    {"console": 4, "shelf": 2, "table": 2}, 0.9),
 }
-_KIND_ORDER = ("office", "storage", "workshop", "atrium", "datacenter", "hazmat_lab", "control_room")
+_KIND_ORDER = ("office", "storage", "workshop", "atrium")
+ALL_ROOM_KINDS = ("office", "storage", "workshop", "atrium", "datacenter", "hazmat_lab", "control_room")
 
 
 def generate_layout(rng: np.random.Generator, width_range=(15.0, 22.0),
                     height_range=(11.0, 16.0), split_depth_range=(3, 4),
-                    max_tries: int = 40) -> tuple[float, float, list[tuple], list[dict]]:
+                    max_tries: int = 40,
+                    room_kinds: tuple[str, ...] | None = None) -> tuple[float, float, list[tuple], list[dict]]:
     """Like `generate_building` but also returns typed rooms and *guarantees* every room is
     reachable (a robot-sized body can drive between all of them); layouts that seal a room off
     are redrawn. Returns `(width, height, walls, rooms)` with rooms as
@@ -130,17 +132,19 @@ def generate_layout(rng: np.random.Generator, width_range=(15.0, 22.0),
                                                 split_depth_range, enclosed=True)
         if is_connected(width, height, walls):
             break
-    kinds = _assign_kinds(rng, len(cells))
+    kinds = _assign_kinds(rng, len(cells), room_kinds=room_kinds)
     rooms = [{"x": float(x), "y": float(y), "w": float(w), "h": float(h), "kind": k}
              for (x, y, w, h), k in zip(cells, kinds)]
     return width, height, walls, rooms
 
 
-def _assign_kinds(rng: np.random.Generator, n: int) -> list[str]:
+def _assign_kinds(rng: np.random.Generator, n: int,
+                  room_kinds: tuple[str, ...] | None = None) -> list[str]:
     """Cycle through kinds in random order so a building has variety, not five storerooms."""
+    order = room_kinds or _KIND_ORDER
     out: list[str] = []
     while len(out) < n:
-        out += [str(k) for k in rng.permutation(_KIND_ORDER)]
+        out += [str(k) for k in rng.permutation(order)]
     return out[:n]
 
 

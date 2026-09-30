@@ -28,8 +28,9 @@ class EpisodeStream:
         if controller not in CONTROLLERS:
             raise ValueError(f"controller must be one of {sorted(CONTROLLERS)}")
         if world == "mujoco":
+            from .mapgen import ALL_ROOM_KINDS
             from .mujoco_world import MuJoCoWorld
-            factory = lambda rng: MuJoCoWorld.random(rng)
+            factory = lambda rng: MuJoCoWorld.random(rng, room_kinds=ALL_ROOM_KINDS)
         elif world == "random":
             from .world import World
             factory = lambda rng: World.random(rng)

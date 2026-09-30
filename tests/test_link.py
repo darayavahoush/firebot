@@ -207,7 +207,7 @@ def test_operator_goto_then_stop_is_immediate():
     sink.close()
     moved = [i for i, c in enumerate(hw.applied) if c.v > 0]
     assert moved and moved[0] < 20                       # GOTO started promptly
-    after = hw.applied[62:]                              # STOP submitted at frame 60
+    after = [c for c in hw.applied if c.ack is not None and c.ack >= 60]  # STOP submitted at frame 60
     assert after and all(c.v == 0 and c.w == 0 and not c.pump for c in after)
     ops = sink.backend.operator
     assert [o["text"] for o in ops] == ["go to the east side", "stop"]

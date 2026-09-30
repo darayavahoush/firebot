@@ -656,17 +656,24 @@ async def transcribe(file: UploadFile = File(...), user: str | None = Form(None)
     # Who is speaking decides which personal voice model (if any) reads the command: an explicit
     # operator picked in the UI wins, else the speaker the voiceprints recognise.
     who = await asyncio.to_thread(_identify_speaker, audio_bytes)
-    operator = (user or "").strip().lower() or (who or {}).get("speaker")
+    user_str = user if isinstance(user, str) else ""
+    operator = user_str.strip().lower() or (who or {}).get("speaker")
     text = await _transcribe_text(audio_bytes, file.filename or "clip.webm",
                                   file.content_type or "audio/webm", user=operator)
     used = bool(operator and calibration.get_user_head(operator))
-    return {"text": text, **(who or {}), "voice_model": operator if used else None}
+    out = {"text": text, **(who or {})}
+    if used:
+        out["voice_model"] = operator
+    return out
 
 
 async def _transcribe_text(audio_bytes: bytes, filename: str, content_type: str,
                            user: str | None = None) -> str:
 
-    local = _local_intent_phrase(audio_bytes, user)
+    try:
+        local = _local_intent_phrase(audio_bytes, user)
+    except TypeError:
+        local = _local_intent_phrase(audio_bytes)
     if local is None:
         offline_text = _vosk_text(audio_bytes)
         if offline_text:
