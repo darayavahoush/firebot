@@ -15,6 +15,4 @@ services:
       - key: FIREBOT_VOICE_INTENT_CHECKPOINT
         value: checkpoints/intent_head.pt
       - key: MUJOCO_GL
-        value: osmesa
-      - key: PYOPENGL_PLATFORM
-        value: osmesa
+        value: disabled

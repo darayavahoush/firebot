@@ -61,17 +61,24 @@ async def _db_end(pool, sid: str, success: bool | None) -> None:
 
 
 def _availability() -> tuple[bool, str]:
+    import os
+    os.environ.setdefault("MUJOCO_GL", "disabled")
     try:
         import mujoco  # noqa: F401
+        return True, ""
     except ImportError:
         return False, "mujoco isn't installed in the backend's venv: pip install -e '.[mujoco]'"
-    return True, ""
+    except Exception as e:
+        return False, f"MuJoCo initialization error: {e}"
 
 
 @router.get("/api/mujoco/status")
 def mujoco_status() -> dict:
-    ok, detail = _availability()
-    return {"available": ok, "controllers": list(CONTROLLERS), "detail": detail}
+    try:
+        ok, detail = _availability()
+        return {"available": ok, "controllers": list(CONTROLLERS), "detail": detail}
+    except Exception as e:
+        return {"available": False, "controllers": list(CONTROLLERS), "detail": f"Status check failed: {e}"}
 
 
 @router.websocket("/ws/mujoco")

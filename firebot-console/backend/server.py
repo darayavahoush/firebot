@@ -62,6 +62,7 @@ def _ensure_numba_cache_dir() -> None:
 
 
 _ensure_numba_cache_dir()
+os.environ.setdefault("MUJOCO_GL", "disabled")
 
 from firebot.command.parser import RuleParser  # noqa: E402
 from firebot.db.summary import narrate, summarize_run

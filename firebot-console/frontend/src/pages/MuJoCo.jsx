@@ -76,12 +76,18 @@ export default function MuJoCo() {
 
   useEffect(() => {
     fetch("/api/mujoco/status")
-      .then((r) => r.json())
+      .then(async (r) => {
+        if (!r.ok) {
+          const text = await r.text();
+          throw new Error(`HTTP ${r.status}: ${text || r.statusText}`);
+        }
+        return r.json();
+      })
       .then(setStatus)
-      .catch(() =>
+      .catch((err) =>
         setStatus({
           available: false,
-          detail: "Backend not reachable — check that the API server is running.",
+          detail: `Backend error: ${err.message || "Check that the API server is running."}`,
         })
       );
   }, []);
