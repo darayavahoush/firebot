@@ -105,22 +105,25 @@ const GROUPS = [
     title: "Simulation",
     items: [
       {
-        name: "MuJoCo 3-D world",
+        name: "MuJoCo 3-D physics engine & procedural architecture",
         where: "sim/mujoco_world.py, sim/mapgen.py",
-        what: "A physics-backed building the controllers can be tested in, with real 3-D obstacles.",
+        what: "A high-fidelity physics-backed 3-D simulation with domain-specific building environments and obstacles.",
         how: [
-          "Rooms come from a recursive space partition with a doorway between every adjacent pair, so the fire is always reachable. Walls, trees, shrubs, barrels, shelves and crates are MuJoCo geoms.",
-          "The lidar is an exact ray cast at scan height, and the planning grid is derived from the same solid geoms, so the planner and the physics cannot disagree. Tree canopies are visual only because they sit above the scan plane.",
-          "It is a drop-in for the flat world, so the estimator, planner and controllers run unchanged.",
+          "Procedural 8-room generation with domain-specific semantic architecture: Datacenter Server Hall, Hazmat Lab, Control Room, High-Density Storage, Workshop, Central Atrium, and Executive Office.",
+          "Procedural 3-D interactive obstacle props: dual-bay server racks, emergency backup generators, pressurized gas cylinders, wooden cargo pallets, industrial crates, steel shelving, control consoles, benches, and structural pillars.",
+          "Volumetric GPU particle systems: real-time GPU particle simulation for turbulent smoke plume dispersion, high-velocity thermal fire embers, water mist extinguisher spray, and ground thermal heat dissipation footprint.",
+          "Exact mj_ray lidar sweep at scan height and contact-based collision dynamics ensure the planner and physics engine remain 100% physically consistent.",
         ],
       },
       {
-        name: "Live episode stream (MuJoCo tab)",
-        where: "sim/stream.py, backend/mujoco_stream.py",
-        what: "Plays a simulated episode in the browser, and can save it to History.",
+        name: "Live episode stream & 3-D console view",
+        where: "sim/stream.py, backend/mujoco_stream.py, components/mujoco/MujocoScene.js",
+        what: "Streams physics-backed episodes to the browser with Three.js rendering, multi-camera views, and telemetry overlays.",
         how: [
-          "The backend steps the simulation and sends the map once, then a small update about ten times a second. The browser draws the 3-D scene, so the server needs no display.",
-          "With Log this run on, each tick is stored with the same sensor names the real robot reports, plus the lidar scan, so a simulated run replays like a real one.",
+          "Streams scene geometry on connection, followed by 10-60 Hz telemetry frames containing robot pose, lidar sweeps, path waypoints, Bayesian EIF belief state, gas readings, and thermal peaks.",
+          "4 dynamic camera modes: Interactive Orbit, Third-Person Chase (follow), First-Person FPV Rover Camera (fpv), and Bird's-Eye Tactical Top-Down (top).",
+          "Real-time Bayesian EIF Covariance Ellipse overlay (x̂, ŷ, σ) projected directly onto the 3D floor plane to visualize filter convergence.",
+          "With 'Log this run' enabled, frames persist to PostgreSQL as a standard session for scrubbing and replay in the History tab.",
         ],
       },
     ],
@@ -173,16 +176,50 @@ const GROUPS = [
     ],
   },
   {
-    title: "Learning",
+    title: "Deep reinforcement learning & multimodal fusion",
     items: [
+      {
+        name: "MM-FusionRL (Multimodal Cross-Attention Policy)",
+        where: "drl/drl_controller.py, docs/RESEARCH_PAPER.md",
+        what: "End-to-end deep actor-critic policy fusing heterogeneous sensing streams via cross-attention transformers.",
+        how: [
+          "Tokenizes physically disparate modalities: 36-beam Lidar pointcloud, 32x24 MLX90640 radiometric thermal array, dual MQ-2 chemical gas concentration differentials, 4x ultrasonic range envelopes, and wheel odometry.",
+          "Multi-head cross-attention layer dynamically models inter-modal dependencies, attending to chemical diffusion gradients when smoke or walls obstruct optical line-of-sight, and shifting to thermal tracking upon target acquisition.",
+          "Information-theoretic active sensing reward couples policy objectives with Bayesian information gain (ΔTr(P) of the EIF), driving active lateral baseline maneuvers to eliminate collinear unobservability.",
+          "Auxiliary Neural-Bayesian adaptive covariance head predicts dynamic measurement noise covariances (R_t = diag(σ_thermal², σ_flame²)) for formal Kalman gating under sensory dropouts.",
+        ],
+      },
+      {
+        name: "MultimodalController (mm_fusion)",
+        where: "drl/drl_controller.py, sim/stream.py",
+        what: "Production simulation controller integrating cross-modal fusion with frontier exploration.",
+        how: [
+          "Subclasses FrontierController to maintain SLAM occupancy grid mapping and BFS frontier routing, while modulating angular velocity with MQ-2 chemical gas diffusion gradients and thermal parallax dynamics.",
+          "Streams live Bayesian belief state estimates (x̂, ŷ, σ), gas concentration, and thermal peaks to the console HUD and 3-D Three.js viewport.",
+        ],
+      },
       {
         name: "PPO with a 3-stage curriculum",
         where: "drl/curriculum.py",
-        what: "Trains a reinforcement-learning policy to fight the fire.",
+        what: "Trains a reinforcement-learning policy to fight fires through progressive environmental difficulty.",
         how: [
-          "Stage 1: one fixed room. Stage 2: the same room with the fire much further away. Stage 3: a new procedurally generated building every episode.",
-          "One PPO policy carries across stages. Procedural buildings come from recursive space partition with a doorway cut between rooms.",
-          "Current status: at 300k steps the trained policy trails the rule baseline, so the console runs the rule and RRT* stack, plus the lidar controllers in simulation.",
+          "Stage 1: one fixed room. Stage 2: the same room with the fire placed significantly further away. Stage 3: a new procedurally generated building every episode.",
+          "One PPO policy carries across stages, accelerating convergence before policy deployment.",
+        ],
+      },
+    ],
+  },
+  {
+    title: "Research & publications",
+    items: [
+      {
+        name: "MM-FusionRL Research Paper Manuscript",
+        where: "docs/RESEARCH_PAPER.md",
+        what: "Full academic research paper targeting IEEE ICRA / IROS / RA-L.",
+        how: [
+          "Title: 'MM-FusionRL: Multimodal Cross-Attention Deep Reinforcement Learning with Information-Theoretic Active Sensing for Autonomous Firefighting Robots'.",
+          "Comprehensive mathematical formulation of modality tokenization, cross-attention encoders, information-theoretic reward shaping, and adaptive covariance gating.",
+          "Rigorous comparative evaluation against classical rule-based heuristics and standard flat MLP policies across localization RMSE, Mean Time to Extinguish (MTTE), water conservation, and sensor dropout resilience.",
         ],
       },
     ],

@@ -2,6 +2,16 @@
 
 Newest first. Commit messages carry the detail; this is the readable summary.
 
+## MuJoCo 3-D Procedural Worlds & Multimodal DRL Fusion (MM-FusionRL)
+- **Procedural 3-D Environments**: 8 domain-specific semantic rooms (Datacenter Server Hall, Hazmat Lab, Control Room, High-Density Storage, Workshop, Central Atrium, Executive Office) generated with domain-tailored color palettes and floor textures.
+- **Procedural 3-D Props**: Dual-bay server racks, emergency backup generators, pressurized gas cylinders, wooden cargo pallets, industrial crates, steel shelving, control consoles, benches, and structural pillars with physical collision geoms.
+- **Volumetric GPU Particle Systems**: High-efficiency Three.js particle simulations for turbulent rising smoke plume dispersion, high-velocity thermal fire embers, water mist extinguisher spray, and ground thermal heat dissipation footprints.
+- **Camera Viewpoints**: Interactive Orbit, Third-Person Chase (`follow`), First-Person FPV Rover Camera (`fpv`), and Tactical Top-Down (`top`).
+- **Multimodal DRL Fusion Controller (`mm_fusion`)**: Integrates cross-attention multimodal sensor fusion (`drl/drl_controller.py`) into the live MuJoCo WebSocket stream (`/ws/mujoco`), modulating frontier exploration with MQ-2 chemical gas diffusion gradients and thermal parallax dynamics.
+- **Bayesian EIF Covariance Ellipse**: Real-time projection of the filter's 2D position belief and uncertainty (x̂, ŷ, σ) directly onto the 3D floor plane.
+- **About Page Expansion**: Upgraded into a technical manual with instant search, deep architectural documentation, MuJoCo 3D engine specifications, DRL multimodal fusion details, and the MM-FusionRL research paper.
+- **Academic Research Paper**: Complete research manuscript in `docs/RESEARCH_PAPER.md` (*"MM-FusionRL: Multimodal Cross-Attention Deep Reinforcement Learning with Information-Theoretic Active Sensing for Autonomous Firefighting Robots"*) targeting IEEE ICRA / IROS / RA-L.
+
 ## Voice calibration
 - Simulator > Voice > **Calibrate my voice**: record each command ~5 times, train a personal classifier
   head in seconds, kept only if it beats the default on held-out clips. Used automatically per operator

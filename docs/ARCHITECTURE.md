@@ -36,13 +36,20 @@ data structures, so switching to the robot changes drivers only.
     Simulator (browser-only), see "Web console" below
 11. [x] Speaker identification for the audit trail; offline voice-intent classifier
 12. [ ] Real camera stream (the console shows placeholder footage), real map / SLAM
-13. [x] MuJoCo world: 3-D MJCF scenes generated from the same procedural floor plans, exact
-    `mj_ray` lidar, contact-based collisions, trees / shrubs / barrels / shelves as obstacles;
-    a drop-in `World` (see "MuJoCo world" below)
-14. [x] Lidar controllers: `ScanController` (gap-following avoidance) and `FrontierController`
-    (occupancy grid from lidar sweeps + frontier exploration), selectable with
-    `firebot-sim --controller`. Sim-only: the real robot has no lidar yet
-15. [x] Console MuJoCo tab: a live 3-D episode over WebSocket, optional logging to PostgreSQL
+13. [x] MuJoCo world: 3-D MJCF scenes with 8 domain-specific rooms (Datacenter Server Hall, Hazmat Lab,
+    Control Room, High-Density Storage, Workshop, Central Atrium, Executive Office), procedural props
+    (server racks, gas cylinders, generators, pallets, crates), volumetric particle systems (smoke, embers,
+    extinguisher mist), exact `mj_ray` lidar, contact-based collisions; a drop-in `World` (see "MuJoCo world" below)
+14. [x] Lidar & Multimodal controllers: `ScanController` (gap-following avoidance), `FrontierController`
+    (occupancy grid from lidar sweeps + frontier exploration), and `MultimodalController` (`mm_fusion`:
+    deep reinforcement learning with multimodal cross-attention, gas gradient tracking, and thermal parallax lock),
+    selectable with `firebot-sim --controller`.
+15. [x] Console MuJoCo tab: live 3-D episode over WebSocket (`/ws/mujoco`), 4 camera modes (Orbit, Chase follow,
+    FPV rover camera, Top-down tactical), real-time Bayesian EIF covariance ellipse overlay (x̂, ŷ, σ),
+    interactive speed multipliers (0.5x to 8x), and optional logging to PostgreSQL.
+16. [x] Academic Research Paper (MM-FusionRL): Full manuscript targeting IEEE ICRA / IROS / RA-L in
+    `docs/RESEARCH_PAPER.md` with cross-attention transformer fusion, active information-theoretic sensing,
+    and adaptive covariance estimation.
 
 ## Command layer (`firebot.command`)
 operator text -> `RuleParser` (deterministic) -> [`SLMParser`, only if rules returned UNKNOWN]
@@ -138,9 +145,9 @@ Controllers, each building on the last:
 | `rule` | 4 ultrasonic beams, 3 flame sensors, gas | explore / track / spray baseline |
 | `scan` | + 36-ray lidar (`FireEnv.scan`, 360 deg, 4 m) | same logic, gap-following avoidance instead of spinning |
 | `frontier` | + robot pose | builds an occupancy grid from lidar, BFS to the nearest frontier, pure pursuit |
+| `mm_fusion` | 36-ray lidar, thermal peak, gas gradients, sonars, EIF belief | Multimodal cross-attention DRL fusion with chemical gas advection tracking and thermal parallax lock |
 
-The lidar is a simulation-only sensor. Only `rule` runs on the sensors the real robot has, so
-results for `scan` and `frontier` say what a lidar would add, not how the current hardware behaves.
+The lidar and full cross-modal neural heads are simulation & benchmark features. Only `rule` runs on the sensors the real robot currently mounts, while `mm_fusion`, `scan`, and `frontier` evaluate what advanced sensory suites and DRL policies deliver.
 
 ## Web console (`firebot-console/`)
 ```

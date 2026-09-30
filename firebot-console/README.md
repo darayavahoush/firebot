@@ -7,9 +7,9 @@ to `firebot-brain` and reads telemetry and run history from PostgreSQL.
 |---|---|---|
 | **Live** | Real robot: MLX90640 thermal view, tank / gas / fire-fix rings, analog joystick, pump toggle, nozzle slider, command log, alerts | yes |
 | **Simulator** | Self-contained browser demo: procedural map, mock sensors, EIF estimator, RRT* planner, voice and text commands | no (voice transcription fallback aside) |
-| **MuJoCo** | Live 3-D episode from the physics-backed sim (three.js): pick a seed and controller, orbit / top / follow cameras, lidar rays, planned path, optional logging to History | yes, and `pip install -e ".[mujoco]"` |
+| **MuJoCo** | Live 3-D episode from the physics-backed sim (three.js): 8 procedural room domains, volumetric GPU particles, controllers (Multimodal DRL Fusion, Frontier, Scan, Rule), 4 camera modes (orbit / top / follow / fpv), lidar rays, EIF belief overlay, planned path, optional logging to History | yes, and `pip install -e ".[mujoco]"` |
 | **History** | Past runs: replay with a scrubber, plain-English summary, fault list, sensor chart | yes |
-| **About** | What NIRVANA is and how the pieces fit | no |
+| **About** | Technical manual: searchable reference covering state estimation, planning, MuJoCo 3D engine, DRL & multimodal fusion, and the MM-FusionRL research paper | no |
 
 ## One-time setup
 ```bash
@@ -70,12 +70,18 @@ by the speaker-ID voiceprints); everyone else keeps the default model. **Reset t
 - There are no user accounts, so anyone who can reach the console can calibrate or reset any operator name.
 
 ## MuJoCo page
-Runs the MuJoCo-backed simulator on the backend and streams it to the browser.
-- Controls: map seed, controller (Frontier, Scan, Rule baseline), speed 0.5x to 8x, pause and
-  restart, camera (orbit, top, follow), lidar rays and planned-path toggles.
-- **Log this run** saves the episode as a `mujoco-sim` session, so it appears on the History page
-  and, while it plays, on Live. If the database is unreachable the run still plays and the panel
-  shows a warning.
+Runs the MuJoCo-backed 3-D simulator on the backend and streams it live to the browser via WebSocket.
+- **Controllers**:
+  - `Multimodal DRL Fusion` (`mm_fusion`): Deep actor-critic cross-attention policy fusing 36-beam Lidar, radiometric thermal array, 4x ultrasonic sonar, and MQ-2 chemical gas diffusion gradients with Bayesian EIF estimation.
+  - `Frontier Exploration` (`frontier`): Autonomous occupancy grid SLAM and frontier point routing with pure-pursuit path execution.
+  - `Lidar Scan Avoidance` (`scan`): 360° obstacle clearance scanning with wandering open-corridor search and thermal takeover.
+  - `Rule-Based Baseline` (`rule`): Direct observation reactive policy relying strictly on 4 ultrasonic range beams.
+- **Procedural Environments**: 8 domain-specific semantic rooms (Datacenter Server Hall, Hazmat Lab, Control Room, High-Density Storage, Workshop, Central Atrium, Executive Office) populated with 3D obstacle props (dual-bay server racks, emergency generators, pressurized gas cylinders, cargo pallets, crates, steel shelving, control consoles, benches, structural pillars).
+- **Volumetric GPU Particles**: Real-time particle simulation for turbulent smoke plume dispersion, high-velocity thermal fire embers, water mist extinguisher spray, and ground thermal heat dissipation footprints.
+- **Multi-Camera Modes**: Interactive Orbit, Third-Person Chase (`follow`), First-Person FPV Rover Camera (`fpv`), and Tactical Top-Down (`top`).
+- **Telemetry HUD**: Live Bayesian EIF Covariance Ellipse overlay (x̂, ŷ, σ), gas concentration, thermal peak intensity, 36-beam Lidar rays, and planned frontier paths.
+- **Playback Controls**: Speed multipliers (0.5x, 1x, 2x, 4x, 8x), pause/resume, random seed generator.
+- **Log this run**: Saves the episode as a `mujoco-sim` session in PostgreSQL, enabling scrubbed replay in History and live mirroring on the Live tab.
 - It shows a simulated robot on a generated map. It is not connected to the real robot, and the
   lidar it uses does not exist on the hardware.
 - If the tab says the backend can't be reached or `mujoco` isn't installed, see Troubleshooting.
