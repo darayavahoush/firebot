@@ -5,12 +5,16 @@ services:
     region: oregon
     plan: free
     branch: main
-    buildCommand: pip install --upgrade pip && pip install -r firebot-console/backend/requirements.txt && pip install -e .
+    buildCommand: pip install --upgrade pip && pip install -r firebot-console/backend/requirements.txt && pip install -e '.[mujoco]'
     startCommand: cd firebot-console/backend && uvicorn server:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.9
       - key: FIREBOT_CORS_ORIGINS
-        value: "https://darayavahoush.github.io,https://anabaena-firebot-console.hf.space,http://localhost:5173"
+        value: "https://darayavahoush.github.io,https://anabaena-firebot-console.hf.space,http://localhost:5173,https://firebot-api.onrender.com"
       - key: FIREBOT_VOICE_INTENT_CHECKPOINT
         value: checkpoints/intent_head.pt
+      - key: MUJOCO_GL
+        value: osmesa
+      - key: PYOPENGL_PLATFORM
+        value: osmesa
