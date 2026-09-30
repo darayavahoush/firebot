@@ -544,7 +544,8 @@ def test_numba_cache_dir_is_set_to_a_writable_folder(monkeypatch, tmp_path):
 
 
 def test_transcribe_adds_speaker_fields_when_identified(server, monkeypatch):
-    monkeypatch.setattr(server, "_local_intent_phrase", lambda audio_bytes: ("stop", 0.95))
+    # the recognised speaker is passed on as the operator, so the stub takes an optional user
+    monkeypatch.setattr(server, "_local_intent_phrase", lambda audio_bytes, user=None: ("stop", 0.95))
 
     class TrustingRouter:
         def should_trust(self, confidence):
@@ -564,3 +565,28 @@ def test_identify_speaker_off_or_not_enrolled_returns_none(server, tmp_path, mon
     monkeypatch.setattr(server, "SPEAKER_ID_ENABLED", True)
     monkeypatch.setattr(server, "SPEAKER_VOICEPRINT_DIR", tmp_path)  # empty dir: nobody enrolled
     assert server._identify_speaker(b"x") is None
+
+
+def test_transcribe_passes_operator_to_local_model(server, monkeypatch):
+    """An explicit `user` (or the recognised speaker) reaches the local classifier so a personal
+    voice model can be used; with nobody known the call is unchanged."""
+    seen = []
+
+    def fake_local(audio_bytes, user=None):
+        seen.append(user)
+        return ("stop", 0.95)
+
+    class TrustingRouter:
+        def should_trust(self, confidence):
+            return True
+
+        def should_audit(self):
+            return False
+
+    monkeypatch.setattr(server, "_local_intent_phrase", fake_local)
+    monkeypatch.setattr(server, "_get_voice_router", lambda: TrustingRouter())
+    monkeypatch.setattr(server, "_identify_speaker", lambda b: {"speaker": "avinandan"})
+    out = asyncio.run(server.transcribe(_FakeUploadFile(b"x"), user="Ananya"))
+    assert out["text"] == "stop" and seen[-1] == "ananya"          # explicit operator wins
+    asyncio.run(server.transcribe(_FakeUploadFile(b"x"), user=None))
+    assert seen[-1] == "avinandan"                                  # else the identified speaker
