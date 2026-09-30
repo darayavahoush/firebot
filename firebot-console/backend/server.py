@@ -70,7 +70,12 @@ from firebot.link.protocol import THERM_COLS, THERM_ROWS
 from firebot.voice_intent.router import ShadowRouter
 from firebot.voice_intent.vocab import LABEL_TO_IDX, canonical_phrase
 import calibration  # noqa: E402
-from mujoco_stream import router as mujoco_router  # noqa: E402
+try:
+    from mujoco_stream import router as mujoco_router  # noqa: E402
+    _mujoco_available = True
+except ImportError:
+    mujoco_router = None
+    _mujoco_available = False
 
 DATABASE_URL = os.environ.get("FIREBOT_DB", "postgresql://firebot:firebot@localhost:5432/firebot")
 
@@ -134,10 +139,16 @@ VOICE_INTENT_ROUTER_STATE = os.environ.get("FIREBOT_VOICE_INTENT_ROUTER_STATE",
                                           "voice_intent_router.json")
 
 app = FastAPI(title="firebot-api")
-import mujoco_stream as _mujoco_stream  # noqa: E402
-
-_mujoco_stream.get_pool = lambda: _pool  # lets /ws/mujoco?log=1 write to Postgres
-app.include_router(mujoco_router)
+if _mujoco_available:
+    import mujoco_stream as _mujoco_stream  # noqa: E402
+    _mujoco_stream.get_pool = lambda: _pool  # lets /ws/mujoco?log=1 write to Postgres
+    app.include_router(mujoco_router)
+else:
+    # Serve a graceful "unavailable" response so the server stays up and the
+    # MuJoCo tab shows the proper offline banner instead of a network error.
+    @app.get("/api/mujoco/status")
+    def _mujoco_status_stub():
+        return {"available": False, "controllers": [], "detail": "mujoco not installed on this server"}
 app.add_middleware(
     CORSMiddleware,
     allow_origins=os.environ.get("FIREBOT_CORS_ORIGINS", "http://localhost:5173").split(","),

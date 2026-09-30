@@ -81,7 +81,7 @@ export default function MuJoCo() {
       .catch(() =>
         setStatus({
           available: false,
-          detail: "Backend not reachable. Is `./run.sh` running in firebot-console/backend?",
+          detail: "Backend not reachable — check that the API server is running.",
         })
       );
   }, []);
