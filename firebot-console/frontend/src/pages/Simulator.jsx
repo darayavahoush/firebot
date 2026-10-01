@@ -11,6 +11,7 @@ import { blobToWav16k } from "../lib/wav";
 import { playSound } from "../lib/sound.js";
 import CalibratePanel from "../components/sim/CalibratePanel.jsx";
 import { getOperator } from "../lib/operator.js";
+import { parseAndExecuteVoiceIntent } from "../api/client.js";
 
 const SPEEDS = [0.5, 1, 2, 4];
 
@@ -158,12 +159,25 @@ export default function Simulator() {
   }, []);
   useEffect(() => () => { if (ackTimerRef.current) clearTimeout(ackTimerRef.current); }, []);
 
-  const sendCommand = useCallback((text) => {
-    if (!text.trim()) return;
-    const intent = engineRef.current.say(text);
-    showAck(text, intent);
-    setTick((t) => t + 1);
-  }, [showAck]);
+  const sendCommand = useCallback(
+    async (text) => {
+      if (!text.trim()) return;
+      let intent = engineRef.current.say(text);
+      if (intent.name === "UNKNOWN") {
+        try {
+          const res = await parseAndExecuteVoiceIntent(text, false, operator);
+          if (res?.intent?.intent && res.intent.intent !== "UNKNOWN") {
+            intent = engineRef.current.applyParsedIntent(res.intent.intent, res.intent.params || {}, text);
+          }
+        } catch (err) {
+          // Fall back gracefully
+        }
+      }
+      showAck(text, intent);
+      setTick((t) => t + 1);
+    },
+    [showAck, operator]
+  );
 
   // Web Speech API -- Chrome/Edge only; Safari partial; Firefox unsupported. Opera/Brave
   // *report* support (see detectBrokenWebSpeech above) but have no working engine behind it,

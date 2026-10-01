@@ -161,6 +161,14 @@ export class SimController {
     return intent;
   }
 
+  applyParsedIntent(name, params = {}, text = "") {
+    const intent = { name, params, text, confidence: 0.95, source: "slm" };
+    this.commandLog.unshift({ t: this.t, text: text || name, intent: name, params, confidence: 0.95 });
+    if (this.commandLog.length > 100) this.commandLog.length = 100;
+    this._applyIntent(intent);
+    return intent;
+  }
+
   _parseAndValidate(text) {
     return parseIntent(text, this.world);
   }

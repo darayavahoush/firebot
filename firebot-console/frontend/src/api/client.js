@@ -282,3 +282,16 @@ export async function testVoiceClip(audioBlob, expectedUser = null) {
   }
   return res.json();
 }
+
+export async function parseAndExecuteVoiceIntent(text, execute = false, operator = null) {
+  const res = await fetch("/api/voice/intent", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text, execute, operator }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Intent parsing failed: ${res.status}`);
+  }
+  return res.json();
+}

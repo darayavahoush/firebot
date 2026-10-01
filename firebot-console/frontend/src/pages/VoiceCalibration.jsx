@@ -8,6 +8,7 @@ import {
   trainCalibrationModel,
   enrollSpeakerVoiceprint,
   testVoiceClip,
+  parseAndExecuteVoiceIntent,
 } from "../api/client.js";
 import { AudioRecorder } from "../lib/audioRecorder.js";
 import { AVATAR_DEFINITIONS, OperatorAvatarBadge } from "../components/voice/OperatorAvatars.jsx";
@@ -38,6 +39,9 @@ export default function VoiceCalibration({ onContinueToLiveOps, activeOperatorId
   const [trainReport, setTrainReport] = useState(null);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
+  const [autoExecute, setAutoExecute] = useState(false);
+  const [executingTest, setExecutingTest] = useState(false);
+  const [executeStatus, setExecuteStatus] = useState(null);
   const [playingClip, setPlayingClip] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [newProfile, setNewProfile] = useState({
@@ -288,12 +292,30 @@ export default function VoiceCalibration({ onContinueToLiveOps, activeOperatorId
     }
   };
 
-  // Live voice verification test
+  // Live voice verification test & execution
+  const handleExecuteTestCommand = async (intentToRun = null) => {
+    const target = intentToRun || testResult;
+    if (!target || !target.intent || target.intent === "UNKNOWN") return;
+    try {
+      setExecutingTest(true);
+      setExecuteStatus(null);
+      const res = await parseAndExecuteVoiceIntent(target.text || target.phrase, true, selectedUser);
+      playSound("ack");
+      setExecuteStatus(res?.execution?.message || `Dispatched ${target.intent} to robot.`);
+    } catch (err) {
+      playSound("estop");
+      setExecuteStatus(`Execution error: ${err.message}`);
+    } finally {
+      setExecutingTest(false);
+    }
+  };
+
   const handleTestRecording = async () => {
     if (testing) return;
     try {
       setTesting(true);
       setTestResult(null);
+      setExecuteStatus(null);
       const rec = new AudioRecorder();
       await rec.start((vol) => setVolumeLevel(vol));
 
@@ -305,6 +327,9 @@ export default function VoiceCalibration({ onContinueToLiveOps, activeOperatorId
             const result = await testVoiceClip(audioBlob, selectedUser);
             setTestResult(result);
             playSound(result.speaker === selectedUser ? "ack" : "estop");
+            if (autoExecute && result.can_execute) {
+              handleExecuteTestCommand(result);
+            }
           } catch (err) {
             setTestResult({ error: err.message });
           }
@@ -776,6 +801,21 @@ export default function VoiceCalibration({ onContinueToLiveOps, activeOperatorId
               Test your voice in real time to verify speaker identification and intent recognition.
             </p>
 
+            <div className="flex items-center justify-between mb-3 px-1">
+              <label className="flex items-center gap-2 text-[11px] font-mono text-muted cursor-pointer hover:text-ink">
+                <input
+                  type="checkbox"
+                  checked={autoExecute}
+                  onChange={(e) => setAutoExecute(e.target.checked)}
+                  className="rounded border-line text-telemetry focus:ring-0 cursor-pointer"
+                />
+                <span>Auto-execute recognized intent</span>
+              </label>
+              <span className="text-[10px] font-mono text-emerald-400/90 font-bold bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">
+                SLM ACTIVE
+              </span>
+            </div>
+
             <button
               onClick={handleTestRecording}
               disabled={testing}
@@ -788,7 +828,7 @@ export default function VoiceCalibration({ onContinueToLiveOps, activeOperatorId
               {testing ? (
                 <>
                   <span className="w-2.5 h-2.5 rounded-full bg-rose-400 animate-ping" />
-                  <span>Listening... Speak any command</span>
+                  <span>Listening... Speak any natural command</span>
                 </>
               ) : (
                 <>
@@ -820,12 +860,46 @@ export default function VoiceCalibration({ onContinueToLiveOps, activeOperatorId
                 </div>
 
                 <div className="flex items-center justify-between text-[11px]">
-                  <span className="text-muted">Command Phrase:</span>
-                  <span className="text-ink">"{testResult.phrase}"</span>
+                  <span className="text-muted">Spoken Phrase:</span>
+                  <span className="text-ink">"{testResult.text || testResult.phrase}"</span>
                 </div>
 
-                <div className="flex items-center justify-between text-[10px] text-faint">
-                  <span>Latency:</span>
+                {testResult.explanation && (
+                  <div className="p-2.5 rounded-lg bg-panel2/60 border border-line text-[11px] text-muted space-y-1">
+                    <div className="text-telemetry font-bold flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-telemetry animate-pulse" />
+                      <span>SLM Intent Engine:</span>
+                    </div>
+                    <p className="text-ink/90">{testResult.explanation}</p>
+                  </div>
+                )}
+
+                {testResult.can_execute && (
+                  <div className="pt-2 border-t border-line/60">
+                    <button
+                      onClick={() => handleExecuteTestCommand()}
+                      disabled={executingTest}
+                      className="w-full py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-mono font-bold text-xs uppercase tracking-wider hover:opacity-95 active:scale-95 transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      {executingTest ? (
+                        <span>Executing on Robot...</span>
+                      ) : (
+                        <>
+                          <span>⚡</span>
+                          <span>Dispatch & Do: {testResult.intent}</span>
+                        </>
+                      )}
+                    </button>
+                    {executeStatus && (
+                      <p className="text-[11px] text-emerald-400 mt-2 text-center font-bold font-mono">
+                        ✓ {executeStatus}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between text-[10px] text-faint pt-1">
+                  <span>Inference Latency:</span>
                   <span>{testResult.latency_ms} ms</span>
                 </div>
               </div>

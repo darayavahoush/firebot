@@ -56,15 +56,19 @@ LIVE_WINDOW = 50            # decisions used for the live accuracy figure
 _decode: Callable[[bytes], Any] | None = None
 _classifier: Callable[[], Any] | None = None
 _checkpoint: str | None = None
+_transcriber: Any = None
+_slm_parser: Any = None
 _lock = threading.Lock()
 _head_cache: dict[str, tuple[float, Any]] = {}
 _base_cache: tuple[float, dict] | None = None
 _last_auto: dict[str, float] = {}
 
 
-def configure(decode: Callable[[bytes], Any], classifier: Callable[[], Any], checkpoint: str | None) -> None:
-    global _decode, _classifier, _checkpoint
+def configure(decode: Callable[[bytes], Any], classifier: Callable[[], Any], checkpoint: str | None,
+              transcriber: Any = None, slm_parser: Any = None) -> None:
+    global _decode, _classifier, _checkpoint, _transcriber, _slm_parser
     _decode, _classifier, _checkpoint = decode, classifier, checkpoint
+    _transcriber, _slm_parser = transcriber, slm_parser
 
 
 def _write_wav_file(path_or_buf, audio, sr: int = 16_000) -> None:
@@ -805,49 +809,72 @@ async def test_voice(file: UploadFile = File(...), expected_user: str | None = N
         except Exception:
             pass
 
-    # Intent classification
+    # Intent classification & SLM Natural Language parsing
     intent_name, intent_conf, phrase = "UNKNOWN", 0.0, ""
-    try:
-        clf = _classifier() if _classifier else None
-        if clf is not None and hasattr(clf, "predict_intent_payload_array"):
-            extra = {}
-            active_user = expected_user or spk_name
-            head = get_user_head(active_user) if hasattr(clf, "embed_array") else None
-            if head is not None:
-                extra["head"] = head
-            res = clf.predict_intent_payload_array(audio, sample_rate=16_000, min_confidence=0.1, **extra)
-            intent_name = res.get("name", "UNKNOWN")
-            intent_conf = round(float(res.get("confidence", 0.0)), 3)
-            raw = res.get("raw_label", intent_name)
-            try:
-                phrase = canonical_phrase(raw)
-            except Exception:
-                phrase = intent_name
-        else:
-            # Standalone acoustic template matching against operator command takes
-            target_user = spk_name or expected_user or "ananya"
-            templates = _get_command_templates(target_user)
-            if not templates and target_user != "ananya":
-                templates = _get_command_templates("ananya")
+    explanation = ""
+    params = {}
+    source = "acoustic"
+    raw_text = ""
 
-            test_emb = _fallback_embed(pcm)
-            if templates:
-                scores = {cls: float(np.dot(test_emb, ref) / (np.linalg.norm(test_emb) * np.linalg.norm(ref) + 1e-8))
-                          for cls, ref in templates.items()}
-                ranked = sorted(scores.items(), key=lambda kv: -kv[1])
-                best_cls, best_score = ranked[0]
-                intent_name = best_cls
-                intent_conf = round(float(best_score), 3)
+    # 1. Try real transcription + SLM intent recognition for ANY natural language voice command
+    if _transcriber is not None and _slm_parser is not None:
+        try:
+            raw_text = await _transcriber(data)
+            if raw_text and raw_text.strip():
+                slm_data = await _slm_parser(raw_text)
+                if slm_data and slm_data.get("intent") and slm_data["intent"] != "UNKNOWN":
+                    intent_name = slm_data["intent"]
+                    intent_conf = slm_data.get("confidence", 0.95)
+                    explanation = slm_data.get("explanation", "")
+                    params = slm_data.get("params", {})
+                    source = slm_data.get("source", "slm")
+                    phrase = raw_text.strip()
+        except Exception:
+            pass
+
+    # 2. If SLM didn't produce a confident intent, try local classifier or acoustic template matching
+    if intent_name == "UNKNOWN":
+        try:
+            clf = _classifier() if _classifier else None
+            if clf is not None and hasattr(clf, "predict_intent_payload_array"):
+                extra = {}
+                active_user = expected_user or spk_name
+                head = get_user_head(active_user) if hasattr(clf, "embed_array") else None
+                if head is not None:
+                    extra["head"] = head
+                res = clf.predict_intent_payload_array(audio, sample_rate=16_000, min_confidence=0.1, **extra)
+                intent_name = res.get("name", "UNKNOWN")
+                intent_conf = round(float(res.get("confidence", 0.0)), 3)
+                raw = res.get("raw_label", intent_name)
                 try:
-                    phrase = canonical_phrase(best_cls) if best_cls != "UNKNOWN" else "anything else"
+                    phrase = canonical_phrase(raw)
                 except Exception:
-                    phrase = best_cls.lower().replace("_", " ")
+                    phrase = intent_name
             else:
-                intent_name = "VERIFIED_OPERATOR" if spk_name else "SPEECH_DETECTED"
-                intent_conf = round(spk_score, 2) if spk_score else 0.5
-                phrase = f"Verified: {spk_name.upper()}" if spk_name else "Acoustic Sample Captured"
-    except Exception:
-        phrase = "Acoustic Sample Captured"
+                # Standalone acoustic template matching against operator command takes
+                target_user = spk_name or expected_user or "ananya"
+                templates = _get_command_templates(target_user)
+                if not templates and target_user != "ananya":
+                    templates = _get_command_templates("ananya")
+
+                test_emb = _fallback_embed(pcm)
+                if templates:
+                    scores = {cls: float(np.dot(test_emb, ref) / (np.linalg.norm(test_emb) * np.linalg.norm(ref) + 1e-8))
+                              for cls, ref in templates.items()}
+                    ranked = sorted(scores.items(), key=lambda kv: -kv[1])
+                    best_cls, best_score = ranked[0]
+                    intent_name = best_cls
+                    intent_conf = round(float(best_score), 3)
+                    try:
+                        phrase = canonical_phrase(best_cls) if best_cls != "UNKNOWN" else "anything else"
+                    except Exception:
+                        phrase = best_cls.lower().replace("_", " ")
+                else:
+                    intent_name = "VERIFIED_OPERATOR" if spk_name else "SPEECH_DETECTED"
+                    intent_conf = round(spk_score, 2) if spk_score else 0.5
+                    phrase = f"Verified: {spk_name.upper()}" if spk_name else "Acoustic Sample Captured"
+        except Exception:
+            phrase = "Acoustic Sample Captured"
 
     latency_ms = round((time.time() - t0) * 1000, 1)
     return {
@@ -857,5 +884,10 @@ async def test_voice(file: UploadFile = File(...), expected_user: str | None = N
         "intent": intent_name,
         "confidence": intent_conf,
         "phrase": phrase,
+        "text": raw_text or phrase,
+        "explanation": explanation,
+        "params": params,
+        "source": source,
+        "can_execute": intent_name in ("STOP", "EXTINGUISH", "RETURN_HOME", "STATUS", "DRIVE", "PUMP", "GOTO"),
         "latency_ms": latency_ms,
     }

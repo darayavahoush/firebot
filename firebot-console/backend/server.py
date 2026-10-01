@@ -71,6 +71,7 @@ from firebot.link.protocol import THERM_COLS, THERM_ROWS
 from firebot.voice_intent.router import ShadowRouter
 from firebot.voice_intent.vocab import LABEL_TO_IDX, canonical_phrase
 import calibration  # noqa: E402
+from slm_intent import parse_intent_slm, describe_intent  # noqa: E402
 try:
     from mujoco_stream import router as mujoco_router  # noqa: E402
     _mujoco_available = True
@@ -200,16 +201,44 @@ def _get_voice_router() -> ShadowRouter:
     return _voice_router
 
 
-calibration.configure(lambda b: _decode_audio_16k(b), lambda: _get_voice_classifier(),
-                      VOICE_INTENT_CHECKPOINT)
+calibration.configure(
+    lambda b: _decode_audio_16k(b),
+    lambda: _get_voice_classifier(),
+    VOICE_INTENT_CHECKPOINT,
+    transcriber=lambda b: _transcribe_text(b, "test.wav", "audio/wav"),
+    slm_parser=lambda t: parse_intent_slm(t),
+)
 app.include_router(calibration.router)
+
+
+async def _apply_pg_migrations(pool: asyncpg.Pool) -> None:
+    """Ensure PostgreSQL tables and schema exist upon startup."""
+    try:
+        migration_file = _REPO_ROOT / "src" / "firebot" / "db" / "pg_migrations" / "001_init.sql"
+        if not migration_file.is_file():
+            for candidate in (
+                Path(__file__).resolve().parents[2] / "src" / "firebot" / "db" / "pg_migrations" / "001_init.sql",
+                Path(__file__).resolve().parent / "001_init.sql",
+            ):
+                if candidate.is_file():
+                    migration_file = candidate
+                    break
+        if migration_file.is_file():
+            sql = migration_file.read_text(encoding="utf-8")
+            async with pool.acquire() as conn:
+                await conn.execute(sql)
+                await conn.execute("INSERT INTO schema_migrations (version) VALUES (1) ON CONFLICT (version) DO NOTHING;")
+            logging.getLogger("firebot.console").info("PostgreSQL schema migrations verified/applied successfully.")
+    except Exception as e:
+        logging.getLogger("firebot.console").warning("Failed to apply PostgreSQL migrations: %s", e)
 
 
 @app.on_event("startup")
 async def startup() -> None:
     global _pool
     try:
-        _pool = await asyncpg.create_pool(DATABASE_URL, min_size=1, max_size=5, timeout=3.0)
+        _pool = await asyncpg.create_pool(DATABASE_URL, min_size=1, max_size=5, timeout=5.0)
+        await _apply_pg_migrations(_pool)
     except Exception as e:
         logging.getLogger("firebot.console").warning(
             "PostgreSQL not available at %s (%s); historical run logging disabled", DATABASE_URL, e
@@ -250,9 +279,13 @@ async def list_runs() -> list[dict[str, Any]]:
         ORDER BY s.started_at DESC
         LIMIT 100
     """
-    async with _pool.acquire() as conn:
-        rows = await conn.fetch(query)
-    return [dict(r) for r in rows]
+    try:
+        async with _pool.acquire() as conn:
+            rows = await conn.fetch(query)
+        return [dict(r) for r in rows]
+    except Exception as e:
+        logging.getLogger("firebot.console").warning("Failed to list runs from postgres: %s", e)
+        return []
 
 
 @app.get("/api/runs/{run_id}")
@@ -266,35 +299,43 @@ async def run_detail(run_id: str) -> dict[str, Any]:
         WHERE session_id = $1
         ORDER BY seq ASC
     """
-    async with _pool.acquire() as conn:
-        rows = await conn.fetch(query, run_id)
-
-    points = []
-    for r in rows:
-        d = dict(r)
-        sensors = d.pop("sensors")
-        d["sensors"] = json.loads(sensors) if isinstance(sensors, str) else sensors
-        d["thermal"] = _reshape_thermal(d["thermal"])
-        points.append(d)
-
-    return {"id": run_id, "points": points}
+    try:
+        async with _pool.acquire() as conn:
+            rows = await conn.fetch(query, run_id)
+        points = []
+        for r in rows:
+            d = dict(r)
+            sensors = d.pop("sensors")
+            d["sensors"] = json.loads(sensors) if isinstance(sensors, str) else sensors
+            d["thermal"] = _reshape_thermal(d["thermal"])
+            points.append(d)
+        return {"id": run_id, "points": points}
+    except Exception as e:
+        logging.getLogger("firebot.console").warning("Failed to fetch run details for %s: %s", run_id, e)
+        raise HTTPException(404, f"Run not found or database not ready: {e}")
 
 
 async def _load_run_frames(run_id: str) -> list[dict[str, Any]]:
     """Frames for anomaly/summary analysis -- everything except the (large) thermal arrays."""
+    if _pool is None:
+        return []
     query = """
         SELECT seq, t, x, y, speed, tank, sensors, mode, cmd_pump, compute_ms
         FROM frames WHERE session_id = $1 ORDER BY seq ASC
     """
-    async with _pool.acquire() as conn:
-        rows = await conn.fetch(query, run_id)
-    frames = []
-    for r in rows:
-        d = dict(r)
-        sensors = d.get("sensors")
-        d["sensors"] = json.loads(sensors) if isinstance(sensors, str) else (sensors or {})
-        frames.append(d)
-    return frames
+    try:
+        async with _pool.acquire() as conn:
+            rows = await conn.fetch(query, run_id)
+        frames = []
+        for r in rows:
+            d = dict(r)
+            sensors = d.get("sensors")
+            d["sensors"] = json.loads(sensors) if isinstance(sensors, str) else (sensors or {})
+            frames.append(d)
+        return frames
+    except Exception as e:
+        logging.getLogger("firebot.console").warning("Failed to load run frames for %s: %s", run_id, e)
+        return []
 
 
 @app.get("/api/runs/{run_id}/anomalies")
@@ -325,11 +366,16 @@ async def run_summary(run_id: str, narrate_text: bool = False) -> dict[str, Any]
     With `narrate_text=true` and FIREBOT_SLM_CMD set, a local model re-words it (numbers are
     verified against the facts; on any mismatch the deterministic text is returned)."""
     frames = await _load_run_frames(run_id)
-    async with _pool.acquire() as conn:
-        cmd_rows = await conn.fetch(
-            "SELECT at, text, valid, message FROM operator_commands "
-            "WHERE session_id = $1 ORDER BY id ASC", run_id)
-    commands = [dict(r) for r in cmd_rows]
+    commands = []
+    if _pool is not None:
+        try:
+            async with _pool.acquire() as conn:
+                cmd_rows = await conn.fetch(
+                    "SELECT at, text, valid, message FROM operator_commands "
+                    "WHERE session_id = $1 ORDER BY id ASC", run_id)
+            commands = [dict(r) for r in cmd_rows]
+        except Exception as e:
+            logging.getLogger("firebot.console").warning("Failed to fetch commands for summary: %s", e)
     summary = summarize_run(frames, commands, detect_anomalies(frames))
     text, narrated = summary["text"], False
     if narrate_text:
@@ -418,6 +464,111 @@ async def post_command(cmd: Command) -> dict[str, Any]:
 @app.post("/api/command/estop")
 async def post_estop() -> dict[str, Any]:
     return await _post_bridge("/estop", {})
+
+
+class VoiceIntentRequest(BaseModel):
+    text: str
+    execute: bool = False
+    operator: str | None = None
+
+
+async def _execute_intent_action(intent_name: str, params: dict[str, Any], operator: str | None = None) -> dict[str, Any]:
+    """Execute an intent on the robot bridge, broadcast telemetry event, and log to DB."""
+    action_result = {"ok": True, "action": intent_name, "message": ""}
+
+    # 1. STOP
+    if intent_name == "STOP":
+        _manual_state["v"] = 0.0
+        _manual_state["w"] = 0.0
+        _manual_state["pump"] = False
+        try:
+            await _post_bridge("/estop", {})
+            action_result["message"] = "Emergency stop dispatched: motors & pump halted"
+        except Exception:
+            action_result["message"] = "Halted: pump off, zero velocity latched"
+
+    # 2. EXTINGUISH
+    elif intent_name == "EXTINGUISH":
+        try:
+            _manual_state["pump"] = True
+            await _post_bridge("/manual", dict(_manual_state))
+            action_result["message"] = "Autonomous fire suppression active: pump engaged"
+        except Exception:
+            action_result["message"] = "Autonomous firefighting mode engaged"
+
+    # 3. DRIVE
+    elif intent_name == "DRIVE":
+        direction = params.get("dir", "fwd")
+        speed = int(params.get("speed", 50))
+        vec = _DRIVE_VECTORS.get(direction, (0.0, 0.0))
+        scale = max(0.0, min(1.0, speed / 100.0))
+        _manual_state["v"] = vec[0] * scale
+        _manual_state["w"] = vec[1] * scale
+        try:
+            await _post_bridge("/manual", dict(_manual_state))
+            action_result["message"] = f"Driving {direction} at {speed}% speed"
+        except Exception:
+            action_result["message"] = f"Commanded drive: {direction} @ {speed}%"
+
+    # 4. PUMP
+    elif intent_name == "PUMP":
+        on_state = bool(params.get("on", True))
+        _manual_state["pump"] = on_state
+        try:
+            await _post_bridge("/manual", dict(_manual_state))
+            action_result["message"] = f"Water pump {'activated' if on_state else 'deactivated'}"
+        except Exception:
+            action_result["message"] = f"Water pump switched {'ON' if on_state else 'OFF'}"
+
+    # 5. GOTO / RETURN_HOME
+    elif intent_name in ("GOTO", "RETURN_HOME"):
+        target_xy = (1.2, 1.0) if intent_name == "RETURN_HOME" else (params.get("x", 6.0), params.get("y", 4.0))
+        action_result["message"] = f"Navigation targeted to ({target_xy[0]:.1f}, {target_xy[1]:.1f})"
+
+    # 6. STATUS
+    elif intent_name == "STATUS":
+        action_result["message"] = "Status telemetry requested"
+
+    else:
+        action_result = {"ok": False, "action": intent_name, "message": "Unknown command or unable to execute"}
+
+    # Record in database if active session exists
+    if _pool is not None:
+        try:
+            async with _pool.acquire() as conn:
+                session = await conn.fetchrow(
+                    "SELECT id FROM sessions WHERE ended_at IS NULL ORDER BY started_at DESC LIMIT 1"
+                )
+                if session is not None:
+                    await conn.execute(
+                        "INSERT INTO operator_commands (session_id, text, intent, valid, message) "
+                        "VALUES ($1, $2, $3, $4, $5)",
+                        session["id"],
+                        params.get("raw_text", intent_name),
+                        json.dumps({"name": intent_name, "params": params, "operator": operator}),
+                        action_result["ok"],
+                        action_result["message"],
+                    )
+        except Exception as e:
+            logging.getLogger("firebot.console").warning("Could not log command to postgres: %s", e)
+
+    return action_result
+
+
+@app.post("/api/voice/intent")
+async def voice_intent(req: VoiceIntentRequest) -> dict[str, Any]:
+    """Parse any arbitrary natural language voice/text command into a structured intent using SLM,
+    and optionally execute it immediately."""
+    parsed = await parse_intent_slm(req.text)
+    out: dict[str, Any] = {"text": req.text, "intent": parsed}
+    if req.execute and parsed.get("intent") and parsed["intent"] != "UNKNOWN":
+        execution = await _execute_intent_action(
+            parsed["intent"],
+            {**parsed.get("params", {}), "raw_text": req.text},
+            req.operator,
+        )
+        out["execution"] = execution
+    return out
 
 
 # ---- REST: voice transcription fallback (Groq-hosted Whisper) ----
@@ -713,7 +864,8 @@ def _identify_speaker(audio_bytes: bytes) -> dict[str, Any] | None:
 
 
 @app.post("/api/transcribe")
-async def transcribe(file: UploadFile = File(...), user: str | None = Form(None)) -> dict[str, Any]:
+async def transcribe(file: UploadFile = File(...), user: str | None = Form(None),
+                     execute: bool = Form(False)) -> dict[str, Any]:
     audio_bytes = await file.read()
     # Who is speaking decides which personal voice model (if any) reads the command: an explicit
     # operator picked in the UI wins, else the speaker the voiceprints recognise.
@@ -723,9 +875,23 @@ async def transcribe(file: UploadFile = File(...), user: str | None = Form(None)
     text = await _transcribe_text(audio_bytes, file.filename or "clip.webm",
                                   file.content_type or "audio/webm", user=operator)
     used = bool(operator and calibration.get_user_head(operator))
+
+    # Parse intent via SLM
+    intent_data = await parse_intent_slm(text) if text else None
+
     out = {"text": text, **(who or {})}
+    if intent_data:
+        out["intent"] = intent_data
     if used:
         out["voice_model"] = operator
+
+    if execute and intent_data and intent_data.get("intent") and intent_data["intent"] != "UNKNOWN":
+        out["execution"] = await _execute_intent_action(
+            intent_data["intent"],
+            {**intent_data.get("params", {}), "raw_text": text},
+            operator,
+        )
+
     # Stash the clip so what the person does next (send as-is / pick the right command) can teach
     # their model. None (and no extra keys) unless the operator is known and learning is possible.
     clip_id = await asyncio.to_thread(calibration.save_pending, operator, audio_bytes, text) if operator else None
