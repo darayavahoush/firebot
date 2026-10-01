@@ -95,14 +95,18 @@ export default function Simulator() {
     setTextCmd(label === "UNKNOWN" ? "" : phrase || "");
     cmdInputRef.current?.focus();
   }, [feedbackCommands, sendFeedback]);
-  useEffect(() => {
-    let alive = true;
+  const pollVoiceStatus = useCallback(() => {
     fetch("/api/voice/status")
       .then((r) => (r.ok ? r.json() : null))
-      .then((j) => { if (alive && j) setVoiceMode(j); })
+      .then((j) => { if (j) setVoiceMode(j); })
       .catch(() => {});
-    return () => { alive = false; };
   }, []);
+
+  useEffect(() => {
+    pollVoiceStatus();
+    const interval = setInterval(pollVoiceStatus, 6000);
+    return () => clearInterval(interval);
+  }, [pollVoiceStatus]);
   const recogRef = useRef(null);
   const restartTimerRef = useRef(null);
   const restartAttemptsRef = useRef(0);
@@ -311,9 +315,14 @@ export default function Simulator() {
         setPersonalModel(voice_model || null);
         setPendingClip(clip_id && text ? { id: clip_id, user: clip_user, text } : null);
         setSpeakerInfo(speaker === undefined ? null : { name: speaker, score: speaker_score, scores: speaker_scores });
-        fetch("/api/voice/status").then((r) => (r.ok ? r.json() : null)).then((j) => j && setVoiceMode(j)).catch(() => {});
+        pollVoiceStatus();
         setAsrStatus("idle");
-        if (text) { setTextCmd(text); cmdInputRef.current?.focus(); }
+        if (text) {
+          setTextCmd(text);
+          sendCommand(text);
+          onSent(text);
+          cmdInputRef.current?.focus();
+        }
       } catch (err) {
         setAsrStatus("error");
         setAsrError(err?.message || "Couldn't reach the transcription service. Try again.");
@@ -321,7 +330,7 @@ export default function Simulator() {
     };
     recorder.start();
     setAsrStatus("recording");
-  }, [asrStatus, operator]);
+  }, [asrStatus, operator, sendCommand, onSent, pollVoiceStatus]);
 
   useEffect(() => () => {
     mediaRecorderRef.current?.state === "recording" && mediaRecorderRef.current.stop();

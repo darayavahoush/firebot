@@ -1,8 +1,8 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import RunChart from "../components/RunChart.jsx";
 import RunReplay from "../components/RunReplay.jsx";
 import RunInsights from "../components/RunInsights.jsx";
-import { fetchRuns, fetchRunDetail, fetchRunSummary, fetchRunAnomalies } from "../api/client.js";
+import { fetchRuns, fetchRunDetail, fetchRunSummary, fetchRunAnomalies, seedRuns } from "../api/client.js";
 import { playSound } from "../lib/sound.js";
 
 const SORTS = {
@@ -24,6 +24,7 @@ export default function History() {
   const [sel, setSel] = useState(null);
   const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [seeding, setSeeding] = useState(false);
   const [sort, setSort] = useState("newest");
   const [filter, setFilter] = useState("all");
   const [summary, setSummary] = useState(null);
@@ -31,14 +32,45 @@ export default function History() {
   const [cursorT, setCursorT] = useState(null);
   const [seek, setSeek] = useState(null);
 
-  useEffect(() => {
-    fetchRuns()
-      .then((data) => {
-        setRuns(data);
-        if (data.length > 0 && !sel) setSel(data[0].id);
-      })
-      .finally(() => setLoading(false));
+  const loadRuns = useCallback(async () => {
+    try {
+      setLoading(true);
+      let data = await fetchRuns();
+      if (!data || data.length === 0) {
+        try {
+          await seedRuns();
+          data = await fetchRuns();
+        } catch (e) {
+          console.warn("Auto-seed error", e);
+        }
+      }
+      setRuns(data || []);
+      if (data && data.length > 0) {
+        setSel((prev) => (prev && data.some((r) => r.id === prev) ? prev : data[0].id));
+      }
+    } catch (err) {
+      console.error("Failed to load runs", err);
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    loadRuns();
+  }, [loadRuns]);
+
+  const handleManualSeed = async () => {
+    playSound("click");
+    setSeeding(true);
+    try {
+      await seedRuns();
+      await loadRuns();
+    } catch (err) {
+      alert("Failed to seed runs: " + err.message);
+    } finally {
+      setSeeding(false);
+    }
+  };
 
   useEffect(() => {
     if (!sel) return;
@@ -105,8 +137,18 @@ export default function History() {
         </div>
 
         <div className="panel p-4 space-y-1">
-          <div className="text-[11px] font-mono uppercase tracking-wider text-faint">
-            Archive Database
+          <div className="flex items-center justify-between">
+            <div className="text-[11px] font-mono uppercase tracking-wider text-faint">
+              Archive Database
+            </div>
+            <button
+              onClick={handleManualSeed}
+              disabled={seeding}
+              title="Seed or refresh demo mission sorties in postgres"
+              className="text-[10px] font-mono text-telemetry hover:underline"
+            >
+              {seeding ? "Seeding…" : "Re-seed"}
+            </button>
           </div>
           <div className="data text-[26px] font-display font-black text-ink flex items-center gap-2">
             <span className="h-2.5 w-2.5 rounded-full bg-ok" />
@@ -158,8 +200,15 @@ export default function History() {
           <div className="flex flex-col gap-2 max-h-[calc(100vh-280px)] overflow-y-auto pr-1">
             {loading && <div className="text-muted text-[13px] font-mono py-8 text-center">Loading archives…</div>}
             {!loading && list.length === 0 && (
-              <div className="p-8 text-center text-faint font-mono text-[13px] panel">
-                No sorties found matching this criteria.
+              <div className="p-8 text-center text-faint font-mono text-[13px] panel space-y-3">
+                <p>No sorties found in archives.</p>
+                <button
+                  onClick={handleManualSeed}
+                  disabled={seeding}
+                  className="px-4 py-2 rounded-xl text-xs font-mono font-bold bg-telemetry text-base shadow-[0_0_12px_rgba(240,85,155,0.4)] hover:brightness-110 active:scale-95 transition-all inline-block"
+                >
+                  {seeding ? "Generating Mission Telemetry…" : "+ Seed Sortie Archive"}
+                </button>
               </div>
             )}
             {list.map((r) => {

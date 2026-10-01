@@ -176,28 +176,79 @@ export class SimController {
   _applyIntent(intent) {
     switch (intent.name) {
       case 'STOP':
-        this.mode = 'STOPPED'; this.path = null;
+        this.mode = 'STOPPED'; this.path = null; this.pumpOn = false;
         this._logEvent('command', 'STOP \u2013 halted, pump off, latched until next command');
         break;
       case 'EXTINGUISH':
         this.mode = 'AUTO'; this.path = null;
         this._logEvent('command', 'EXTINGUISH \u2013 resuming autonomous search & suppress');
         break;
+      case 'PATROL':
+      case 'EXPLORE':
+      case 'SEARCH':
+        this.mode = 'AUTO'; this.state = 'EXPLORE'; this.explorePoint = null; this.path = null;
+        this._logEvent('command', 'SEARCH \u2013 exploring structure for fires & thermal anomalies');
+        break;
       case 'RETURN_HOME':
         this.mode = 'GOTO'; this.goalXY = this.home; this.path = null; this.sincePlan = Infinity;
         this._logEvent('command', 'RETURN_HOME \u2013 routing to dock');
         break;
       case 'GOTO':
-        this.mode = 'GOTO'; this.goalXY = [intent.params.x, intent.params.y]; this.path = null; this.sincePlan = Infinity;
-        this._logEvent('command', `GOTO (${intent.params.x.toFixed(1)}, ${intent.params.y.toFixed(1)})`);
+        if (intent.params && intent.params.x != null && intent.params.y != null) {
+          this.mode = 'GOTO'; this.goalXY = [intent.params.x, intent.params.y]; this.path = null; this.sincePlan = Infinity;
+          this._logEvent('command', `GOTO (${intent.params.x.toFixed(1)}, ${intent.params.y.toFixed(1)})`);
+        } else {
+          this._logEvent('command', 'GOTO \u2013 missing coordinate target');
+        }
         break;
+      case 'DRIVE':
+      case 'DRIVE_FORWARD':
+      case 'DRIVE_BACK':
+      case 'TURN_LEFT':
+      case 'TURN_RIGHT': {
+        const dir = (intent.name.startsWith('DRIVE_') || intent.name.startsWith('TURN_'))
+          ? (intent.name === 'DRIVE_FORWARD' ? 'fwd' : intent.name === 'DRIVE_BACK' ? 'back' : intent.name === 'TURN_LEFT' ? 'left' : 'right')
+          : (intent.params?.dir || 'fwd');
+        if (dir === 'left') {
+          this.robot.th = wrapA(this.robot.th + Math.PI / 4);
+          this._logEvent('command', `DRIVE \u2013 pivot left 45\u00b0 (heading ${toDeg(this.robot.th).toFixed(0)}\u00b0)`);
+        } else if (dir === 'right') {
+          this.robot.th = wrapA(this.robot.th - Math.PI / 4);
+          this._logEvent('command', `DRIVE \u2013 pivot right 45\u00b0 (heading ${toDeg(this.robot.th).toFixed(0)}\u00b0)`);
+        } else if (dir === 'back' || dir === 'reverse') {
+          const tx = clamp(this.robot.x - 1.2 * Math.cos(this.robot.th), 0.5, this.world.width - 0.5);
+          const ty = clamp(this.robot.y - 1.2 * Math.sin(this.robot.th), 0.5, this.world.height - 0.5);
+          this.mode = 'GOTO'; this.goalXY = [tx, ty]; this.path = null; this.sincePlan = Infinity;
+          this._logEvent('command', `DRIVE \u2013 reversing to (${tx.toFixed(1)}, ${ty.toFixed(1)})`);
+        } else if (dir === 'stop') {
+          this.mode = 'STOPPED'; this.path = null;
+          this._logEvent('command', 'DRIVE \u2013 halted');
+        } else {
+          const tx = clamp(this.robot.x + 1.5 * Math.cos(this.robot.th), 0.5, this.world.width - 0.5);
+          const ty = clamp(this.robot.y + 1.5 * Math.sin(this.robot.th), 0.5, this.world.height - 0.5);
+          this.mode = 'GOTO'; this.goalXY = [tx, ty]; this.path = null; this.sincePlan = Infinity;
+          this._logEvent('command', `DRIVE \u2013 advancing forward to (${tx.toFixed(1)}, ${ty.toFixed(1)})`);
+        }
+        break;
+      }
+      case 'PUMP': {
+        const on = intent.params?.on !== false;
+        this.pumpOn = on;
+        if (on) {
+          this.mode = 'AUTO'; this.state = 'SPRAY';
+          this._logEvent('command', 'PUMP \u2013 water pump engaged');
+        } else {
+          this._logEvent('command', 'PUMP \u2013 water pump disengaged');
+        }
+        break;
+      }
       case 'STATUS': {
         const sig = sigmaOf(this.eif.estimate());
         this._logEvent('status', `tank ${(this.tank * 100 | 0)}% \u00b7 battery ${(this.battery * 100 | 0)}% \u00b7 state ${this.state} \u00b7 fire \u03c3 ${sig < 20 ? sig.toFixed(2) + 'm' : 'unlocalised'}`);
         break;
       }
       default:
-        this._logEvent('command', `"${intent.text}" not understood`);
+        this._logEvent('command', `"${intent.text || intent.name}" not understood`);
     }
   }
 

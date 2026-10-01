@@ -30,7 +30,8 @@ import math
 import logging
 import os
 import tempfile
-from datetime import datetime, timezone
+import uuid
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -233,12 +234,203 @@ async def _apply_pg_migrations(pool: asyncpg.Pool) -> None:
         logging.getLogger("firebot.console").warning("Failed to apply PostgreSQL migrations: %s", e)
 
 
+def _generate_mock_thermal_flat(t: float, center_r: float = 12.0, center_c: float = 16.0) -> list[float]:
+    grid = []
+    for r in range(THERM_ROWS):
+        for c in range(THERM_COLS):
+            dx = c - (center_c + math.sin(t / 15.0) * 4.0)
+            dy = r - (center_r + math.cos(t / 18.0) * 3.0)
+            dist = math.sqrt(dx * dx + dy * dy)
+            temp = 22.0 + max(0.0, 42.0 - dist * 3.5) + math.sin(r * 0.5 + c * 0.5) * 1.2
+            grid.append(round(temp, 1))
+    return grid
+
+
+async def _seed_initial_runs(pool: asyncpg.Pool, force: bool = False) -> int:
+    """Seed realistic initial mission runs into PostgreSQL if empty or forced."""
+    try:
+        async with pool.acquire() as conn:
+            existing = await conn.fetchval("SELECT count(*) FROM sessions")
+            if existing > 0 and not force:
+                return 0
+
+            now = datetime.now(timezone.utc)
+
+            missions = [
+                {
+                    "id": uuid.UUID("d8e3b1c2-5f6a-4b9d-8e7c-1a2b3c4d5e6f"),
+                    "robot": "firebot-1",
+                    "started_at": now - timedelta(minutes=48),
+                    "ended_at": now - timedelta(minutes=43),
+                    "duration_s": 290.0,
+                    "notes": "North Wing Sector 3 - structural fire detected and extinguished",
+                    "meta": {"building": "North Wing", "operator": "ananya", "mission_type": "SUPPRESSION"},
+                    "pump_range": (140.0, 240.0),
+                    "min_tank": 0.42,
+                    "fire_x": 8.4,
+                    "fire_y": 5.1,
+                    "commands": [
+                        (now - timedelta(minutes=47, seconds=50), "scan north room", {"name": "GOTO", "params": {"x": 6.0, "y": 7.0}}, True, "Navigating to north room"),
+                        (now - timedelta(minutes=46, seconds=40), "status report", {"name": "STATUS", "params": {}}, True, "Status telemetry requested"),
+                        (now - timedelta(minutes=45, seconds=40), "extinguish the fire", {"name": "EXTINGUISH", "params": {}}, True, "Autonomous suppression engaged"),
+                        (now - timedelta(minutes=43, seconds=50), "return home", {"name": "RETURN_HOME", "params": {}}, True, "Routing to dock"),
+                    ],
+                },
+                {
+                    "id": uuid.UUID("a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d"),
+                    "robot": "firebot-1",
+                    "started_at": now - timedelta(hours=3, minutes=10),
+                    "ended_at": now - timedelta(hours=3, minutes=7),
+                    "duration_s": 180.0,
+                    "notes": "East corridor perimeter sweep - ambient thermal baseline established",
+                    "meta": {"building": "East Corridor", "operator": "avinandan", "mission_type": "RECON"},
+                    "pump_range": None,
+                    "min_tank": 1.0,
+                    "fire_x": None,
+                    "fire_y": None,
+                    "commands": [
+                        (now - timedelta(hours=3, minutes=9, seconds=50), "start patrol", {"name": "EXTINGUISH", "params": {}}, True, "Autonomous patrol engaged"),
+                        (now - timedelta(hours=3, minutes=8, seconds=30), "check telemetry", {"name": "STATUS", "params": {}}, True, "Status telemetry requested"),
+                        (now - timedelta(hours=3, minutes=7, seconds=10), "halt", {"name": "STOP", "params": {}}, True, "Motors halted"),
+                    ],
+                },
+                {
+                    "id": uuid.UUID("f9e8d7c6-b5a4-3210-9876-543210fedcba"),
+                    "robot": "firebot-1",
+                    "started_at": now - timedelta(hours=22, minutes=15),
+                    "ended_at": now - timedelta(hours=22, minutes=8),
+                    "duration_s": 420.0,
+                    "notes": "Warehouse bay 4 - chemical flare suppressed, thermal anomaly isolated",
+                    "meta": {"building": "Warehouse", "operator": "ananya", "mission_type": "SUPPRESSION"},
+                    "pump_range": (160.0, 350.0),
+                    "min_tank": 0.18,
+                    "fire_x": 4.5,
+                    "fire_y": 6.2,
+                    "commands": [
+                        (now - timedelta(hours=22, minutes=14, seconds=40), "advance to warehouse", {"name": "GOTO", "params": {"x": 4.5, "y": 6.2}}, True, "Navigating to warehouse"),
+                        (now - timedelta(hours=22, minutes=12, seconds=30), "status report", {"name": "STATUS", "params": {}}, True, "Status telemetry requested"),
+                        (now - timedelta(hours=22, minutes=11, seconds=0), "suppress high heat signature", {"name": "EXTINGUISH", "params": {}}, True, "Pump active"),
+                        (now - timedelta(hours=22, minutes=9, seconds=0), "return to dock", {"name": "RETURN_HOME", "params": {}}, True, "Routing to dock"),
+                    ],
+                },
+            ]
+
+            async with conn.transaction():
+                for m in missions:
+                    await conn.execute(
+                        """
+                        INSERT INTO sessions (id, robot, started_at, ended_at, notes, meta)
+                        VALUES ($1, $2, $3, $4, $5, $6)
+                        ON CONFLICT (id) DO UPDATE SET
+                            started_at = EXCLUDED.started_at,
+                            ended_at = EXCLUDED.ended_at,
+                            notes = EXCLUDED.notes,
+                            meta = EXCLUDED.meta;
+                        """,
+                        m["id"], m["robot"], m["started_at"], m["ended_at"], m["notes"], json.dumps(m["meta"])
+                    )
+
+                    await conn.execute("DELETE FROM frames WHERE session_id = $1;", m["id"])
+                    await conn.execute("DELETE FROM operator_commands WHERE session_id = $1;", m["id"])
+
+                    num_frames = 60
+                    frame_rows = []
+                    dt = m["duration_s"] / num_frames
+                    p_start, p_end = m["pump_range"] if m["pump_range"] else (999999.0, 999999.0)
+
+                    for i in range(num_frames):
+                        t = i * dt
+                        recv_at = m["started_at"] + timedelta(seconds=t)
+                        frac = i / max(1, num_frames - 1)
+
+                        if m["fire_x"] is not None:
+                            x = 1.2 + (m["fire_x"] - 1.2) * min(1.0, frac * 1.5) + math.sin(t / 8.0) * 0.2
+                            y = 1.0 + (m["fire_y"] - 1.0) * min(1.0, frac * 1.5) + math.cos(t / 9.0) * 0.2
+                        else:
+                            x = 2.0 + 4.0 * math.sin(frac * 4.0)
+                            y = 3.0 + 2.0 * math.cos(frac * 4.0)
+
+                        theta = math.sin(t / 10.0) * 1.5
+                        speed = 0.0 if (p_start <= t <= p_end) else round(0.35 + 0.1 * math.sin(t), 2)
+
+                        if p_start <= t <= p_end:
+                            tank = max(m["min_tank"], 1.0 - ((t - p_start) / (p_end - p_start)) * (1.0 - m["min_tank"]))
+                            cmd_pump = True
+                            mode = "SPRAY"
+                        elif t > p_end:
+                            tank = m["min_tank"]
+                            cmd_pump = False
+                            mode = "SAFE"
+                        elif t > p_start - 30.0:
+                            tank = 1.0
+                            cmd_pump = False
+                            mode = "TRACK"
+                        else:
+                            tank = 1.0
+                            cmd_pump = False
+                            mode = "AUTO"
+
+                        has_fire = m["fire_x"] is not None and t > 60.0
+                        flame = min(0.98, max(0.01, 0.9 * math.exp(-((t - 180.0) ** 2) / 6000.0))) if has_fire else 0.02
+                        sensors = {
+                            "us_front_left": round(1.2 + 0.8 * math.sin(t / 3.0), 2),
+                            "us_front_right": round(1.1 + 0.7 * math.cos(t / 3.0), 2),
+                            "us_left": round(2.0 + 0.5 * math.sin(t / 5.0), 2),
+                            "us_right": round(1.8 + 0.6 * math.cos(t / 5.0), 2),
+                            "flame_left": round(flame * 0.8, 3),
+                            "flame_center": round(flame, 3),
+                            "flame_right": round(flame * 0.75, 3),
+                            "mq2_front": round(0.1 + flame * 0.6, 3),
+                            "mq2_rear": round(0.08 + flame * 0.3, 3),
+                        }
+
+                        thermal = _generate_mock_thermal_flat(t) if (i % 8 == 0) else None
+                        est_x = m["fire_x"] if has_fire else None
+                        est_y = m["fire_y"] if has_fire else None
+                        est_sigma = max(0.35, 12.0 * math.exp(-t / 60.0)) if has_fire else 25.0
+
+                        frame_rows.append((
+                            m["id"], i, t, recv_at, round(x, 3), round(y, 3), round(theta, 3),
+                            speed, round(tank, 3), json.dumps(sensors), thermal,
+                            est_x, est_y, round(est_sigma, 2), mode,
+                            speed, round(math.sin(t / 4.0) * 0.3, 2), cmd_pump,
+                            round(1.2 + math.sin(t) * 0.5, 2)
+                        ))
+
+                    await conn.executemany(
+                        """
+                        INSERT INTO frames (
+                            session_id, seq, t, recv_at, x, y, theta, speed, tank,
+                            sensors, thermal, est_x, est_y, est_sigma, mode,
+                            cmd_v, cmd_w, cmd_pump, compute_ms
+                        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19);
+                        """,
+                        frame_rows
+                    )
+
+                    for at, text, intent_dict, valid, message in m["commands"]:
+                        await conn.execute(
+                            """
+                            INSERT INTO operator_commands (session_id, at, text, intent, valid, message)
+                            VALUES ($1, $2, $3, $4, $5, $6);
+                            """,
+                            m["id"], at, text, json.dumps(intent_dict), valid, message
+                        )
+
+            logging.getLogger("firebot.console").info("Seeded %d realistic initial mission sorties into PostgreSQL.", len(missions))
+            return len(missions)
+    except Exception as e:
+        logging.getLogger("firebot.console").warning("Failed to seed mission runs in postgres: %s", e)
+        return 0
+
+
 @app.on_event("startup")
 async def startup() -> None:
     global _pool
     try:
         _pool = await asyncpg.create_pool(DATABASE_URL, min_size=1, max_size=5, timeout=5.0)
         await _apply_pg_migrations(_pool)
+        await _seed_initial_runs(_pool, force=False)
     except Exception as e:
         logging.getLogger("firebot.console").warning(
             "PostgreSQL not available at %s (%s); historical run logging disabled", DATABASE_URL, e
@@ -282,10 +474,23 @@ async def list_runs() -> list[dict[str, Any]]:
     try:
         async with _pool.acquire() as conn:
             rows = await conn.fetch(query)
-        return [dict(r) for r in rows]
+        out = []
+        for r in rows:
+            d = dict(r)
+            d["id"] = str(d["id"])
+            out.append(d)
+        return out
     except Exception as e:
         logging.getLogger("firebot.console").warning("Failed to list runs from postgres: %s", e)
         return []
+
+
+@app.post("/api/runs/seed")
+async def seed_runs_endpoint() -> dict[str, Any]:
+    if _pool is None:
+        raise HTTPException(503, "Database not connected")
+    count = await _seed_initial_runs(_pool, force=True)
+    return {"ok": True, "seeded": count, "message": f"Successfully seeded {count} sortie missions into postgres"}
 
 
 @app.get("/api/runs/{run_id}")
@@ -296,12 +501,12 @@ async def run_detail(run_id: str) -> dict[str, Any]:
         SELECT seq, t, x, y, theta, speed, tank, sensors, thermal,
                est_x, est_y, est_sigma, mode, cmd_v, cmd_w, cmd_pump, compute_ms
         FROM frames
-        WHERE session_id = $1
+        WHERE session_id::text = $1::text
         ORDER BY seq ASC
     """
     try:
         async with _pool.acquire() as conn:
-            rows = await conn.fetch(query, run_id)
+            rows = await conn.fetch(query, str(run_id))
         points = []
         for r in rows:
             d = dict(r)
@@ -309,7 +514,7 @@ async def run_detail(run_id: str) -> dict[str, Any]:
             d["sensors"] = json.loads(sensors) if isinstance(sensors, str) else sensors
             d["thermal"] = _reshape_thermal(d["thermal"])
             points.append(d)
-        return {"id": run_id, "points": points}
+        return {"id": str(run_id), "points": points}
     except Exception as e:
         logging.getLogger("firebot.console").warning("Failed to fetch run details for %s: %s", run_id, e)
         raise HTTPException(404, f"Run not found or database not ready: {e}")
@@ -321,11 +526,11 @@ async def _load_run_frames(run_id: str) -> list[dict[str, Any]]:
         return []
     query = """
         SELECT seq, t, x, y, speed, tank, sensors, mode, cmd_pump, compute_ms
-        FROM frames WHERE session_id = $1 ORDER BY seq ASC
+        FROM frames WHERE session_id::text = $1::text ORDER BY seq ASC
     """
     try:
         async with _pool.acquire() as conn:
-            rows = await conn.fetch(query, run_id)
+            rows = await conn.fetch(query, str(run_id))
         frames = []
         for r in rows:
             d = dict(r)
@@ -372,7 +577,7 @@ async def run_summary(run_id: str, narrate_text: bool = False) -> dict[str, Any]
             async with _pool.acquire() as conn:
                 cmd_rows = await conn.fetch(
                     "SELECT at, text, valid, message FROM operator_commands "
-                    "WHERE session_id = $1 ORDER BY id ASC", run_id)
+                    "WHERE session_id::text = $1::text ORDER BY id ASC", str(run_id))
             commands = [dict(r) for r in cmd_rows]
         except Exception as e:
             logging.getLogger("firebot.console").warning("Failed to fetch commands for summary: %s", e)
@@ -383,7 +588,7 @@ async def run_summary(run_id: str, narrate_text: bool = False) -> dict[str, Any]
         if gen is not None:
             text = narrate(summary, gen)
             narrated = text != summary["text"]
-    return {"id": run_id, "facts": summary["facts"], "text": text, "narrated": narrated}
+    return {"id": str(run_id), "facts": summary["facts"], "text": text, "narrated": narrated}
 
 
 # ---- REST: command forwarding to the brain ----

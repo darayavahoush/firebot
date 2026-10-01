@@ -11,6 +11,12 @@ export async function fetchRuns() {
   return res.json();
 }
 
+export async function seedRuns() {
+  const res = await fetch("/api/runs/seed", { method: "POST" });
+  if (!res.ok) throw new Error(`seedRuns failed: ${res.status}`);
+  return res.json();
+}
+
 export async function fetchRunDetail(runId) {
   if (USE_MOCK) return mockRunDetail(runId);
   const res = await fetch(`/api/runs/${runId}`);

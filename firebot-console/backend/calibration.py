@@ -169,16 +169,57 @@ def _user(name: str) -> str:
     return n
 
 
+CORE_CLASSES = [
+    "STOP",
+    "DRIVE_FORWARD",
+    "DRIVE_BACK",
+    "TURN_LEFT",
+    "TURN_RIGHT",
+    "EXTINGUISH",
+    "PATROL",
+    "STATUS",
+    "RETURN_HOME",
+    "UNKNOWN",
+]
+
+CUSTOM_PHRASES = {
+    "STOP": "stop",
+    "DRIVE_FORWARD": "go forward",
+    "DRIVE_BACK": "move back",
+    "TURN_LEFT": "turn left",
+    "TURN_RIGHT": "turn right",
+    "EXTINGUISH": "put out the fire",
+    "PATROL": "start patrol",
+    "STATUS": "status report",
+    "RETURN_HOME": "return home",
+    "UNKNOWN": "anything else (optional)",
+}
+
+
 def _classes() -> list[str]:
     from firebot.voice_intent.vocab import CLASSES
-    return list(CLASSES)
+    all_classes = list(CORE_CLASSES)
+    for c in CLASSES:
+        if c not in all_classes:
+            all_classes.append(c)
+    return all_classes
+
+
+def _canonical_phrase(label: str) -> str:
+    if label in CUSTOM_PHRASES:
+        return CUSTOM_PHRASES[label]
+    try:
+        from firebot.voice_intent.vocab import canonical_phrase
+        return canonical_phrase(label)
+    except Exception:
+        return label.lower().replace("_", " ")
 
 
 def _label(label: str) -> str:
-    label = (label or "").upper()
-    if label not in _classes():
-        raise HTTPException(400, f"Unknown command label {label!r}")
-    return label
+    cleaned = (label or "").strip().upper()
+    if not cleaned or not re.match(r"^[A-Z0-9_-]+$", cleaned):
+        raise HTTPException(400, f"Invalid command label {label!r}")
+    return cleaned
 
 
 def _norm(text: str) -> str:
@@ -187,12 +228,14 @@ def _norm(text: str) -> str:
 
 def _phrase_table() -> dict[str, str]:
     """normalised canonical phrase -> label (UNKNOWN has no phrase)."""
-    from firebot.voice_intent.vocab import canonical_phrase
     out = {}
     for c in _classes():
+        if c == "UNKNOWN":
+            continue
         try:
-            out[_norm(canonical_phrase(c))] = c
-        except KeyError:
+            phrase = _canonical_phrase(c)
+            out[_norm(phrase)] = c
+        except Exception:
             pass
     return out
 
@@ -440,8 +483,6 @@ def _auto_retrain_blocking(user: str) -> dict | None:
 
 # ------------------------------------------------------------------ API
 def _status(user: str) -> dict[str, Any]:
-    from firebot.voice_intent.vocab import canonical_phrase
-    phrase = lambda c: ("anything else (optional)" if c == "UNKNOWN" else canonical_phrase(c))
     _, reason = _base_ckpt()
     classes = _classes()
     counts, fb = _counts(user), _fb_counts(user)
@@ -455,7 +496,7 @@ def _status(user: str) -> dict[str, Any]:
                 pass
     return {
         "user": user, "supported": reason is None, "reason": reason,
-        "classes": [{"label": c, "phrase": phrase(c), "count": counts[c], "feedback": fb[c],
+        "classes": [{"label": c, "phrase": _canonical_phrase(c), "count": counts.get(c, 0), "feedback": fb.get(c, 0),
                      "optional": c in OPTIONAL,
                      "clips": [p.name for p in sorted((_udir(user) / c).glob("*.wav"))]} for c in classes],
         "target_per_class": TARGET_PER_CLASS, "max_per_class": MAX_PER_CLASS,
@@ -846,10 +887,7 @@ async def test_voice(file: UploadFile = File(...), expected_user: str | None = N
                 intent_name = res.get("name", "UNKNOWN")
                 intent_conf = round(float(res.get("confidence", 0.0)), 3)
                 raw = res.get("raw_label", intent_name)
-                try:
-                    phrase = canonical_phrase(raw)
-                except Exception:
-                    phrase = intent_name
+                phrase = _canonical_phrase(raw)
             else:
                 # Standalone acoustic template matching against operator command takes
                 target_user = spk_name or expected_user or "ananya"
@@ -865,10 +903,7 @@ async def test_voice(file: UploadFile = File(...), expected_user: str | None = N
                     best_cls, best_score = ranked[0]
                     intent_name = best_cls
                     intent_conf = round(float(best_score), 3)
-                    try:
-                        phrase = canonical_phrase(best_cls) if best_cls != "UNKNOWN" else "anything else"
-                    except Exception:
-                        phrase = best_cls.lower().replace("_", " ")
+                    phrase = _canonical_phrase(best_cls)
                 else:
                     intent_name = "VERIFIED_OPERATOR" if spk_name else "SPEECH_DETECTED"
                     intent_conf = round(spk_score, 2) if spk_score else 0.5
