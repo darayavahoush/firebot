@@ -34,7 +34,7 @@ GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 SLM_CMD = os.environ.get("FIREBOT_SLM_CMD", "")
 
 # Default model selections
-DEFAULT_GROQ_MODEL = "llama-3.2-1b-preview"
+DEFAULT_GROQ_MODEL = "allam-2-7b"
 DEFAULT_OLLAMA_MODEL = "qwen2.5:0.5b"
 
 SYSTEM_PROMPT = """You are an AI intent parser for FireBot, an autonomous firefighting robot.
@@ -153,12 +153,14 @@ async def parse_intent_slm(text: str) -> dict[str, Any]:
         except Exception as e:
             logger.warning("Error querying custom SLM (%s): %s", endpoint, e)
 
-    # 2. Free hosted Groq SLM (Llama 3.2 1B / 3B) if no custom URL specified
+    # 2. Free hosted Groq SLM (allam-2-7b / qwen3.8-27b) if no custom URL specified
     elif GROQ_API_KEY:
         endpoint = "https://api.groq.com/openai/v1/chat/completions"
         model = SLM_MODEL or DEFAULT_GROQ_MODEL
         try:
             slm_result = await _query_http_slm(endpoint, model, GROQ_API_KEY, cleaned)
+            if slm_result is None and not SLM_MODEL:
+                slm_result = await _query_http_slm(endpoint, "qwen/qwen3.8-27b", GROQ_API_KEY, cleaned)
         except Exception as e:
             logger.warning("Error querying Groq SLM: %s", e)
 
