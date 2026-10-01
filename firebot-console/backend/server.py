@@ -437,6 +437,13 @@ async def startup() -> None:
         )
         _pool = None
 
+    # Sync operator models and voiceprints from Hugging Face Hub (anabaena/firebot-voice-intent)
+    try:
+        import hf_sync
+        asyncio.create_task(asyncio.to_thread(hf_sync.sync_on_startup))
+    except Exception as e:
+        logging.getLogger("firebot.console").warning("Hugging Face startup sync skipped: %s", e)
+
 
 @app.on_event("shutdown")
 async def shutdown() -> None:

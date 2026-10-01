@@ -37,6 +37,8 @@ from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
+import hf_sync
+
 router = APIRouter(prefix="/api/voice")
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -590,6 +592,8 @@ async def train(user: str) -> dict[str, Any]:
         raise HTTPException(409, "Calibration is already running")
     try:
         report = await asyncio.to_thread(_train_blocking, user, base, "manual")
+        if report.get("accepted"):
+            asyncio.create_task(asyncio.to_thread(hf_sync.push_models_to_hf, user=user))
     finally:
         _lock.release()
     return {"report": report, **_status(user)}
@@ -759,6 +763,7 @@ async def enroll_speaker_voiceprint(user: str) -> dict[str, Any]:
 
     try:
         await asyncio.to_thread(ident.enroll_multi, user, pcm_clips)
+        asyncio.create_task(asyncio.to_thread(hf_sync.push_models_to_hf, user=user))
     except Exception as e:
         raise HTTPException(500, f"Enrollment error: {e}")
     return {
@@ -926,3 +931,22 @@ async def test_voice(file: UploadFile = File(...), expected_user: str | None = N
         "can_execute": intent_name in ("STOP", "EXTINGUISH", "RETURN_HOME", "STATUS", "DRIVE", "PUMP", "GOTO"),
         "latency_ms": latency_ms,
     }
+
+
+# ------------------------------------------------------------------ Hugging Face Model Cloud Sync
+@router.get("/hf/status")
+async def get_hf_status() -> dict[str, Any]:
+    """Inspect synchronization state with Hugging Face Hub (anabaena/firebot-voice-intent)."""
+    return await asyncio.to_thread(hf_sync.get_hf_sync_status)
+
+
+@router.post("/hf/sync")
+async def sync_from_hf(repo_id: str | None = None) -> dict[str, Any]:
+    """Pull all operator models, voiceprints, and profiles from Hugging Face Hub."""
+    return await asyncio.to_thread(hf_sync.pull_models_from_hf, repo_id)
+
+
+@router.post("/hf/push")
+async def push_to_hf(repo_id: str | None = None, user: str | None = None) -> dict[str, Any]:
+    """Push local operator models, voiceprints, and profiles to Hugging Face Hub."""
+    return await asyncio.to_thread(hf_sync.push_models_to_hf, repo_id, user)

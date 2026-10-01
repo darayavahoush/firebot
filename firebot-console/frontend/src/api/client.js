@@ -301,3 +301,34 @@ export async function parseAndExecuteVoiceIntent(text, execute = false, operator
   }
   return res.json();
 }
+
+// ---- Hugging Face Model Cloud Sync ----
+
+export async function fetchHfSyncStatus() {
+  const res = await fetch("/api/voice/hf/status");
+  if (!res.ok) throw new Error(`fetchHfSyncStatus failed: ${res.status}`);
+  return res.json();
+}
+
+export async function syncModelsFromHf(repoId = null) {
+  const url = repoId ? `/api/voice/hf/sync?repo_id=${encodeURIComponent(repoId)}` : "/api/voice/hf/sync";
+  const res = await fetch(url, { method: "POST" });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `HF sync failed: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function pushModelsToHf(repoId = null, user = null) {
+  const params = new URLSearchParams();
+  if (repoId) params.append("repo_id", repoId);
+  if (user) params.append("user", user);
+  const q = params.toString() ? `?${params.toString()}` : "";
+  const res = await fetch(`/api/voice/hf/push${q}`, { method: "POST" });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `HF push failed: ${res.status}`);
+  }
+  return res.json();
+}

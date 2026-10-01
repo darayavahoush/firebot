@@ -6,6 +6,9 @@ Robot (Pi)  --sensor frames-->  PC brain  --commands-->  Robot (Pi)
                                              ^
 Browser <-> React console <-> FastAPI bridge -+   (reads history + live frames)
                                   \-> brain's loopback command bridge (manual drive, e-stop)
+                                  \-> Groq SLM (Allam / Qwen) natural language intent engine
+                                  \-> Hugging Face Hub (anabaena/firebot-voice-intent) model sync
+                                  \-> Hugging Face Static Space (anabaena/firebot-console)
 
 The Pi is a thin terminal: it streams sensors and applies commands, nothing else -- no
 database, no planning, no numpy. See "Robot link" below. (`firebot-sim` and the training DB
@@ -50,6 +53,13 @@ data structures, so switching to the robot changes drivers only.
 16. [x] Academic Research Paper (MM-FusionRL): Full manuscript targeting IEEE ICRA / IROS / RA-L in
     `docs/RESEARCH_PAPER.md` with cross-attention transformer fusion, active information-theoretic sensing,
     and adaptive covariance estimation.
+17. [x] Natural language SLM intent engine & auto-execution: hosted Groq SLMs (`allam-2-7b` / `qwen/qwen3.8-27b`)
+    for zero-latency conversational command parsing and immediate autonomous actuator dispatch.
+18. [x] Hugging Face Model Hub & Space persistence: bidirectional sync of operator models (`anabaena/firebot-voice-intent`),
+    personalized Whisper heads (`checkpoints/users/<user>.pt`), ECAPA-TDNN voiceprints (`data/voiceprints/<user>.npy`),
+    and deployment to static space `anabaena/firebot-console`.
+19. [x] Cloud telemetry persistence: Render PostgreSQL sink (`firebot-db`), automated migrations,
+    and auto-seeding of historical mission sorties with full 180-frame telemetry and 24x32 thermal heatmaps.
 
 ## Command layer (`firebot.command`)
 operator text -> `RuleParser` (deterministic) -> [`SLMParser`, only if rules returned UNKNOWN]
@@ -195,3 +205,34 @@ React (Vite) --HTTP/WS--> FastAPI bridge (server.py) --SQL--> PostgreSQL   (hist
   also live can be shadowed on the Live page, since it shows the newest open session.
 - **Reading the console safely:** the console never opens a socket to the Pi; everything goes
   through the brain, so the fail-safes above still apply to manual driving.
+
+
+## Natural language SLM intent engine (`firebot.command`, `backend/slm_intent.py`)
+- **Groq-hosted SLM:** `allam-2-7b` with `qwen/qwen3.8-27b` dynamic fallback, running structured JSON
+  mode with zero temperature. Evaluates free-form natural language utterances ("douse the flames in the
+  north hallway", "reverse half a meter", "emergency abort") in ~180ms latency.
+- **Actuator dispatch:** parsed intents directly command the autonomous robotics controllers:
+  `STOP` halts motors and pump; `EXTINGUISH` engages spray and flame tracking; `DRIVE` modulates
+  differential drive velocity vectors; `GOTO` schedules RRT* path planning.
+- **Fail-safe cascade:** Groq SLM -> Local acoustic template matcher -> Deterministic regex rules.
+
+## Hugging Face Model Cloud & Space persistence (`anabaena/firebot-voice-intent`, `anabaena/firebot-console`)
+- **Model Hub repository (`anabaena/firebot-voice-intent`):** central cloud storage for all operator-specific
+  models:
+  - `checkpoints/users/<user>.pt`: Personalized Whisper classification heads
+  - `checkpoints/users/<user>.json`: Evaluation reports and accuracy metrics
+  - `checkpoints/users/<user>.history.jsonl`: Training history logs
+  - `data/voiceprints/<user>.npy`: ECAPA-TDNN speaker verification embeddings
+  - `data/calibration/profiles.json`: Active team operator profiles
+  - `checkpoints/intent_head.pt`, `checkpoints/intent_prototypes.pt`: Base intent classifiers
+- **Bidirectional synchronization (`backend/hf_sync.py`):**
+  - Ephemeral container survival: on startup, missing models are automatically pulled from HF Hub.
+  - Operator enrollment: training a model or enrolling a voiceprint automatically pushes updated weights to HF.
+  - REST endpoints: `GET /api/voice/hf/status`, `POST /api/voice/hf/sync`, and `POST /api/voice/hf/push`.
+- **Hugging Face Static Space (`anabaena-firebot-console.hf.space`):** static frontend deployment with
+  direct static downloads of all models at `/models/users/` and `/models/voiceprints/`.
+
+## Cloud telemetry sink & PostgreSQL on Render (`firebot-db`)
+- Render Managed PostgreSQL database (`dpg-daukj1k9v7es739ubf10-a`, database `firebot_db`) connected via `asyncpg`.
+- Tables `sessions`, `frames`, `operator_commands`, and `schema_migrations` automatically migrated on boot.
+- Auto-seeded mission sorties: 3 realistic sorties with 180 telemetry frames and 24x32 radiometric thermal grids.

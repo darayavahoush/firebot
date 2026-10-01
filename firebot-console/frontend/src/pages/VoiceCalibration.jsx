@@ -9,6 +9,9 @@ import {
   enrollSpeakerVoiceprint,
   testVoiceClip,
   parseAndExecuteVoiceIntent,
+  fetchHfSyncStatus,
+  syncModelsFromHf,
+  pushModelsToHf,
 } from "../api/client.js";
 import { AudioRecorder } from "../lib/audioRecorder.js";
 import { AVATAR_DEFINITIONS, OperatorAvatarBadge } from "../components/voice/OperatorAvatars.jsx";
@@ -53,6 +56,9 @@ export default function VoiceCalibration({ onContinueToLiveOps, activeOperatorId
     color: "#00F0FF",
   });
   const [bannerNotice, setBannerNotice] = useState(null);
+  const [hfStatus, setHfStatus] = useState(null);
+  const [hfSyncing, setHfSyncing] = useState(false);
+  const [hfActionMessage, setHfActionMessage] = useState(null);
 
   const recorderRef = useRef(null);
   const timerRef = useRef(null);
@@ -73,6 +79,16 @@ export default function VoiceCalibration({ onContinueToLiveOps, activeOperatorId
     }
   }, [selectedUser]);
 
+  // Load Hugging Face synchronization status
+  const loadHfStatus = useCallback(async () => {
+    try {
+      const data = await fetchHfSyncStatus();
+      setHfStatus(data);
+    } catch (err) {
+      console.warn("Failed to load HF sync status", err);
+    }
+  }, []);
+
   // Load calibration status for selected user
   const loadStatus = useCallback(async (user) => {
     if (!user) return;
@@ -90,7 +106,8 @@ export default function VoiceCalibration({ onContinueToLiveOps, activeOperatorId
 
   useEffect(() => {
     loadProfiles();
-  }, [loadProfiles]);
+    loadHfStatus();
+  }, [loadProfiles, loadHfStatus]);
 
   useEffect(() => {
     if (selectedUser) {
@@ -98,6 +115,40 @@ export default function VoiceCalibration({ onContinueToLiveOps, activeOperatorId
       onSelectOperator?.(selectedUser);
     }
   }, [selectedUser, loadStatus, onSelectOperator]);
+
+  const handleHfPull = async () => {
+    try {
+      setHfSyncing(true);
+      setHfActionMessage(null);
+      const res = await syncModelsFromHf();
+      playSound("ack");
+      setHfActionMessage(`Pulled ${res.count} models & voiceprints from HF Hub!`);
+      await loadProfiles();
+      if (selectedUser) await loadStatus(selectedUser);
+      await loadHfStatus();
+    } catch (err) {
+      playSound("estop");
+      setHfActionMessage(`HF pull failed: ${err.message}`);
+    } finally {
+      setHfSyncing(false);
+    }
+  };
+
+  const handleHfPush = async () => {
+    try {
+      setHfSyncing(true);
+      setHfActionMessage(null);
+      const res = await pushModelsToHf();
+      playSound("ack");
+      setHfActionMessage(`Pushed ${res.count} models & voiceprints to HF Hub!`);
+      await loadHfStatus();
+    } catch (err) {
+      playSound("estop");
+      setHfActionMessage(`HF push failed: ${err.message}`);
+    } finally {
+      setHfSyncing(false);
+    }
+  };
 
   // Audio waveform animation loop
   useEffect(() => {
@@ -903,6 +954,90 @@ export default function VoiceCalibration({ onContinueToLiveOps, activeOperatorId
                   <span>{testResult.latency_ms} ms</span>
                 </div>
               </div>
+            )}
+          </div>
+
+          {/* Hugging Face Model Cloud Persistence */}
+          <div className="p-5 rounded-2xl bg-panel/80 border border-line backdrop-blur-md">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <span className="text-lg">🤗</span>
+                <h3 className="font-display font-bold text-base text-ink">Hugging Face Model Hub</h3>
+              </div>
+              <span
+                className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase tracking-wider border ${
+                  hfStatus?.synced
+                    ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+                    : "bg-cyan-500/10 text-cyan-400 border-cyan-500/30"
+                }`}
+              >
+                {hfStatus?.synced ? "CLOUD SYNCED" : "CONNECTED"}
+              </span>
+            </div>
+            <p className="text-xs text-muted mb-4">
+              All operator models & voiceprints are stored in the cloud. Checkpoints survive ephemeral cloud restarts and sync across deployments.
+            </p>
+
+            <div className="space-y-2 mb-4 text-xs font-mono">
+              <div className="flex items-center justify-between p-2 rounded-lg bg-panel2/50 border border-line/50">
+                <span className="text-muted">Model Hub:</span>
+                <a
+                  href={`https://huggingface.co/${hfStatus?.model_repo || "anabaena/firebot-voice-intent"}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-telemetry hover:underline font-bold"
+                >
+                  {hfStatus?.model_repo || "anabaena/firebot-voice-intent"} ↗
+                </a>
+              </div>
+              <div className="flex items-center justify-between p-2 rounded-lg bg-panel2/50 border border-line/50">
+                <span className="text-muted">Console Space:</span>
+                <a
+                  href="https://anabaena-firebot-console.hf.space"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-cyan-400 hover:underline font-bold"
+                >
+                  anabaena/firebot-console ↗
+                </a>
+              </div>
+              <div className="flex items-center justify-between p-2 rounded-lg bg-panel2/50 border border-line/50">
+                <span className="text-muted">Stored Models:</span>
+                <span className="text-ink font-bold">
+                  {hfStatus?.local_user_models?.map((m) => m.replace(".pt", "")).join(", ") || "ananya, avinandan"}
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={handleHfPull}
+                disabled={hfSyncing}
+                className="py-2 px-3 rounded-xl bg-panel2 border border-line hover:border-cyan-400 text-xs font-mono font-bold text-ink hover:text-cyan-300 transition-colors flex items-center justify-center gap-1.5"
+              >
+                {hfSyncing ? (
+                  <span className="w-3 h-3 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <span>⬇ Pull from HF</span>
+                )}
+              </button>
+              <button
+                onClick={handleHfPush}
+                disabled={hfSyncing}
+                className="py-2 px-3 rounded-xl bg-panel2 border border-line hover:border-telemetry text-xs font-mono font-bold text-ink hover:text-telemetry transition-colors flex items-center justify-center gap-1.5"
+              >
+                {hfSyncing ? (
+                  <span className="w-3 h-3 border-2 border-telemetry border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <span>⬆ Push to HF</span>
+                )}
+              </button>
+            </div>
+
+            {hfActionMessage && (
+              <p className="mt-3 text-[11px] font-mono text-center text-emerald-400 font-bold">
+                ✓ {hfActionMessage}
+              </p>
             )}
           </div>
         </div>

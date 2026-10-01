@@ -3,6 +3,158 @@ import React, { useState, useMemo } from "react";
 // Every entry mirrors code in this repo; `where` points at the module so the page stays checkable.
 const GROUPS = [
   {
+    title: "Natural Language SLM Intent Engine & Groq Acceleration",
+    items: [
+      {
+        name: "Groq-Hosted SLM Intent Engine (Allam & Qwen)",
+        where: "backend/slm_intent.py, firebot/command/parser.py",
+        what: "Translates free-form spoken natural language into strictly validated robotics intent JSON in sub-200ms.",
+        how: [
+          "Powered by active Groq-hosted SLMs (allam-2-7b with qwen/qwen3.8-27b dynamic fallback) with zero temperature and structured JSON outputs.",
+          "Translates complex, conversational tactical phrasing ('douse the blaze in the north wing', 'advance half a meter', 'emergency stop right now') into canonical robotics intents.",
+          "Strict JSON schema validation: commands (STOP, EXTINGUISH, RETURN_HOME, STATUS, DRIVE, PUMP, GOTO) with normalized direction, target, speed, and confidence bounds.",
+          "Three-tiered parsing cascade: Hosted Groq SLM -> Local acoustic template matcher -> Deterministic regex rules with typo-tolerant Damerau-Levenshtein distance.",
+        ],
+      },
+      {
+        name: "Autonomous Execution & Command Dispatch",
+        where: "frontend/src/lib/simController.js, frontend/src/pages/Simulator.jsx, backend/server.py",
+        what: "Directly binds natural language intents to physical and simulated robot actuators without manual intervention.",
+        how: [
+          "Immediate voice dispatch: microphone input automatically transcribes, classifies intent, and issues real-time actuator directives.",
+          "STOP immediately halts differential drive motors and water pump with latched e-stop override.",
+          "EXTINGUISH aligns towards localized fire coordinates, engages the water pump, and modulates suppression cones.",
+          "DRIVE applies omnidirectional velocity vectors (forward, reverse, turn left/right), while GOTO plans collision-free RRT* waypoints.",
+        ],
+      },
+    ],
+  },
+  {
+    title: "Hugging Face Model Cloud & Distributed Persistence",
+    items: [
+      {
+        name: "Hugging Face Model Hub Registry (firebot-voice-intent)",
+        where: "backend/hf_sync.py, Model Hub: anabaena/firebot-voice-intent",
+        what: "Official centralized model registry hosting all operator-specific checkpoints and acoustic voiceprints.",
+        how: [
+          "Stores per-operator personalized Whisper classifier heads (checkpoints/users/<user>.pt), evaluation reports (<user>.json), and retrain logs (<user>.history.jsonl).",
+          "Stores 192-dimensional ECAPA-TDNN acoustic embeddings (data/voiceprints/<user>.npy) for biometric operator verification.",
+          "Stores base model artifacts (intent_head.pt, intent_prototypes.pt) and active operator profiles (profiles.json).",
+          "Publicly accessible for zero-friction anonymous pulling by cloud container instances, with authenticated write-back on training.",
+        ],
+      },
+      {
+        name: "Bidirectional Cloud Sync & Startup Hydration",
+        where: "backend/server.py, backend/calibration.py, frontend/src/pages/VoiceCalibration.jsx",
+        what: "Synchronizes local operator checkpoints with Hugging Face Hub, ensuring persistence across ephemeral cloud restarts.",
+        how: [
+          "On server startup, the backend checks local disk storage and automatically hydrates missing operator models from Hugging Face Hub in the background.",
+          "Whenever an operator records takes and calibrates or enrolls a voiceprint, the updated weights and profiles are automatically pushed to Hugging Face.",
+          "Voice Studio console provides an interactive Hugging Face status card with live sync badges and manual Pull/Push triggers.",
+          "Exposes REST endpoints: GET /api/voice/hf/status, POST /api/voice/hf/sync, and POST /api/voice/hf/push.",
+        ],
+      },
+      {
+        name: "Hugging Face Static Space Deployment (firebot-console)",
+        where: "scripts/deploy_space.py, Space: anabaena/firebot-console",
+        what: "Globally accessible tactical command dashboard hosted directly on Hugging Face Spaces.",
+        how: [
+          "Static Space deployment at anabaena-firebot-console.static.hf.space providing sub-second edge distribution.",
+          "Stages all operator models and voiceprints into /models/users/ and /models/voiceprints/ for direct static HTTP access.",
+          "Seamlessly communicates with the Render FastAPI backend (firebot-api.onrender.com) for real-time WebSocket telemetry and speech inference.",
+        ],
+      },
+    ],
+  },
+  {
+    title: "Operator Voice Studio & Personal Acoustic Adaptation",
+    items: [
+      {
+        name: "AudioWorklet 16 kHz Mono Acoustic Pipeline",
+        where: "frontend/src/lib/audioRecorder.js, frontend/src/pages/VoiceCalibration.jsx",
+        what: "Low-latency browser audio capture conditioned specifically for tactical speech recognition.",
+        how: [
+          "Captures raw microphone audio via Web Audio API, downsampling to 16,000 Hz single-channel PCM format with linear interpolation.",
+          "Real-time RMS audio energy monitoring and dynamic HTML5 canvas waveform visualizer with active voice activity indicators.",
+          "Per-operator take manager supporting multi-sample calibration takes for verified team members (ananya and avinandan).",
+        ],
+      },
+      {
+        name: "Personalized Whisper Classifier Head & Acoustic Templates",
+        where: "voice_intent/personalize.py, backend/calibration.py",
+        what: "Fine-tunes custom MLP heads on frozen Whisper encoder embeddings with acoustic template fallback.",
+        how: [
+          "Adapts base weights with L2-SP regularization pulled to pre-trained weights, preventing catastrophic forgetting on small calibration sets.",
+          "Evaluates against held-out takes; only commits updates that meet or exceed base accuracy.",
+          "Standalone acoustic template matching computes normalized centroid embeddings per command class for zero-latency offline matching.",
+        ],
+      },
+      {
+        name: "ECAPA-TDNN Speaker Verification",
+        where: "speech/speaker_id.py, data/voiceprints/",
+        what: "Biometric voiceprint authentication tagging commands with operator identity.",
+        how: [
+          "Generates 192-dimensional speaker embeddings using pre-trained SpeechBrain ECAPA-TDNN model.",
+          "Computes cosine similarity against enrolled operator voiceprints (ananya.npy, avinandan.npy) with configurable confidence threshold and margin.",
+          "Records operator identity in audit telemetry (voice:ananya, voice:avinandan) without altering deterministic safety semantics.",
+        ],
+      },
+    ],
+  },
+  {
+    title: "Cloud Telemetry Sink & Storage (PostgreSQL on Render)",
+    items: [
+      {
+        name: "Render Managed PostgreSQL Telemetry Sink",
+        where: "src/firebot/db/pg.py, backend/server.py, Render: firebot-db",
+        what: "Production relational database storing mission sorties, high-frequency telemetry frames, and command audit logs.",
+        how: [
+          "Connected via asyncpg connection pooling to Render PostgreSQL (database firebot_db, instance firebot-db).",
+          "Automated startup migrations ensure tables (sessions, frames, operator_commands, schema_migrations) exist.",
+          "Stores high-frequency sensor readings, estimated poses (x, y, θ), water tank levels, and 24x32 MLX90640 radiometric thermal grids.",
+          "Automatic mission sortie seeding pre-populates realistic suppression, recon, and patrol missions complete with full frame sequences.",
+        ],
+      },
+      {
+        name: "Mission Replay & Telemetry Analytics Studio",
+        where: "frontend/src/pages/History.jsx, fusion/anomaly.py",
+        what: "Interactive scrubbing, historical playback, telemetry curves, and fault detection across recorded robot runs.",
+        how: [
+          "Frame-by-frame scrubber replaying position, velocity, flame sensors, and water tank levels.",
+          "Interactive 24x32 radiometric thermal array heatmap with dynamic color ramps and min/max/mean temperature readouts.",
+          "Fault detector scans mission logs for physical anomalies: tank leaks, pump dry-runs, sensor freezes, and compute spikes.",
+        ],
+      },
+    ],
+  },
+  {
+    title: "Simulation & Procedural 3D Physics (MuJoCo & Three.js)",
+    items: [
+      {
+        name: "MuJoCo 3-D physics engine & procedural architecture",
+        where: "sim/mujoco_world.py, sim/mapgen.py",
+        what: "A high-fidelity physics-backed 3-D simulation with domain-specific building environments and obstacles.",
+        how: [
+          "Procedural 8-room generation with domain-specific semantic architecture: Datacenter Server Hall, Hazmat Lab, Control Room, High-Density Storage, Workshop, Central Atrium, and Executive Office.",
+          "Procedural 3-D interactive obstacle props: dual-bay server racks, emergency backup generators, pressurized gas cylinders, wooden cargo pallets, industrial crates, steel shelving, control consoles, benches, and structural pillars.",
+          "Volumetric GPU particle systems: real-time GPU particle simulation for turbulent smoke plume dispersion, high-velocity thermal fire embers, water mist extinguisher spray, and ground thermal heat dissipation footprint.",
+          "Exact mj_ray lidar sweep at scan height and contact-based collision dynamics ensure the planner and physics engine remain 100% physically consistent.",
+        ],
+      },
+      {
+        name: "Live episode stream & 3-D console view",
+        where: "sim/stream.py, backend/mujoco_stream.py, components/mujoco/MujocoScene.js",
+        what: "Streams physics-backed episodes to the browser with Three.js rendering, multi-camera views, and telemetry overlays.",
+        how: [
+          "Streams scene geometry on connection, followed by 10-60 Hz telemetry frames containing robot pose, lidar sweeps, path waypoints, Bayesian EIF belief state, gas readings, and thermal peaks.",
+          "4 dynamic camera modes: Interactive Orbit, Third-Person Chase (follow), First-Person FPV Rover Camera (fpv), and Bird's-Eye Tactical Top-Down (top).",
+          "Real-time Bayesian EIF Covariance Ellipse overlay (x̂, ŷ, σ) projected directly onto the 3D floor plane to visualize filter convergence.",
+          "With 'Log this run' enabled, frames persist to PostgreSQL as a standard session for scrubbing and replay in the History tab.",
+        ],
+      },
+    ],
+  },
+  {
     title: "Perception & state estimation",
     items: [
       {
@@ -45,7 +197,7 @@ const GROUPS = [
     ],
   },
   {
-    title: "Planning & control",
+    title: "Planning & autonomous robotics control",
     items: [
       {
         name: "RRT* path planning",
@@ -64,114 +216,22 @@ const GROUPS = [
         how: ["Steers toward a point a fixed lookahead distance ahead on the path, so corners are cut smoothly rather than stopped at."],
       },
       {
-        name: "Rule-based controller (baseline)",
-        where: "sim/controller.py, planning/controller.py",
-        what: "Explore, track, then spray, driven only by the observation vector.",
+        name: "Frontier exploration (FrontierController)",
+        where: "sim/frontier_controller.py",
+        what: "Explores an unknown building on purpose instead of wandering.",
         how: [
-          "The planning controller wraps it and takes over only while the fire is localised but not yet in spray position, routing around walls.",
-          "Being rule-based, it is the reference any learned policy is compared against.",
+          "Builds an occupancy grid from the lidar sweeps, finds the nearest reachable frontier (a free cell next to unknown), and follows a breadth-first path to it with pure pursuit.",
+          "Once a fire is seen it hands over to track and spray logic. Operates directly on robot odometry and SLAM belief state.",
         ],
       },
       {
         name: "Lidar avoidance (ScanController)",
         where: "sim/scan_controller.py",
-        what: "Steers around things the four ultrasonic beams miss, like tree trunks, shelf legs and doorframes.",
+        what: "Steers around obstacles the ultrasonic beams miss, like tree trunks, shelf legs and doorframes.",
         how: [
           "A 36-ray, 360-degree sweep replaces the ultrasonic check. When the way ahead is blocked it steers toward the most open heading instead of spinning to one side.",
-          "The explore / track / spray logic is the rule baseline's, unchanged. Simulation only: the real robot has no lidar yet.",
+          "The explore / track / spray logic is the rule baseline's, unchanged.",
         ],
-      },
-      {
-        name: "Frontier exploration (FrontierController)",
-        where: "sim/frontier_controller.py",
-        what: "Explores an unknown building on purpose instead of wandering.",
-        how: [
-          "Builds an occupancy grid from the lidar sweeps, finds the nearest reachable frontier (a free cell next to unknown), and follows a breadth-first path to it with pure pursuit. The green line on the MuJoCo tab is that path.",
-          "Once a fire is seen it hands over to the same track and spray logic. It needs the robot's pose, which in simulation is exact and on hardware would come from odometry or SLAM.",
-        ],
-      },
-      {
-        name: "Command executor",
-        where: "command/executor.py",
-        what: "Runs validated commands as one of four modes.",
-        how: [
-          "IDLE, AUTO (search, approach, suppress), GOTO (drive a path, pump never on) and MANUAL (joystick with a 0.5 s dead-man timeout).",
-          "STOP always wins and latches until the next motion command. Being blocked for 2 s triggers a replan.",
-        ],
-      },
-    ],
-  },
-  {
-    title: "Simulation",
-    items: [
-      {
-        name: "MuJoCo 3-D physics engine & procedural architecture",
-        where: "sim/mujoco_world.py, sim/mapgen.py",
-        what: "A high-fidelity physics-backed 3-D simulation with domain-specific building environments and obstacles.",
-        how: [
-          "Procedural 8-room generation with domain-specific semantic architecture: Datacenter Server Hall, Hazmat Lab, Control Room, High-Density Storage, Workshop, Central Atrium, and Executive Office.",
-          "Procedural 3-D interactive obstacle props: dual-bay server racks, emergency backup generators, pressurized gas cylinders, wooden cargo pallets, industrial crates, steel shelving, control consoles, benches, and structural pillars.",
-          "Volumetric GPU particle systems: real-time GPU particle simulation for turbulent smoke plume dispersion, high-velocity thermal fire embers, water mist extinguisher spray, and ground thermal heat dissipation footprint.",
-          "Exact mj_ray lidar sweep at scan height and contact-based collision dynamics ensure the planner and physics engine remain 100% physically consistent.",
-        ],
-      },
-      {
-        name: "Live episode stream & 3-D console view",
-        where: "sim/stream.py, backend/mujoco_stream.py, components/mujoco/MujocoScene.js",
-        what: "Streams physics-backed episodes to the browser with Three.js rendering, multi-camera views, and telemetry overlays.",
-        how: [
-          "Streams scene geometry on connection, followed by 10-60 Hz telemetry frames containing robot pose, lidar sweeps, path waypoints, Bayesian EIF belief state, gas readings, and thermal peaks.",
-          "4 dynamic camera modes: Interactive Orbit, Third-Person Chase (follow), First-Person FPV Rover Camera (fpv), and Bird's-Eye Tactical Top-Down (top).",
-          "Real-time Bayesian EIF Covariance Ellipse overlay (x̂, ŷ, σ) projected directly onto the 3D floor plane to visualize filter convergence.",
-          "With 'Log this run' enabled, frames persist to PostgreSQL as a standard session for scrubbing and replay in the History tab.",
-        ],
-      },
-    ],
-  },
-  {
-    title: "Voice & command understanding",
-    items: [
-      {
-        name: "Local intent classifier",
-        where: "voice_intent/",
-        what: "Recognises a spoken command directly from audio, offline and fast.",
-        how: [
-          "A frozen Whisper encoder turns the clip into an embedding (mean-pooled over the voiced frames); a small MLP head picks the command.",
-          "Trained on cached embeddings of synthetic text-to-speech clips plus real recordings, with per-class confidence thresholds: a false STOP is cheap, a false move or pump is not.",
-        ],
-      },
-      {
-        name: "ShadowRouter (Thompson sampling)",
-        where: "voice_intent/router.py",
-        what: "Decides when the local classifier can be trusted on its own and when to double-check with Groq.",
-        how: [
-          "A Beta-Bernoulli bandit per confidence decile learns how often the local answer agreed with Groq.",
-          "Sampling balances exploring poorly-known buckets against trusting well-proven ones, and every bucket's stats are inspectable.",
-        ],
-      },
-      {
-        name: "Speech fallbacks",
-        where: "server.py, speech/",
-        what: "Keeps voice working when the local model is unsure or unavailable.",
-        how: [
-          "Order: local classifier, then offline Vosk if a model is installed, then Groq Whisper. An optional Silero VAD gate drops non-speech.",
-        ],
-      },
-      {
-        name: "Rule parser and optional SLM",
-        where: "command/parser.py",
-        what: "Converts text into one of a small set of validated intents.",
-        how: [
-          "Regular-expression rules in priority order: stop, coordinates, status, return home, go to a place, extinguish.",
-          "Any stop word anywhere means STOP. An optional local small language model is a fallback; its output is treated as untrusted and validated.",
-          "The console tolerates one-letter typos in place names (bounded Damerau-Levenshtein).",
-        ],
-      },
-      {
-        name: "Speaker identification",
-        where: "speech/speaker_id.py",
-        what: "Records which enrolled operator issued a command, for the audit trail.",
-        how: ["Pretrained ECAPA-TDNN voiceprints compared by cosine similarity. It never changes what a command means."],
       },
     ],
   },
@@ -264,19 +324,56 @@ export default function About() {
   return (
     <main className="flex-1 overflow-y-auto bg-base p-6">
       <div className="max-w-[1140px] mx-auto space-y-10">
-        {/* Header with Search Input */}
-        <header className="panel p-8 space-y-4">
-          <div className="flex items-center gap-2">
-            <span className="h-2.5 w-2.5 rounded-full bg-telemetry animate-pulse" />
-            <span className="text-[11px] font-mono uppercase tracking-widest text-telemetry font-bold">
-              FIREBOT TECHNICAL MANUAL & ARCHITECTURE
-            </span>
+        {/* Header with Search Input & Deployment Links */}
+        <header className="panel p-8 space-y-5">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-2">
+              <span className="h-2.5 w-2.5 rounded-full bg-telemetry animate-pulse" />
+              <span className="text-[11px] font-mono uppercase tracking-widest text-telemetry font-bold">
+                FIREBOT TECHNICAL MANUAL & ARCHITECTURE SPECIFICATION
+              </span>
+            </div>
+
+            {/* Quick Live Stack Badges */}
+            <div className="flex flex-wrap items-center gap-2">
+              <a
+                href="https://huggingface.co/anabaena/firebot-voice-intent"
+                target="_blank"
+                rel="noreferrer"
+                className="px-2.5 py-1 rounded-lg bg-panel2 border border-line text-[11px] font-mono text-ink hover:text-telemetry hover:border-telemetry/40 transition-colors flex items-center gap-1.5"
+              >
+                <span>🤗</span>
+                <span>HF Model Hub</span>
+                <span className="text-faint">↗</span>
+              </a>
+              <a
+                href="https://anabaena-firebot-console.static.hf.space"
+                target="_blank"
+                rel="noreferrer"
+                className="px-2.5 py-1 rounded-lg bg-panel2 border border-line text-[11px] font-mono text-ink hover:text-cyan-400 hover:border-cyan-400/40 transition-colors flex items-center gap-1.5"
+              >
+                <span>🚀</span>
+                <span>HF Space</span>
+                <span className="text-faint">↗</span>
+              </a>
+              <a
+                href="https://firebot-api.onrender.com"
+                target="_blank"
+                rel="noreferrer"
+                className="px-2.5 py-1 rounded-lg bg-panel2 border border-line text-[11px] font-mono text-ink hover:text-emerald-400 hover:border-emerald-400/40 transition-colors flex items-center gap-1.5"
+              >
+                <span>⚡</span>
+                <span>Render API</span>
+                <span className="text-faint">↗</span>
+              </a>
+            </div>
           </div>
-          <h1 className="font-display font-black text-[36px] lg:text-[44px] leading-[1.05] tracking-tight text-ink max-w-[20ch]">
-            How the robot senses, plans, and suppresses fires
+
+          <h1 className="font-display font-black text-[34px] lg:text-[42px] leading-[1.05] tracking-tight text-ink max-w-[24ch]">
+            How Firebot senses, reasons, plans, and suppresses fires
           </h1>
-          <p className="text-[16px] text-muted max-w-[62ch]">
-            Every module below is implemented as checked-in production code in this repository. Use this reference to trace state estimation, motion planning, and MuJoCo simulation pipelines.
+          <p className="text-[15px] text-muted max-w-[68ch] leading-relaxed">
+            Every module below is implemented as production-grade code in this repository. Reference this live architecture specification to trace natural language SLM routing, Hugging Face checkpoint persistence, state estimation filters, RRT* motion planning, and MuJoCo 3D procedural simulation.
           </p>
 
           <div className="pt-2 max-w-md">
@@ -285,7 +382,7 @@ export default function About() {
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search algorithms, filters, models, or file paths…"
+                placeholder="Search Groq SLM, Hugging Face, Postgres, filters, or files…"
                 className="w-full bg-panel2 border border-line rounded-xl px-4 py-2.5 pl-10 text-[13px] text-ink font-mono focus:border-telemetry transition-colors outline-none"
               />
               <span className="absolute left-3.5 top-3 text-faint">🔍</span>
@@ -302,7 +399,7 @@ export default function About() {
         </header>
 
         {/* Categories Grid */}
-        <div className="grid gap-10 md:grid-cols-[220px_1fr] items-start">
+        <div className="grid gap-10 md:grid-cols-[240px_1fr] items-start">
           <nav aria-label="Sections" className="md:sticky md:top-6 self-start panel p-4 space-y-2">
             <div className="text-[11px] font-mono uppercase tracking-wider text-faint pb-2 border-b border-line">
               Subsystems
@@ -312,7 +409,8 @@ export default function About() {
                 <li key={g.title}>
                   <a
                     href={`#${slug(g.title)}`}
-                    className="block text-[12px] font-mono text-muted hover:text-telemetry py-1 px-1.5 rounded transition-colors hover:bg-panel2"
+                    className="block text-[11px] font-mono text-muted hover:text-telemetry py-1.5 px-2 rounded transition-colors hover:bg-panel2 truncate"
+                    title={g.title}
                   >
                     {g.title}
                   </a>
@@ -330,7 +428,7 @@ export default function About() {
             {filteredGroups.map((g) => (
               <section key={g.title} id={slug(g.title)} className="scroll-mt-6 panel p-6 space-y-6">
                 <div className="flex items-center justify-between border-b border-line pb-3">
-                  <h2 className="font-display font-extrabold text-[22px] tracking-tight text-ink">
+                  <h2 className="font-display font-extrabold text-[20px] lg:text-[22px] tracking-tight text-ink">
                     {g.title}
                   </h2>
                   <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-panel2 text-faint border border-line">
@@ -342,13 +440,13 @@ export default function About() {
                   {g.items.map((it) => (
                     <article key={it.name} className="py-6 first:pt-0 last:pb-0 grid gap-x-8 gap-y-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
                       <div>
-                        <h3 className="font-display font-bold text-[18px] text-ink leading-tight">
+                        <h3 className="font-display font-bold text-[17px] text-ink leading-tight">
                           {it.name}
                         </h3>
                         <code className="data inline-block mt-2 px-2.5 py-1 rounded-md bg-panel2 text-[11px] font-mono text-telemetry border border-line">
                           {it.where}
                         </code>
-                        <p className="mt-3 text-[14px] leading-relaxed text-muted">
+                        <p className="mt-3 text-[13px] leading-relaxed text-muted">
                           {it.what}
                         </p>
                       </div>
