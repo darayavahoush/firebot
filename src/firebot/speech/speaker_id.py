@@ -263,7 +263,7 @@ def trim_silence(audio: np.ndarray, sample_rate: int = 16_000, rel_db: float = -
 
 
 def decide_speaker(scores: dict[str, float], threshold: float = DEFAULT_THRESHOLD,
-                   margin: float = 0.02) -> tuple[str | None, float]:
+                   margin: float = 0.05) -> tuple[str | None, float]:
     """(name_or_None, best_score) from per-speaker cosine scores. Reports a name only when the
     best score clears `threshold` AND beats the runner-up by `margin`: with just a couple of
     enrolled voices, a near-tie means "can't tell them apart", not "the slightly higher one"."""

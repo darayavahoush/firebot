@@ -250,8 +250,8 @@ export async function deleteCalibrationClip(user, label, filename = null) {
   return res.json();
 }
 
-export async function trainCalibrationModel(user) {
-  const res = await fetch(`/api/voice/calibrate/train?user=${encodeURIComponent(user)}`, {
+export async function trainCalibrationModel(user, allowPartial = true) {
+  const res = await fetch(`/api/voice/calibrate/train?user=${encodeURIComponent(user)}&allow_partial=${allowPartial}&min_clips=1`, {
     method: "POST",
   });
   if (!res.ok) {

@@ -1077,7 +1077,7 @@ def _identify_speaker(audio_bytes: bytes) -> dict[str, Any] | None:
 
 @app.post("/api/transcribe")
 async def transcribe(file: UploadFile = File(...), user: str | None = Form(None),
-                     execute: bool = Form(False)) -> dict[str, Any]:
+                     execute: bool = Form(False), parse_intent: bool = Form(False)) -> dict[str, Any]:
     audio_bytes = await file.read()
     # Who is speaking decides which personal voice model (if any) reads the command: an explicit
     # operator picked in the UI wins, else the speaker the voiceprints recognise.
@@ -1086,23 +1086,25 @@ async def transcribe(file: UploadFile = File(...), user: str | None = Form(None)
     operator = user_str.strip().lower() or (who or {}).get("speaker")
     text = await _transcribe_text(audio_bytes, file.filename or "clip.webm",
                                   file.content_type or "audio/webm", user=operator)
-    used = bool(operator and calibration.get_user_head(operator))
-
-    # Parse intent via SLM
-    intent_data = await parse_intent_slm(text) if text else None
+    used = bool(user_str.strip() and operator and calibration.get_user_head(operator))
 
     out = {"text": text, **(who or {})}
-    if intent_data:
-        out["intent"] = intent_data
     if used:
         out["voice_model"] = operator
 
-    if execute and intent_data and intent_data.get("intent") and intent_data["intent"] != "UNKNOWN":
-        out["execution"] = await _execute_intent_action(
-            intent_data["intent"],
-            {**intent_data.get("params", {}), "raw_text": text},
-            operator,
-        )
+    do_execute = execute is True or (isinstance(execute, str) and execute.lower() in ("true", "1"))
+    do_intent = parse_intent is True or (isinstance(parse_intent, str) and parse_intent.lower() in ("true", "1")) or do_execute
+
+    if do_intent and text:
+        intent_data = await parse_intent_slm(text)
+        if intent_data:
+            out["intent"] = intent_data
+        if do_execute and intent_data and intent_data.get("intent") and intent_data["intent"] != "UNKNOWN":
+            out["execution"] = await _execute_intent_action(
+                intent_data["intent"],
+                {**intent_data.get("params", {}), "raw_text": text},
+                operator,
+            )
 
     # Stash the clip so what the person does next (send as-is / pick the right command) can teach
     # their model. None (and no extra keys) unless the operator is known and learning is possible.

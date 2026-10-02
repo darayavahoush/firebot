@@ -199,6 +199,9 @@ CUSTOM_PHRASES = {
 
 
 def _classes() -> list[str]:
+    base, _ = _base_ckpt()
+    if base and "classes" in base:
+        return list(base["classes"])
     from firebot.voice_intent.vocab import CLASSES
     all_classes = list(CORE_CLASSES)
     for c in CLASSES:
@@ -221,6 +224,8 @@ def _label(label: str) -> str:
     cleaned = (label or "").strip().upper()
     if not cleaned or not re.match(r"^[A-Z0-9_-]+$", cleaned):
         raise HTTPException(400, f"Invalid command label {label!r}")
+    if cleaned not in _classes():
+        raise HTTPException(400, f"Unknown command label {label!r}")
     return cleaned
 
 
@@ -567,7 +572,7 @@ async def delete_clip(user: str, label: str, filename: str | None = None) -> dic
 
 
 @router.post("/calibrate/train")
-async def train(user: str) -> dict[str, Any]:
+async def train(user: str, allow_partial: bool = False, min_clips: int | None = None) -> dict[str, Any]:
     user = _user(user)
     base, reason = _base_ckpt()
     if base is None:
@@ -591,7 +596,7 @@ async def train(user: str) -> dict[str, Any]:
     if not _lock.acquire(blocking=False):
         raise HTTPException(409, "Calibration is already running")
     try:
-        report = await asyncio.to_thread(_train_blocking, user, base, "manual")
+        report = await asyncio.to_thread(_train_blocking, user, base, "manual", allow_partial, min_clips)
         if report.get("accepted"):
             asyncio.create_task(asyncio.to_thread(hf_sync.push_models_to_hf, user=user))
     finally:
@@ -599,7 +604,8 @@ async def train(user: str) -> dict[str, Any]:
     return {"report": report, **_status(user)}
 
 
-def _train_blocking(user: str, base: dict, trigger: str = "manual") -> dict:
+def _train_blocking(user: str, base: dict, trigger: str = "manual",
+                    allow_partial: bool = False, min_clips: int | None = None) -> dict:
     import numpy as np
     import torch
     from firebot.voice_intent.personalize import holdout_indices, personalize, save_user_ckpt
@@ -625,7 +631,7 @@ def _train_blocking(user: str, base: dict, trigger: str = "manual") -> dict:
     arr = np.stack(feats)
     ckpt, report = personalize(base, arr, names, holdout_idx=holdout_indices(keys, names),
                                incumbent=incumbent, refit_all=False,
-                               allow_partial=True, min_clips=1)
+                               allow_partial=allow_partial, min_clips=min_clips)
     fb_total = sum(_fb_counts(user).values())
     report.update(trigger=trigger, trained_at=time.time(), fb_clips=fb_total)
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
