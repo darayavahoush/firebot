@@ -377,8 +377,9 @@ export default function VoiceCalibration({ onContinueToLiveOps, activeOperatorId
           try {
             const result = await testVoiceClip(audioBlob, selectedUser);
             setTestResult(result);
-            playSound(result.speaker === selectedUser ? "ack" : "estop");
-            if (autoExecute && result.can_execute) {
+            const isMatch = result.is_verified ?? (result.speaker === selectedUser);
+            playSound(isMatch ? "ack" : "estop");
+            if (autoExecute && result.can_execute && isMatch) {
               handleExecuteTestCommand(result);
             }
           } catch (err) {
@@ -890,18 +891,83 @@ export default function VoiceCalibration({ onContinueToLiveOps, activeOperatorId
             </button>
 
             {testResult && (
-              <div className="mt-4 p-4 rounded-xl bg-base/80 border border-line text-xs font-mono space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-muted">Detected Speaker:</span>
-                  <span
-                    className={`font-bold ${
-                      testResult.speaker === selectedUser ? "text-emerald-400" : "text-warn"
-                    }`}
-                  >
-                    {testResult.speaker ? testResult.speaker.toUpperCase() : "UNRECOGNIZED"} (
-                    {((testResult.speaker_score || 0) * 100).toFixed(1)}%)
-                  </span>
-                </div>
+              <div className="mt-4 p-4 rounded-xl bg-base/80 border border-line text-xs font-mono space-y-3">
+                {/* Biometric Verification Banner */}
+                {testResult.speaker === selectedUser ? (
+                  <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 space-y-1">
+                    <div className="flex items-center justify-between font-bold text-sm">
+                      <span className="flex items-center gap-1.5">
+                        <span>✓</span>
+                        <span>MATCH: {testResult.speaker.toUpperCase()}</span>
+                      </span>
+                      <span>{((testResult.speaker_score || 0) * 100).toFixed(1)}%</span>
+                    </div>
+                    <p className="text-[11px] text-emerald-400/80">
+                      Voiceprint verified for active operator {selectedUser.toUpperCase()}.
+                    </p>
+                  </div>
+                ) : testResult.speaker ? (
+                  <div className="p-3 rounded-lg bg-rose-500/15 border border-rose-500/40 text-rose-300 space-y-1">
+                    <div className="flex items-center justify-between font-bold text-xs sm:text-sm">
+                      <span className="flex items-center gap-1.5 text-rose-400">
+                        <span>✕</span>
+                        <span>VOICE MISMATCH</span>
+                      </span>
+                      <span className="text-amber-300">{((testResult.speaker_score || 0) * 100).toFixed(1)}% match</span>
+                    </div>
+                    <p className="text-[11px] text-rose-200 font-bold">
+                      Detected: <span className="text-amber-300 underline">{testResult.speaker.toUpperCase()}</span> — Expected: <span className="text-ink underline">{selectedUser.toUpperCase()}</span>
+                    </p>
+                    <p className="text-[10px] text-rose-300/80">
+                      Speaker biometric signature does not match selected profile.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 space-y-1">
+                    <div className="flex items-center justify-between font-bold text-xs sm:text-sm">
+                      <span className="flex items-center gap-1.5">
+                        <span>✕</span>
+                        <span>UNRECOGNIZED OPERATOR VOICE</span>
+                      </span>
+                      <span>{((testResult.speaker_score || 0) * 100).toFixed(1)}%</span>
+                    </div>
+                    <p className="text-[11px] text-amber-300/80">
+                      Acoustic sample could not be confidently matched to any enrolled operator.
+                    </p>
+                  </div>
+                )}
+
+                {/* Candidate Biometric Scores Breakdown */}
+                {testResult.speaker_scores && Object.keys(testResult.speaker_scores).length > 0 && (
+                  <div className="p-2.5 rounded-lg bg-panel2/50 border border-line/60 text-[11px]">
+                    <div className="text-muted text-[10px] uppercase tracking-wider mb-1.5 font-bold">
+                      Enrolled Voice Comparison
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      {Object.entries(testResult.speaker_scores).map(([spk, sc]) => {
+                        const isTop = spk === testResult.speaker;
+                        const isExpected = spk === selectedUser;
+                        return (
+                          <div
+                            key={spk}
+                            className={`p-1.5 rounded-md border flex items-center justify-between ${
+                              isTop
+                                ? "bg-telemetry/10 border-telemetry/40 text-ink"
+                                : "bg-panel/40 border-line/40 text-muted"
+                            }`}
+                          >
+                            <span className="truncate">
+                              {spk.toUpperCase()} {isExpected ? "(active)" : ""}
+                            </span>
+                            <span className={`font-bold ml-1 ${isTop ? "text-telemetry" : "text-faint"}`}>
+                              {(sc * 100).toFixed(1)}%
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 <div className="flex items-center justify-between">
                   <span className="text-muted">Recognized Intent:</span>
@@ -927,10 +993,19 @@ export default function VoiceCalibration({ onContinueToLiveOps, activeOperatorId
 
                 {testResult.can_execute && (
                   <div className="pt-2 border-t border-line/60">
+                    {testResult.speaker && testResult.speaker !== selectedUser ? (
+                      <div className="p-2 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-300 text-[11px] text-center mb-2">
+                        ⚠️ Automatic dispatch blocked: Voice does not match {selectedUser.toUpperCase()}.
+                      </div>
+                    ) : null}
                     <button
                       onClick={() => handleExecuteTestCommand()}
-                      disabled={executingTest}
-                      className="w-full py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-mono font-bold text-xs uppercase tracking-wider hover:opacity-95 active:scale-95 transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
+                      disabled={executingTest || (testResult.speaker && testResult.speaker !== selectedUser)}
+                      className={`w-full py-2.5 rounded-xl font-mono font-bold text-xs uppercase tracking-wider transition-all shadow-md flex items-center justify-center gap-2 ${
+                        testResult.speaker && testResult.speaker !== selectedUser
+                          ? "bg-panel2 text-faint cursor-not-allowed border border-line"
+                          : "bg-gradient-to-r from-emerald-500 to-teal-600 text-white hover:opacity-95 active:scale-95 cursor-pointer"
+                      }`}
                     >
                       {executingTest ? (
                         <span>Executing on Robot...</span>

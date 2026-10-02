@@ -840,18 +840,34 @@ async def test_voice(file: UploadFile = File(...), expected_user: str | None = N
     # Speaker identification
     spk_name, spk_score = None, 0.0
     spk_scores = {}
+    is_verified = False
     vp_dir = REPO_ROOT / "data" / "voiceprints"
     if vp_dir.is_dir() and any(vp_dir.glob("*.npy")):
         try:
             ident = SpeakerIdentifier(vp_dir)
             scores = ident.scores(pcm)
-            spk_scores = {k: round(v, 3) for k, v in scores.items()}
-            spk_name, spk_score = decide_speaker(scores, 0.20, 0.03)
-            if expected_user and expected_user in scores:
-                if spk_name is None and scores[expected_user] >= 0.18:
-                    spk_name, spk_score = expected_user, scores[expected_user]
-                elif spk_name == expected_user:
-                    spk_score = scores[expected_user]
+            if scores:
+                from firebot.speech.speaker_id import calculate_speaker_probabilities
+                probs = calculate_speaker_probabilities(scores, temperature=0.04)
+                spk_scores = probs
+
+                # Rank candidates by cosine similarity
+                ranked = sorted(scores.items(), key=lambda kv: -kv[1])
+                best_speaker, best_raw = ranked[0]
+                runner_up = ranked[1][1] if len(ranked) > 1 else 0.0
+                margin = best_raw - runner_up
+
+                if best_raw >= 0.50 and margin >= 0.01:
+                    spk_name = best_speaker
+                    spk_score = probs.get(best_speaker, round(best_raw, 3))
+                else:
+                    spk_name = None
+                    spk_score = probs.get(best_speaker, 0.5)
+
+                if expected_user:
+                    is_verified = (spk_name == expected_user)
+                else:
+                    is_verified = bool(spk_name)
         except Exception:
             pass
 
@@ -921,6 +937,8 @@ async def test_voice(file: UploadFile = File(...), expected_user: str | None = N
         "speaker": spk_name,
         "speaker_score": round(spk_score, 3) if spk_score else 0.0,
         "speaker_scores": spk_scores,
+        "expected_user": expected_user,
+        "is_verified": is_verified,
         "intent": intent_name,
         "confidence": intent_conf,
         "phrase": phrase,
