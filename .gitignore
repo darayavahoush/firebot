@@ -20,6 +20,7 @@ vosk-model-small-en-us-0.15.zip
 checkpoints/
 pretrained_models/
 data/_cohort_src/
+data/_impostors/
 data/voiceprints/backup_*/
 
 # trained voice-intent router state (written by the console backend at runtime)
