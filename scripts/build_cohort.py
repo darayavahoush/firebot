@@ -13,10 +13,10 @@ from __future__ import annotations
 import argparse
 import json
 import tarfile
-import urllib.request
 from pathlib import Path
 
 import numpy as np
+from download_util import download_atomic
 
 from firebot.speech.speaker_embed import embedder_name
 from firebot.speech.speaker_id import COHORT_FILE, META_FILE, SpeakerIdentifier, trim_silence
@@ -57,9 +57,7 @@ def main() -> None:
     if a.librispeech:
         a.workdir.mkdir(parents=True, exist_ok=True)
         tgz = a.workdir / "dev-clean.tar.gz"
-        if not tgz.exists():
-            print(f"downloading {LIBRISPEECH_URL} ...")
-            urllib.request.urlretrieve(LIBRISPEECH_URL, tgz)
+        download_atomic(LIBRISPEECH_URL, tgz)
         if not (a.workdir / "LibriSpeech").exists():
             with tarfile.open(tgz) as t:
                 t.extractall(a.workdir, filter="data")

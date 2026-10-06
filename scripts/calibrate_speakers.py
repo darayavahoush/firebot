@@ -60,7 +60,7 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", type=Path, default=Path("data/calibration"))
     ap.add_argument("--voiceprints", type=Path, default=Path("data/voiceprints"))
-    ap.add_argument("--impostors", type=Path, help="directory of impostor .wav clips (any depth)")
+    ap.add_argument("--impostors", type=Path, help="directory of impostor .wav/.flac clips (any depth)")
     ap.add_argument("--max-impostors", type=int, default=300)
     ap.add_argument("--max-far", type=float, default=0.01, help="target false-accept rate")
     ap.add_argument("--write", action="store_true")
@@ -95,12 +95,17 @@ def main() -> None:
 
     imp_emb: list[np.ndarray] = []
     if a.impostors:
-        wavs = sorted(a.impostors.glob("**/*.wav"))[: a.max_impostors]
+        wavs = sorted([*a.impostors.glob("**/*.wav"), *a.impostors.glob("**/*.flac")])[: a.max_impostors]
+        if not wavs:
+            raise SystemExit(f"--impostors {a.impostors}: no .wav/.flac clips found "
+                             "(run scripts/fetch_impostors.py first)")
         for w in wavs:
             try:
                 imp_emb.append(ident.embed(load_pcm(w)))
             except Exception:  # noqa: BLE001, S112
                 continue
+        if not imp_emb:
+            raise SystemExit(f"--impostors {a.impostors}: none of {len(wavs)} clips could be embedded")
         print(f"impostor clips: {len(imp_emb)}")
 
     modes = ["cosine"] + (["asnorm"] if cohort is not None else [])

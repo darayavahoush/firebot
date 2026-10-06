@@ -11,12 +11,12 @@ from __future__ import annotations
 
 import argparse
 import tarfile
-import urllib.request
 from pathlib import Path
 
 import numpy as np
 import soundfile as sf
 from build_cohort import _flac_to_pcm
+from download_util import download_atomic
 
 URL = "https://www.openslr.org/resources/12/test-clean.tar.gz"
 
@@ -34,9 +34,7 @@ def main() -> None:
     if src is None:
         a.workdir.mkdir(parents=True, exist_ok=True)
         tgz = a.workdir / "test-clean.tar.gz"
-        if not tgz.exists():
-            print(f"downloading {URL} ...")
-            urllib.request.urlretrieve(URL, tgz)
+        download_atomic(URL, tgz)
         if not (a.workdir / "LibriSpeech" / "test-clean").exists():
             with tarfile.open(tgz) as t:
                 t.extractall(a.workdir, filter="data")
@@ -55,11 +53,16 @@ def main() -> None:
     for spk, files in sorted(by_spk.items()):
         segs: list[bytes] = []
         for i in rng.permutation(len(files))[:3]:
-            segs += _flac_to_pcm(files[i], rng)
+            try:
+                segs += _flac_to_pcm(files[i], rng)
+            except Exception as e:  # noqa: BLE001 -- skip a bad file, keep going
+                print(f"  skipped {files[i]}: {e}")
         for j, i in enumerate(rng.permutation(len(segs))[: a.per_speaker]):
             audio = np.frombuffer(segs[i], dtype="<i2")
             sf.write(a.out / f"{spk}_{j}.wav", audio, 16_000, subtype="PCM_16")
             n += 1
+    if n == 0:
+        raise SystemExit(f"no impostor clips written; delete {src} and re-run to re-extract")
     print(f"wrote {n} impostor clips from {len(by_spk)} speakers to {a.out}/")
 
 
