@@ -1,0 +1,14 @@
+{
+  "scoring": "asnorm",
+  "embedder": "wespeaker",
+  "threshold": 2.5927,
+  "margin": 0.7883,
+  "eer": 0.0,
+  "min_dcf": 0.0,
+  "max_far": 0.01,
+  "n_impostors": 0,
+  "speakers": [
+    "ananya",
+    "avinandan"
+  ]
+}
