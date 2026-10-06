@@ -69,8 +69,8 @@ def fbank_features(audio: np.ndarray) -> np.ndarray:
     try:
         import kaldi_native_fbank as knf
     except ImportError as e:
-        raise SpeakerModelError("kaldi-native-fbank is not installed "
-                                "(pip install kaldi-native-fbank)") from e
+        raise SpeakerModelError(f"kaldi-native-fbank could not be imported ({type(e).__name__}: {e}); "
+                                "try: pip install --force-reinstall kaldi-native-fbank") from e
     opts = knf.FbankOptions()
     opts.frame_opts.dither = 0.0
     opts.frame_opts.snip_edges = True
@@ -111,8 +111,8 @@ class WeSpeakerOnnx:
         try:
             import onnxruntime as ort
         except ImportError as e:
-            raise SpeakerModelError("onnxruntime is not installed "
-                                    "(pip install onnxruntime)") from e
+            raise SpeakerModelError(f"onnxruntime could not be imported ({type(e).__name__}: {e}); "
+                                    "try: pip install --force-reinstall onnxruntime") from e
         path = Path(model_path or os.environ.get("FIREBOT_SPEAKER_MODEL_PATH")
                     or default_model_dir() / DEFAULT_WESPEAKER_FILE)
         if not path.exists():
