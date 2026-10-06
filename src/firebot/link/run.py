@@ -143,6 +143,11 @@ def brain_main() -> None:
         if a.speaker_id:
             from firebot.speech.speaker_id import SpeakerIdentifier
             speaker_id = SpeakerIdentifier()
+            try:  # fail at startup, not on the first command
+                speaker_id.embed(b"\x00\x00" * 16_000)
+                speaker_id.enrolled()
+            except Exception as e:  # noqa: BLE001
+                sys.exit(f"speaker ID unavailable: {e}")
         start_voice(server, rec, chunks, say=lambda m: print(m, flush=True), speaker_id=speaker_id)
         log.info("voice control on (say: put out the fire / go to the east side / status / stop)")
     try:

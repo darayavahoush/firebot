@@ -56,7 +56,7 @@ data structures, so switching to the robot changes drivers only.
 17. [x] Natural language SLM intent engine & auto-execution: hosted Groq SLMs (`allam-2-7b` / `qwen/qwen3.8-27b`)
     for zero-latency conversational command parsing and immediate autonomous actuator dispatch.
 18. [x] Hugging Face Model Hub & Space persistence: bidirectional sync of operator models (`anabaena/firebot-voice-intent`),
-    personalized Whisper heads (`checkpoints/users/<user>.pt`), ECAPA-TDNN voiceprints (`data/voiceprints/<user>.npy`),
+    personalized Whisper heads (`checkpoints/users/<user>.pt`), speaker voiceprints (`data/voiceprints/<user>.npy`, WeSpeaker ResNet34 embeddings),
     and deployment to static space `anabaena/firebot-console`.
 19. [x] Cloud telemetry persistence: Render PostgreSQL sink (`firebot-db`), automated migrations,
     and auto-seeding of historical mission sorties with full 180-frame telemetry and 24x32 thermal heatmaps.
@@ -126,11 +126,17 @@ it overrides a command already being computed. Each operator command is logged w
 start-up the brain exits with an error; if the audio stream dies later, typed control continues.
 Voice complements a physical e-stop; it does not replace one.
 
-Speaker ID (`firebot.speech.speaker_id`, `firebot-brain --speaker-id`): SpeechBrain ECAPA embeddings
-matched by cosine similarity against enrolled voiceprints (`scripts/enroll_speaker.py`, threshold and margin
-tunable via `FIREBOT_SPEAKER_*`). It answers "who said it" for the audit trail and never changes
-what a command means: the rule parser stays deterministic. The speaker is recorded in the command
-channel (`voice:<name>`).
+Speaker ID (`firebot.speech.speaker_id`, `firebot-brain --speaker-id`): embeddings from a pretrained speaker
+model (default WeSpeaker ResNet34 via ONNX, ~25 MB, CPU-only; `FIREBOT_SPEAKER_EMBEDDER=speechbrain|legacy`
+to change) matched by cosine similarity, AS-normalised against an impostor cohort when `data/voiceprints/cohort.npy`
+exists (`scripts/build_cohort.py`). Voiceprints record their embedder (`embedder.json`) and are refused if it
+differs from the active one; a model that can't load is an error, never a silent downgrade. The console blends
+the last few commands' scores to damp one-second-clip noise. Enrol and calibrate with
+`scripts/enroll_speaker.py` / `scripts/calibrate_speakers.py --write [--impostors DIR]`, which report accuracy, EER
+and minDCF and save thresholds to `speaker_calibration.json` (`FIREBOT_SPEAKER_THRESHOLD`/`MARGIN` override).
+It answers "who said it" for the audit trail and never changes what a command means: the rule parser stays
+deterministic. The speaker is recorded in the command channel (`voice:<name>`). It is a label, not authentication:
+a recording can be replayed, so dangerous commands need a separate confirmation.
 
 Limits: the token authenticates but the link is not encrypted -- use it over a trusted LAN or a
 VPN (WireGuard/Tailscale). Odometry pose comes from the Pi (wheel encoders/IMU); there is no SLAM
@@ -222,7 +228,7 @@ React (Vite) --HTTP/WS--> FastAPI bridge (server.py) --SQL--> PostgreSQL   (hist
   - `checkpoints/users/<user>.pt`: Personalized Whisper classification heads
   - `checkpoints/users/<user>.json`: Evaluation reports and accuracy metrics
   - `checkpoints/users/<user>.history.jsonl`: Training history logs
-  - `data/voiceprints/<user>.npy`: ECAPA-TDNN speaker verification embeddings
+  - `data/voiceprints/<user>.npy`: speaker verification embeddings (plus `embedder.json`, `cohort.npy`, `speaker_calibration.json`)
   - `data/calibration/profiles.json`: Active team operator profiles
   - `checkpoints/intent_head.pt`, `checkpoints/intent_prototypes.pt`: Base intent classifiers
 - **Bidirectional synchronization (`backend/hf_sync.py`):**

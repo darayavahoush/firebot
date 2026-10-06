@@ -15,6 +15,10 @@ RUN pip install --no-cache-dir ".[pc]"
 COPY firebot-console/backend/requirements.txt ./backend/requirements.txt
 RUN pip install --no-cache-dir -r backend/requirements.txt
 COPY firebot-console/backend ./backend
+COPY scripts/fetch_speaker_model.py ./scripts/fetch_speaker_model.py
+RUN FIREBOT_SPEAKER_MODEL_DIR=/app/pretrained_models/wespeaker python scripts/fetch_speaker_model.py \
+    || echo "WARNING: speaker model not prefetched; it will download on first use"
+ENV FIREBOT_SPEAKER_MODEL_DIR=/app/pretrained_models/wespeaker
 COPY firebot-console/deploy/entrypoint.sh ./entrypoint.sh
 COPY --from=web /w/dist ./frontend-dist
 RUN chmod +x entrypoint.sh

@@ -120,7 +120,7 @@ database named after your macOS user and fails with `database "<you>" does not e
   PostgreSQL telemetry sink, simulated hardware, voice hookup (`voice.py`); `firebot-brain`, `firebot-pi`
 - `src/firebot/fusion/` also holds `pose_ekf.py` (pose filter) and `anomaly.py` (explainable
   telemetry findings and run summaries used by the console's History page)
-- `src/firebot/speech/` also holds `speaker_id.py` (who spoke, via SpeechBrain ECAPA) and `vad.py`
+- `src/firebot/speech/` also holds `speaker_id.py` (who spoke, via WeSpeaker ONNX embeddings with AS-norm; see `speaker_embed.py`) and `vad.py`
 - `src/firebot/voice_intent/` trained offline voice-intent classifier and router (own README)
 - `firebot-console/` the web console: `frontend/` (React + Vite + Tailwind + three.js), `backend/server.py`
   (FastAPI) and `backend/mujoco_stream.py` (the MuJoCo tab's WebSocket), `deploy/` (Azure scripts)

@@ -170,15 +170,18 @@ _voice_router: ShadowRouter | None = None
 # undecodable clip...). Surfaced by /api/voice/status so a silent Groq fallback is diagnosable.
 _voice_last_error: str | None = None
 
-# Who is speaking (ECAPA voiceprints, `python scripts/enroll_speaker.py --speaker NAME`). Identification
-# only -- it labels a command with a speaker, it never blocks one. Off with FIREBOT_SPEAKER_ID=0.
 _REPO_ROOT = Path(__file__).resolve().parents[2]
+# Who is speaking (voiceprints from `python scripts/enroll_speaker.py --speaker NAME`; embedder chosen with
+# FIREBOT_SPEAKER_EMBEDDER, default WeSpeaker ONNX). Identification only -- it labels a command with a
+# speaker, it never blocks one. Off with FIREBOT_SPEAKER_ID=0. Thresholds: env override > the file
+# `scripts/calibrate_speakers.py --write` saves next to the voiceprints > defaults.
 SPEAKER_ID_ENABLED = os.environ.get("FIREBOT_SPEAKER_ID", "1") != "0"
-SPEAKER_THRESHOLD = float(os.environ.get("FIREBOT_SPEAKER_THRESHOLD", "0.30"))
-SPEAKER_MARGIN = float(os.environ.get("FIREBOT_SPEAKER_MARGIN", "0.05"))
+SPEAKER_THRESHOLD_ENV = os.environ.get("FIREBOT_SPEAKER_THRESHOLD")
+SPEAKER_MARGIN_ENV = os.environ.get("FIREBOT_SPEAKER_MARGIN")
 SPEAKER_VOICEPRINT_DIR = Path(os.environ.get("FIREBOT_VOICEPRINT_DIR") or _REPO_ROOT / "data" / "voiceprints")
-os.environ.setdefault("FIREBOT_SPEAKER_MODEL_DIR", str(_REPO_ROOT / "pretrained_models" / "spkrec-ecapa-voxceleb"))
+os.environ.setdefault("FIREBOT_SPEAKER_MODEL_DIR", str(_REPO_ROOT / "pretrained_models" / "wespeaker"))
 _speaker_identifier: Any = None
+_speaker_smoother: Any = None
 _speaker_last_error: str | None = None
 
 
@@ -1041,33 +1044,59 @@ async def voice_status() -> dict[str, Any]:
         "speaker_enrolled": sorted(p.stem for p in SPEAKER_VOICEPRINT_DIR.glob("*.npy"))
                             if SPEAKER_VOICEPRINT_DIR.is_dir() else [],
         "speaker_last_error": _speaker_last_error,
+        **_speaker_status(),
         "last_error": _voice_last_error or _vosk_last_error,
     }
+
+
+def _speaker_status() -> dict[str, Any]:
+    """Which embedder/scoring is really in use, so a broken or mismatched setup is visible."""
+    try:
+        from firebot.speech.speaker_id import SpeakerIdentifier, resolve_thresholds
+        info = SpeakerIdentifier(SPEAKER_VOICEPRINT_DIR).info()
+        thr, mar = resolve_thresholds(SPEAKER_VOICEPRINT_DIR, SPEAKER_THRESHOLD_ENV, SPEAKER_MARGIN_ENV)
+        return {"speaker_embedder": info["embedder"], "speaker_voiceprint_embedder": info["stored_embedder"],
+                "speaker_scoring": info["scoring"], "speaker_calibrated": info["calibrated"],
+                "speaker_threshold": thr, "speaker_margin": mar}
+    except Exception as e:  # noqa: BLE001
+        return {"speaker_embedder": None, "speaker_status_error": f"{type(e).__name__}: {e}"}
 
 
 def _identify_speaker(audio_bytes: bytes) -> dict[str, Any] | None:
     """Which enrolled operator is speaking? None when identification is off, nobody is
     enrolled, or it failed for any reason (never an error for the caller -- the command
-    itself must still go through). `speaker` is None inside the dict = heard, but not
-    confidently one enrolled voice."""
-    global _speaker_identifier, _speaker_last_error
+    itself must still go through; the reason is logged and shown in the voice status as
+    `speaker_last_error`). `speaker` is None inside the dict = heard, but not confidently
+    one enrolled voice. Scores from the last few commands are blended (`SpeakerSmoother`) so
+    one noisy one-second clip can't flip the label; the raw single-clip scores are also returned."""
+    global _speaker_identifier, _speaker_smoother, _speaker_last_error
     if not SPEAKER_ID_ENABLED or not SPEAKER_VOICEPRINT_DIR.is_dir() \
-            or not any(SPEAKER_VOICEPRINT_DIR.glob("*.npy")):
+            or not any(p for p in SPEAKER_VOICEPRINT_DIR.glob("*.npy") if p.name != "cohort.npy"):
         return None
     try:
         import numpy as np
-        from firebot.speech.speaker_id import SpeakerIdentifier, decide_speaker, trim_silence
+        from firebot.speech.speaker_id import (
+            SpeakerIdentifier,
+            SpeakerSmoother,
+            decide_speaker,
+            resolve_thresholds,
+            trim_silence,
+        )
         if _speaker_identifier is None:
-            _speaker_identifier = SpeakerIdentifier(SPEAKER_VOICEPRINT_DIR, SPEAKER_THRESHOLD)
+            _speaker_identifier = SpeakerIdentifier(SPEAKER_VOICEPRINT_DIR)
+            _speaker_smoother = SpeakerSmoother()
         audio = _decode_audio_16k(audio_bytes)
         audio = trim_silence(audio)
         pcm = (np.clip(audio, -1.0, 1.0) * 32767).astype("<i2").tobytes()
-        scores = _speaker_identifier.scores(pcm)
-        name, best = decide_speaker(scores, SPEAKER_THRESHOLD, SPEAKER_MARGIN)
+        raw = _speaker_identifier.scores(pcm)
+        smoothed = _speaker_smoother.update(raw)
+        thr, mar = resolve_thresholds(SPEAKER_VOICEPRINT_DIR, SPEAKER_THRESHOLD_ENV, SPEAKER_MARGIN_ENV)
+        name, best = decide_speaker(smoothed, thr, mar)
         _speaker_last_error = None
         return {"speaker": name, "speaker_score": round(best, 3),
-                "speaker_scores": {k: round(v, 3) for k, v in scores.items()}}
-    except Exception as e:  # noqa: BLE001 -- best-effort labelling
+                "speaker_scores": {k: round(v, 3) for k, v in smoothed.items()},
+                "speaker_raw_scores": {k: round(v, 3) for k, v in raw.items()}}
+    except Exception as e:  # noqa: BLE001 -- best-effort labelling, but never silent
         msg = f"{type(e).__name__}: {e}"
         if msg != _speaker_last_error:
             logging.getLogger("firebot.console").warning("speaker-id unavailable: %s", msg)

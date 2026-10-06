@@ -6,49 +6,39 @@ already accent/phrasing-robust (see `command/parser.py`'s regex coverage); a per
 command-variant profile would duplicate that for no correctness gain. This module answers a
 different question -- "who said it", for the audit trail -- not "what did they say".
 
-Uses SpeechBrain's pretrained ECAPA-TDNN (voice-fingerprint embeddings, not trained on your
-specific speakers) exactly as already proven out in `scripts/voice_intent_transcribe.py`; this module
-just gives it a home in the production `speech/` path instead of the standalone prototype.
-Cosine-similarity threshold matching is hand-rolled (pure numpy) rather than pulled from a
-library, matching `fusion/eif.py`/`fusion/pose_ekf.py`'s existing pattern: the only actually
-heavy dependency here is the pretrained embedding model itself, which nothing hand-rolled can
-replace -- everything downstream of the embedding is plain, readable math.
+Embeddings come from a pretrained speaker model chosen by `FIREBOT_SPEAKER_EMBEDDER`
+(see `speaker_embed.py`): WeSpeaker ResNet34 via ONNX by default, SpeechBrain ECAPA optionally,
+and the old hand-built heuristic only when asked for by name. A model that fails to load raises
+`SpeakerModelError`; it never silently degrades to the heuristic. Voiceprints record which
+embedder made them and are refused if it doesn't match the current one.
+
+Scoring is cosine similarity, optionally AS-normalised against a cohort of impostor embeddings
+(`cohort.npy` next to the voiceprints). Everything downstream of the embedding is plain numpy.
 """
 from __future__ import annotations
 
-import os
+import json
+import time
 from pathlib import Path
 
 import numpy as np
 
+from .speaker_embed import (
+    SpeakerModelError,
+    embedder_name,
+    get_backend,
+)
+
 DEFAULT_VOICEPRINT_DIR = Path("data/voiceprints")
 DEFAULT_THRESHOLD = 0.30  # cosine similarity below this -> "unrecognized", not a guess.
-# Short command-length clips score well below the 0.5+ a long clip gets; run
-# `python scripts/calibrate_speakers.py` to pick a value from your own recordings.
+# Run `python scripts/calibrate_speakers.py --write` to pick values from your own recordings;
+# they are saved to `speaker_calibration.json` in the voiceprint dir and used automatically.
+DEFAULT_MARGIN = 0.05
 
-_model_cache: dict[str, object] = {}
-
-
-def _load_model():
-    if not os.environ.get("FIREBOT_USE_SPEECHBRAIN"):
-        return None
-    if "model" not in _model_cache:
-        savedir = os.environ.get("FIREBOT_SPEAKER_MODEL_DIR") or "pretrained_models/spkrec-ecapa-voxceleb"
-        p = Path(savedir)
-        # Check if local model directory actually exists and has hyperparams.yaml
-        if not (p.is_dir() and (p / "hyperparams.yaml").exists()):
-            _model_cache["model"] = None
-            return None
-        try:
-            from speechbrain.inference.speaker import EncoderClassifier  # optional, heavy dependency
-            _model_cache["model"] = EncoderClassifier.from_hparams(
-                source=str(p),
-                savedir=str(p),
-                run_opts={"device": "cpu"},
-            )
-        except Exception:
-            _model_cache["model"] = None
-    return _model_cache["model"]
+META_FILE = "embedder.json"
+CALIBRATION_FILE = "speaker_calibration.json"
+COHORT_FILE = "cohort.npy"
+LEGACY = "legacy"
 
 
 _MEL_FB_CACHE: dict[tuple[int, int, int], np.ndarray] = {}
@@ -278,97 +268,225 @@ def decide_speaker(scores: dict[str, float], threshold: float = DEFAULT_THRESHOL
     return name, best
 
 
+def l2_normalize(v: np.ndarray) -> np.ndarray:
+    v = np.asarray(v, dtype=np.float32).reshape(-1)
+    n = float(np.linalg.norm(v))
+    return v / n if n > 1e-8 else v
+
+
+def as_norm(enroll_emb: np.ndarray, test_emb: np.ndarray, cohort: np.ndarray,
+            top_k: int = 100) -> float:
+    """Adaptive symmetric score normalisation (AS-norm). `cohort` is (N, D) unit-length impostor
+    embeddings. Each side's score against the cohort is summarised by the mean/std of its top-K
+    scores, and the trial score is z-scored against both. This removes the per-speaker and
+    per-clip offsets that make a single global cosine threshold unreliable."""
+    k = max(2, min(top_k, len(cohort)))
+    e, t = l2_normalize(enroll_emb), l2_normalize(test_emb)
+    se = np.sort(cohort @ e)[-k:]
+    st = np.sort(cohort @ t)[-k:]
+    raw = float(e @ t)
+    ze = (raw - float(se.mean())) / (float(se.std()) + 1e-6)
+    zt = (raw - float(st.mean())) / (float(st.std()) + 1e-6)
+    return 0.5 * (ze + zt)
+
+
+class SpeakerSmoother:
+    """Blends the last few commands' per-speaker scores (exponentially decayed by age) so one
+    noisy one-second clip can't flip the label. Clips older than `window_s` are forgotten, so a
+    different person taking over the mic is picked up after a few commands, not never."""
+
+    def __init__(self, window_s: float = 25.0, half_life_s: float = 8.0, max_items: int = 5) -> None:
+        self.window_s, self.half_life_s, self.max_items = window_s, half_life_s, max_items
+        self._hist: list[tuple[float, dict[str, float]]] = []
+
+    def reset(self) -> None:
+        self._hist.clear()
+
+    def update(self, scores: dict[str, float], now: float | None = None) -> dict[str, float]:
+        now = time.monotonic() if now is None else now
+        self._hist = [(t, s) for t, s in self._hist if now - t <= self.window_s]
+        self._hist.append((now, dict(scores)))
+        self._hist = self._hist[-self.max_items:]
+        num: dict[str, float] = {}
+        den: dict[str, float] = {}
+        for t, s in self._hist:
+            w = 0.5 ** ((now - t) / self.half_life_s)
+            for name, v in s.items():
+                num[name] = num.get(name, 0.0) + w * v
+                den[name] = den.get(name, 0.0) + w
+        return {name: num[name] / den[name] for name in num}
+
+
+def _read_json(path: Path) -> dict:
+    try:
+        return json.loads(path.read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def load_calibration(voiceprint_dir: Path | str) -> dict:
+    """Thresholds written by `scripts/calibrate_speakers.py --write` ({} if none yet)."""
+    return _read_json(Path(voiceprint_dir) / CALIBRATION_FILE)
+
+
+def resolve_thresholds(voiceprint_dir: Path | str, env_threshold: str | None = None,
+                       env_margin: str | None = None) -> tuple[float, float]:
+    """(threshold, margin): explicit env override > calibration file > defaults. Calibration
+    values are tied to the scoring mode they were measured in (cosine vs AS-norm), so they are
+    ignored if the mode has since changed."""
+    cal = load_calibration(voiceprint_dir)
+    mode_now = "asnorm" if (Path(voiceprint_dir) / COHORT_FILE).exists() else "cosine"
+    if cal.get("scoring") != mode_now:
+        cal = {}
+    thr = float(env_threshold) if env_threshold else float(cal.get("threshold", DEFAULT_THRESHOLD))
+    mar = float(env_margin) if env_margin else float(cal.get("margin", DEFAULT_MARGIN))
+    return thr, mar
+
+
+def softmax_temperature(scoring: str) -> float:
+    """Temperature for `calculate_speaker_probabilities`: AS-norm scores are z-score-like, so
+    they need a far larger temperature than raw cosine."""
+    return 0.5 if scoring == "asnorm" else 0.04
+
+
 class SpeakerIdentifier:
-    """`voiceprint_dir`: one `.npy` embedding per enrolled speaker, same on-disk layout
-    `scripts/voice_intent_transcribe.py`'s `enroll-voice` already produces -- point this at the same
-    directory and existing enrollments carry over with zero re-recording.
+    """`voiceprint_dir` holds one `<speaker>.npy` unit-length embedding per enrolled speaker plus
+    `embedder.json` naming the embedder that produced them. Voiceprints from another embedder
+    (including the legacy heuristic vectors enrolled before `embedder.json` existed) are refused
+    with a clear "re-enrol" error, because embeddings from different models are not comparable.
+    An optional `cohort.npy` (N, D) switches scoring to AS-norm.
     """
 
     def __init__(self, voiceprint_dir: Path | str = DEFAULT_VOICEPRINT_DIR,
-                threshold: float = DEFAULT_THRESHOLD) -> None:
+                 threshold: float = DEFAULT_THRESHOLD, use_cohort: bool = True) -> None:
         self.voiceprint_dir = Path(voiceprint_dir)
         self.threshold = threshold
+        self.use_cohort = use_cohort
         self._voiceprints: dict[str, np.ndarray] | None = None
+        self._cohort: np.ndarray | None = None
+        self._cohort_loaded = False
+
+    # ---- storage -------------------------------------------------------------------------
+    def _stored_embedder(self) -> str:
+        meta = _read_json(self.voiceprint_dir / META_FILE)
+        return meta.get("embedder") or LEGACY
+
+    def _write_meta(self, dim: int) -> None:
+        (self.voiceprint_dir / META_FILE).write_text(
+            json.dumps({"embedder": embedder_name(), "dim": dim}))
+
+    def _check_compatible(self) -> None:
+        stored, now = self._stored_embedder(), embedder_name()
+        if stored != now:
+            raise SpeakerModelError(
+                f"voiceprints in {self.voiceprint_dir} were made with the {stored!r} embedder but "
+                f"the active embedder is {now!r}; re-enrol every speaker "
+                f"(scripts/enroll_speaker.py or the console's enrol button)")
+
+    def _signature(self) -> tuple:
+        if not self.voiceprint_dir.exists():
+            return ()
+        return tuple((p.name, p.stat().st_mtime_ns) for p in sorted(self.voiceprint_dir.glob("*"))
+                     if p.suffix in (".npy", ".json"))
 
     def _voiceprints_cached(self) -> dict[str, np.ndarray]:
+        # Re-read when files change on disk (enrolment/recalibration by another process or request).
+        sig = self._signature()
+        if self._voiceprints is not None and sig != getattr(self, "_sig", sig):
+            self.reload()
+        self._sig = sig
         if self._voiceprints is None:
-            self._voiceprints = (
-                {p.stem: np.load(p) for p in self.voiceprint_dir.glob("*.npy")}
-                if self.voiceprint_dir.exists() else {}
-            )
+            files = sorted(self.voiceprint_dir.glob("*.npy")) if self.voiceprint_dir.exists() else []
+            files = [p for p in files if p.name != COHORT_FILE]
+            if files:
+                self._check_compatible()
+            self._voiceprints = {p.stem: l2_normalize(np.load(p)) for p in files}
         return self._voiceprints
 
-    def reload(self) -> None:
-        """Call after enrolling a new speaker mid-process, so `identify` sees them without a
-        restart -- e.g. right after `enroll()` below."""
-        self._voiceprints = None
+    def cohort(self) -> np.ndarray | None:
+        if not self.use_cohort:
+            return None
+        if not self._cohort_loaded:
+            path = self.voiceprint_dir / COHORT_FILE
+            self._cohort = None
+            if path.exists():
+                c = np.load(path)
+                dims = {v.shape[0] for v in self._voiceprints_cached().values()}
+                if c.ndim == 2 and len(c) >= 10 and dims == {c.shape[1]}:
+                    self._cohort = np.stack([l2_normalize(r) for r in c])
+            self._cohort_loaded = True
+        return self._cohort
 
+    def reload(self) -> None:
+        """Call after enrolling or recalibrating mid-process so `scores` sees the change."""
+        self._voiceprints = None
+        self._cohort = None
+        self._cohort_loaded = False
+
+    def info(self) -> dict:
+        """What is actually in use, for the console status panel."""
+        cal = load_calibration(self.voiceprint_dir)
+        out = {"embedder": embedder_name(), "stored_embedder": self._stored_embedder(),
+               "scoring": "asnorm" if (self.use_cohort and (self.voiceprint_dir / COHORT_FILE).exists())
+               else "cosine", "calibrated": bool(cal)}
+        return out
+
+    # ---- embedding -----------------------------------------------------------------------
     def embed(self, pcm: bytes) -> np.ndarray:
-        """PCM bytes (any length) -> 192-dim voiceprint vector.
-        Uses SpeechBrain ECAPA-TDNN if enabled, or lightweight acoustic spectral embedding."""
-        if os.environ.get("FIREBOT_USE_SPEECHBRAIN"):
-            try:
-                model = _load_model()
-                if model is not None:
-                    import torch
-                    audio = torch.from_numpy(pcm16_to_float(pcm)).unsqueeze(0)
-                    with torch.no_grad():
-                        embedding = model.encode_batch(audio)
-                    return embedding.squeeze().cpu().numpy()
-            except Exception:
-                pass
-        return _fallback_embed(pcm)
+        """PCM16 bytes -> unit-length embedding from the active embedder. Raises
+        `SpeakerModelError` if the embedder can't run; never substitutes a different one."""
+        name = embedder_name()
+        if name == LEGACY:
+            return _fallback_embed(pcm)
+        return l2_normalize(get_backend(name).embed(pcm16_to_float(pcm)))
 
     def enrolled(self) -> list[str]:
         return sorted(self._voiceprints_cached())
 
-    def scores(self, pcm: bytes) -> dict[str, float]:
-        """Cosine similarity of the clip to every enrolled voiceprint."""
+    # ---- scoring -------------------------------------------------------------------------
+    def scores_from_embedding(self, embedding: np.ndarray) -> dict[str, float]:
         voiceprints = self._voiceprints_cached()
         if not voiceprints:
             return {}
-        embedding = self.embed(pcm)
-        return {name: cosine_similarity(embedding, ref) for name, ref in voiceprints.items()}
+        cohort = self.cohort()
+        if cohort is not None:
+            return {n: as_norm(ref, embedding, cohort) for n, ref in voiceprints.items()}
+        return {n: cosine_similarity(embedding, ref) for n, ref in voiceprints.items()}
+
+    def scores(self, pcm: bytes) -> dict[str, float]:
+        """Per-speaker scores for the clip: AS-normed if a cohort is present, else cosine."""
+        if not self._voiceprints_cached():
+            return {}
+        return self.scores_from_embedding(self.embed(pcm))
 
     def identify(self, pcm: bytes) -> tuple[str | None, float]:
-        """Returns (speaker_name_or_None, best_score). None means either no one is enrolled
-        yet, or the closest enrolled voice isn't a confident enough match -- reported as
-        "unrecognized" rather than guessed at, same policy as `command/parser.py`'s UNKNOWN
-        intent: an uncertain answer is reported as uncertain, never silently upgraded."""
-        voiceprints = self._voiceprints_cached()
-        if not voiceprints:
+        scores = self.scores(pcm)
+        if not scores:
             return None, 0.0
-        embedding = self.embed(pcm)
-        scored = [(name, cosine_similarity(embedding, ref)) for name, ref in voiceprints.items()]
-        scored.sort(key=lambda x: -x[1])
-        best_name, best_score = scored[0]
-        return (best_name, best_score) if best_score >= self.threshold else (None, best_score)
+        return decide_speaker(scores, self.threshold, 0.0)
+
+    # ---- enrolment -----------------------------------------------------------------------
+    def _save(self, speaker: str, embedding: np.ndarray) -> None:
+        self.voiceprint_dir.mkdir(parents=True, exist_ok=True)
+        existing = [p for p in self.voiceprint_dir.glob("*.npy") if p.name != COHORT_FILE
+                    and p.stem != speaker]
+        if existing and self._stored_embedder() != embedder_name():
+            raise SpeakerModelError(
+                f"other voiceprints in {self.voiceprint_dir} came from the "
+                f"{self._stored_embedder()!r} embedder; re-enrol everyone with {embedder_name()!r} "
+                f"(or delete them) before adding {speaker!r}")
+        np.save(self.voiceprint_dir / f"{speaker}.npy", embedding)
+        self._write_meta(int(embedding.shape[0]))
+        self.reload()
 
     def enroll(self, speaker: str, pcm: bytes) -> None:
-        """Save `speaker`'s voiceprint from a single clip. Prefer `enroll_multi` for anything
-        meant to recognize short, command-length audio at test time (see its docstring) --
-        this single-clip form is kept for callers enrolling from one long, already-known-good
-        recording where averaging doesn't apply."""
-        self.voiceprint_dir.mkdir(parents=True, exist_ok=True)
-        np.save(self.voiceprint_dir / f"{speaker}.npy", self.embed(pcm))
-        self.reload()
+        """Single-clip enrolment. Prefer `enroll_multi` for command-length audio."""
+        self._save(speaker, self.embed(pcm))
 
     def enroll_multi(self, speaker: str, clips: list[bytes]) -> None:
-        """Save `speaker`'s voiceprint as the mean of several clips' embeddings, not one clip's.
-
-        `identify()` is tested against short, command-length audio (a few seconds or less --
-        whatever a single spoken command yields), not the multi-second natural-speech monologue
-        a single enrollment clip would naturally be. A voiceprint built from one long clip is a
-        real but different acoustic sample than what it'll be compared against, which costs
-        similarity score independent of whether it's really the same speaker (a length/content
-        mismatch, not an identity one). Enrolling from several separate clips *at the length and
-        style `identify()` will actually see* removes that mismatch, and averaging their
-        embeddings reduces the variance any single short clip's embedding carries on its own --
-        the same reason any noisy measurement benefits from averaging repeated samples.
-        """
+        """Voiceprint = mean (unit-normalised on load) of several clips' embeddings. Enrol with clips at the
+        length and style `identify()` will see (short commands, varied phrases): averaging
+        removes per-clip variance and the length/content mismatch a single long clip adds."""
         if not clips:
             raise ValueError("enroll_multi: need at least one clip")
-        embedding = np.mean([self.embed(pcm) for pcm in clips], axis=0)
-        self.voiceprint_dir.mkdir(parents=True, exist_ok=True)
-        np.save(self.voiceprint_dir / f"{speaker}.npy", embedding)
-        self.reload()
+        self._save(speaker, np.mean([self.embed(p) for p in clips], axis=0))

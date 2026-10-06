@@ -4,7 +4,7 @@ Persists and syncs:
   - checkpoints/users/<user>.pt (Personalized Whisper intent classification heads)
   - checkpoints/users/<user>.json (Training evaluations and accuracy metrics)
   - checkpoints/users/<user>.history.jsonl (Historical retrain logs)
-  - data/voiceprints/<user>.npy (ECAPA-TDNN acoustic embeddings for speaker ID)
+  - data/voiceprints/<user>.npy (speaker-ID embeddings; embedder.json/cohort.npy/speaker_calibration.json travel with them)
   - data/calibration/profiles.json (Operator profiles)
   - checkpoints/intent_head.pt, intent_head.json, intent_prototypes.pt (Base models)
 
@@ -105,6 +105,32 @@ def get_hf_sync_status() -> dict[str, Any]:
     }
 
 
+_VOICEPRINT_META = ("embedder.json", "speaker_calibration.json", "cohort.npy")
+
+
+def _remote_voiceprints_compatible(files: list[str], repo: str, token: str | None, download) -> bool:
+    """Voiceprints from a different speaker embedder are meaningless (and would overwrite fresh
+    local ones), so only pull the remote set if its embedder.json matches the active embedder."""
+    try:
+        import json
+
+        from firebot.speech.speaker_embed import embedder_name
+        if "voiceprints/embedder.json" not in files:
+            logger.warning("Skipping remote voiceprints: no embedder.json (legacy heuristic voiceprints); "
+                           "re-enrol speakers to publish compatible ones")
+            return False
+        meta = json.loads(Path(download(repo_id=repo, filename="voiceprints/embedder.json",
+                                        repo_type="model", token=token)).read_text())
+        if meta.get("embedder") != embedder_name():
+            logger.warning("Skipping remote voiceprints: made with %r, active embedder is %r",
+                           meta.get("embedder"), embedder_name())
+            return False
+        return True
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Skipping remote voiceprints (could not verify embedder): %s", e)
+        return False
+
+
 def pull_models_from_hf(repo_id: str | None = None) -> dict[str, Any]:
     """Download all checkpoints, user models, voiceprints, and profiles from Hugging Face Hub."""
     global _last_sync_time, _last_sync_error
@@ -130,8 +156,14 @@ def pull_models_from_hf(repo_id: str | None = None) -> dict[str, Any]:
     VOICEPRINTS_DIR.mkdir(parents=True, exist_ok=True)
     CALIBRATION_DIR.mkdir(parents=True, exist_ok=True)
 
+    skip_voiceprints = False
+    if any(f.startswith("voiceprints/") for f in files):
+        skip_voiceprints = not _remote_voiceprints_compatible(files, target_repo, token, hf_hub_download)
+
     for rf in files:
         if rf in (".gitattributes", "README.md"):
+            continue
+        if skip_voiceprints and rf.startswith("voiceprints/"):
             continue
         try:
             cached_path = hf_hub_download(
@@ -202,6 +234,10 @@ def push_models_to_hf(repo_id: str | None = None, user: str | None = None) -> di
             vp = VOICEPRINTS_DIR / f"{user}.npy"
             if vp.is_file():
                 to_upload.append((vp, f"voiceprints/{vp.name}"))
+                for meta_name in _VOICEPRINT_META:
+                    mf = VOICEPRINTS_DIR / meta_name
+                    if mf.is_file():
+                        to_upload.append((mf, f"voiceprints/{meta_name}"))
             if PROFILES_FILE.is_file():
                 to_upload.append((PROFILES_FILE, "profiles.json"))
 
@@ -232,9 +268,12 @@ def push_models_to_hf(repo_id: str | None = None, user: str | None = None) -> di
                             uploaded.append(f"users/{f.name}")
 
                 if VOICEPRINTS_DIR.is_dir():
-                    for f in VOICEPRINTS_DIR.glob("*.npy"):
-                        shutil.copy2(f, vp_dir / f.name)
-                        uploaded.append(f"voiceprints/{f.name}")
+                    for f in [*VOICEPRINTS_DIR.glob("*.npy"),
+                              *(VOICEPRINTS_DIR / m for m in _VOICEPRINT_META)]:
+                        if f.is_file():
+                            shutil.copy2(f, vp_dir / f.name)
+                            if f"voiceprints/{f.name}" not in uploaded:
+                                uploaded.append(f"voiceprints/{f.name}")
 
                 for base in ("intent_head.pt", "intent_head.json", "intent_prototypes.pt"):
                     f = CHECKPOINTS_DIR / base

@@ -3,7 +3,7 @@
 **Calibrate:** a user records each command a few times in the browser; the backend embeds the clips with
 the frozen Whisper encoder and fine-tunes only the small classifier head (`firebot.voice_intent.
 personalize`), saving `checkpoints/users/<name>.pt`. `/api/transcribe` then uses that head for the named
-operator (or the speaker the ECAPA voiceprints recognise). Anyone without a personal model keeps the
+operator (or the speaker the voiceprints recognise). Anyone without a personal model keeps the
 default one.
 
 **Keep improving:** when a personal/known operator speaks, `/api/transcribe` stashes the clip briefly
@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import asyncio
 import io
+import os
 import json
 import re
 import threading
@@ -724,7 +725,7 @@ async def save_profile(body: ProfileIn) -> dict[str, Any]:
 
 @router.post("/calibrate/enroll-speaker")
 async def enroll_speaker_voiceprint(user: str) -> dict[str, Any]:
-    """Enroll the operator's ECAPA voiceprint into data/voiceprints/<user>.npy from all their
+    """Enroll the operator's voiceprint into data/voiceprints/<user>.npy from all their
     recorded clips in data/calibration/<user>/**/*.wav, so speaker identification recognizes them."""
     user = _user(user)
     udir = _udir(user)
@@ -848,34 +849,31 @@ async def test_voice(file: UploadFile = File(...), expected_user: str | None = N
     spk_scores = {}
     is_verified = False
     vp_dir = REPO_ROOT / "data" / "voiceprints"
-    if vp_dir.is_dir() and any(vp_dir.glob("*.npy")):
+    speaker_error = None
+    if vp_dir.is_dir() and any(p for p in vp_dir.glob("*.npy") if p.name != "cohort.npy"):
         try:
+            from firebot.speech.speaker_id import (
+                calculate_speaker_probabilities,
+                resolve_thresholds,
+                softmax_temperature,
+            )
             ident = SpeakerIdentifier(vp_dir)
-            scores = ident.scores(pcm)
+            scores = await asyncio.to_thread(ident.scores, pcm)
             if scores:
-                from firebot.speech.speaker_id import calculate_speaker_probabilities
-                probs = calculate_speaker_probabilities(scores, temperature=0.04)
-                spk_scores = probs
-
-                # Rank candidates by cosine similarity
-                ranked = sorted(scores.items(), key=lambda kv: -kv[1])
-                best_speaker, best_raw = ranked[0]
-                runner_up = ranked[1][1] if len(ranked) > 1 else 0.0
-                margin = best_raw - runner_up
-
-                if best_raw >= 0.50 and margin >= 0.01:
-                    spk_name = best_speaker
-                    spk_score = probs.get(best_speaker, round(best_raw, 3))
-                else:
-                    spk_name = None
-                    spk_score = probs.get(best_speaker, 0.5)
-
+                thr, mar = resolve_thresholds(vp_dir, os.environ.get("FIREBOT_SPEAKER_THRESHOLD"),
+                                              os.environ.get("FIREBOT_SPEAKER_MARGIN"))
+                spk_scores = calculate_speaker_probabilities(
+                    scores, temperature=softmax_temperature(ident.info()["scoring"]))
+                best_speaker, best_raw = decide_speaker(scores, thr, mar)
+                top = max(scores, key=scores.get)
+                spk_name = best_speaker
+                spk_score = spk_scores.get(top, round(best_raw, 3))
                 if expected_user:
                     is_verified = (spk_name == expected_user)
                 else:
                     is_verified = bool(spk_name)
-        except Exception:
-            pass
+        except Exception as e:  # noqa: BLE001 -- reported to the caller, not swallowed
+            speaker_error = f"{type(e).__name__}: {e}"
 
     # Intent classification & SLM Natural Language parsing
     intent_name, intent_conf, phrase = "UNKNOWN", 0.0, ""
@@ -943,6 +941,7 @@ async def test_voice(file: UploadFile = File(...), expected_user: str | None = N
         "speaker": spk_name,
         "speaker_score": round(spk_score, 3) if spk_score else 0.0,
         "speaker_scores": spk_scores,
+        "speaker_error": speaker_error,
         "expected_user": expected_user,
         "is_verified": is_verified,
         "intent": intent_name,

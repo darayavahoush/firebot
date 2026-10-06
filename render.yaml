@@ -5,7 +5,7 @@ services:
     region: oregon
     plan: free
     branch: main
-    buildCommand: pip install --upgrade pip && pip install -r firebot-console/backend/requirements.txt && pip install -e '.[mujoco]'
+    buildCommand: pip install --upgrade pip && pip install -r firebot-console/backend/requirements.txt && pip install -e '.[mujoco]' && python scripts/fetch_speaker_model.py && { [ -f data/voiceprints/embedder.json ] || python scripts/calibrate_speakers.py --write || echo 'WARNING: speaker enrolment failed; see /api/voice/status speaker_last_error'; }
     startCommand: cd firebot-console/backend && uvicorn server:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips='*'
     envVars:
       - key: PYTHON_VERSION

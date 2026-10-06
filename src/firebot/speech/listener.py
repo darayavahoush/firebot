@@ -72,5 +72,8 @@ class Listener:
             return None, 0.0
         try:
             return self.speaker_id.identify(audio)
-        except Exception:  # noqa: BLE001 -- speaker ID is an accountability add-on, never a
-            return None, 0.0  # reason to drop or misroute an otherwise-valid command
+        except Exception as e:  # noqa: BLE001 -- speaker ID is an accountability add-on, never a
+            # reason to drop or misroute an otherwise-valid command, but never fail silently either
+            import logging
+            logging.getLogger("firebot.speech").warning("speaker-id failed: %s: %s", type(e).__name__, e)
+            return None, 0.0
