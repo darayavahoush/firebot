@@ -133,18 +133,17 @@ export function OperatorAvatarBadge({ avatarId = "shield", size = "md", active =
 
   return (
     <div
-      className={`relative shrink-0 flex items-center justify-center transition-all duration-300 ${sizeClasses} bg-gradient-to-br ${def.bgGradient} border ${
-        active ? `${def.borderColor} shadow-[0_0_18px_rgba(14,165,233,0.35)] ring-2 ring-offset-2 ring-offset-base ring-${def.id}` : "border-line/60"
+      className={`relative shrink-0 flex items-center justify-center transition-colors ${sizeClasses} bg-panel2 border ${
+        active ? `${def.borderColor} ring-1 ring-flame/40` : "border-line"
       }`}
       style={{
-        boxShadow: active ? `0 0 20px ${color}55` : "none",
         borderColor: active ? color : undefined,
       }}
     >
       <div style={{ color }}>{def.renderIcon(iconSizes)}</div>
       {active && (
         <span
-          className="absolute -top-1 -right-1 w-3 h-3 rounded-full border-2 border-base animate-pulse"
+          className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full border border-base"
           style={{ backgroundColor: color }}
         />
       )}

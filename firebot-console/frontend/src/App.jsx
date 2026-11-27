@@ -21,6 +21,7 @@ export default function App() {
   const [log, setLog] = useState([]);
   const [ack, setAck] = useState(null);
   const [notifOn, setNotifOn] = useState(notifyEnabled);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const prevRef = useRef({ link: null, lowTank: false, located: false, pump: false });
   const logRef = useRef(null);
   const lastFrameAtRef = useRef(0);
@@ -174,24 +175,16 @@ export default function App() {
     p.pump = !!frame.cmd_pump;
   }, [frame, linkOk]);
 
-  if (page === "home") {
-    return (
-      <Home
-        onEnterConsole={(target = "live") => setPage(target)}
-        frame={frame}
-        linkOk={linkOk}
-      />
-    );
-  }
-
   return (
-    <div className="min-h-full flex">
+    <div className="min-h-full flex bg-base">
       <Sidebar
         page={page}
         setPage={setPage}
         linkOk={frame ? linkOk : true}
         notifOn={notifOn}
         onToggleNotif={notifySupported() ? toggleNotif : null}
+        mobileOpen={mobileNavOpen}
+        onCloseMobile={() => setMobileNavOpen(false)}
       />
 
       <div className="flex-1 flex flex-col min-w-0 relative">
@@ -201,31 +194,30 @@ export default function App() {
           onEstop={onEstop}
           activeOperator={activeOperator}
           onExitToHome={() => setPage("home")}
+          onOpenNav={() => setMobileNavOpen(true)}
         />
 
         {ack && (
           <div
-            className={`absolute top-4 left-1/2 -translate-x-1/2 z-30 rounded-2xl border px-5 py-2.5 text-[12px] font-mono shadow-2xl backdrop-blur-xl flex items-center gap-2.5 transition-all duration-200 animate-fadeIn ${
-              ack.valid
-                ? "border-telemetry/40 bg-panel/95 text-ink shadow-[0_0_20px_rgba(14,165,233,0.3)]"
-                : "border-warn/40 bg-panel/95 text-warn shadow-[0_0_20px_rgba(255,178,56,0.35)]"
+            role="status"
+            className={`absolute top-20 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2.5 rounded-xl border bg-panel px-4 py-2.5 text-[13px] shadow-pop animate-fadeIn ${
+              ack.valid ? "border-line2" : "border-warn/50"
             }`}
           >
-            <span className={`text-[14px] font-bold ${ack.valid ? "text-telemetry" : "text-warn"}`}>
-              {ack.valid ? "✓" : "⚠"}
+            <span className={`font-bold ${ack.valid ? "text-ok" : "text-warn"}`}>{ack.valid ? "✓" : "!"}</span>
+            <span className="text-muted">
+              {ack.valid ? "Command received" : "Not understood"}
+              <b className="ml-1.5 font-semibold text-ink">“{ack.text}”</b>
             </span>
-            <span>
-              {ack.valid ? "Command received: " : "Not understood: "}
-              <b className="text-ink">"{ack.text}"</b>
-            </span>
-            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-panel2 border border-line text-faint uppercase">
-              {ack.channel}
-            </span>
+            <span className="rounded-md border border-line bg-panel2 px-1.5 py-0.5 text-[11px] text-faint">{ack.channel}</span>
           </div>
         )}
 
         {/* All pages stay mounted once visited, toggled with display rather than
             conditional rendering, so engine states survive switching tabs. */}
+        <div className={page === "home" ? "contents" : "hidden"}>
+          <Home onEnterConsole={(target = "live") => { playSound("tab"); setPage(target); }} frame={frame} linkOk={linkOk} />
+        </div>
         <div className={page === "live" ? "contents" : "hidden"}>
           <LiveOps
             frame={frame}

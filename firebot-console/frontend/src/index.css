@@ -2,137 +2,154 @@
 @tailwind components;
 @tailwind utilities;
 
-* { box-sizing: border-box; }
-html, body, #root { height: 100%; }
-
-/* Custom Cyber-Tactical Cursors */
-html, body {
-  cursor: url('/cursor-default.svg') 2 2, default;
+/* ------------------------------------------------------------------ */
+/* Theme tokens. Values are space-separated RGB triples so Tailwind's   */
+/* opacity modifiers work (bg-panel/80). Light is the default; dark     */
+/* follows the OS unless the user picked one (data-theme on <html>).    */
+/* ------------------------------------------------------------------ */
+:root {
+  --c-base: 246 245 242;
+  --c-panel: 255 255 255;
+  --c-panel2: 241 239 235;
+  --c-line: 226 223 216;
+  --c-line2: 205 201 192;
+  --c-ink: 22 24 29;
+  --c-muted: 91 98 112;
+  --c-faint: 138 144 156;
+  --c-alarm: 217 45 32;
+  --c-flame: 232 89 12;
+  --c-warn: 180 83 9;
+  --c-telemetry: 14 124 123;
+  --c-ok: 21 128 61;
+  --c-scope: 12 14 18;
+  --c-onaccent: 255 255 255;
+  --c-shadow: 30 25 15;
+  color-scheme: light;
 }
 
-button, a, select, input[type="checkbox"], input[type="radio"], input[type="button"], input[type="submit"], [role="button"], .cursor-pointer {
-  cursor: url('/cursor-pointer.svg') 14 14, pointer !important;
+:root[data-theme="dark"] {
+  --c-base: 15 17 20;
+  --c-panel: 23 26 31;
+  --c-panel2: 31 35 42;
+  --c-line: 42 47 56;
+  --c-line2: 62 68 80;
+  --c-ink: 236 238 241;
+  --c-muted: 156 163 175;
+  --c-faint: 107 114 128;
+  --c-alarm: 240 82 70;
+  --c-flame: 251 120 50;
+  --c-warn: 245 166 35;
+  --c-telemetry: 52 190 186;
+  --c-ok: 74 200 120;
+  --c-scope: 8 9 11;
+  --c-onaccent: 6 22 22;
+  --c-shadow: 0 0 0;
+  color-scheme: dark;
 }
 
-canvas, .cursor-crosshair, [data-viewport="mujoco"] {
-  cursor: url('/cursor-crosshair.svg') 16 16, crosshair;
-}
-
-body {
-  @apply bg-base text-ink font-sans antialiased selection:bg-telemetry/30 selection:text-ink;
-  background-image:
-    radial-gradient(ellipse at 50% 0%, rgba(14, 165, 233, 0.05) 0%, transparent 60%),
-    radial-gradient(circle at 100% 100%, rgba(234, 88, 12, 0.03) 0%, transparent 40%);
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --c-base: 15 17 20;
+    --c-panel: 23 26 31;
+    --c-panel2: 31 35 42;
+    --c-line: 42 47 56;
+    --c-line2: 62 68 80;
+    --c-ink: 236 238 241;
+    --c-muted: 156 163 175;
+    --c-faint: 107 114 128;
+    --c-alarm: 240 82 70;
+    --c-flame: 251 120 50;
+    --c-warn: 245 166 35;
+    --c-telemetry: 52 190 186;
+    --c-ok: 74 200 120;
+    --c-scope: 8 9 11;
+    --c-onaccent: 6 22 22;
+    --c-shadow: 0 0 0;
+    color-scheme: dark;
+  }
 }
 
 :root {
+  /* Thermal palette — used for heat legends & thermal imagery only, never for UI chrome. */
   --ironbow: linear-gradient(90deg, #090d16 0%, #1e293b 24%, #0284c7 50%, #f97316 76%, #fef08a 100%);
-  --cyber-glow: 0 0 16px -2px rgba(14, 165, 233, 0.25);
-  --alarm-glow: 0 0 20px -2px rgba(220, 38, 38, 0.4);
-  --ok-glow: 0 0 16px -2px rgba(16, 185, 129, 0.3);
 }
 
-/* Custom Tactical Scrollbars */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-::-webkit-scrollbar-track {
-  background: rgba(10, 13, 20, 0.8);
-}
-::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.12);
-  border-radius: 9999px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(14, 165, 233, 0.35);
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; }
+
+body {
+  @apply bg-base text-ink font-sans antialiased selection:bg-telemetry/20;
+  font-feature-settings: "ss01", "cv11";
 }
 
+/* Quiet scrollbars */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgb(var(--c-line2)); border-radius: 9999px; border: 2px solid transparent; background-clip: content-box; }
+::-webkit-scrollbar-thumb:hover { background: rgb(var(--c-faint)); background-clip: content-box; }
+
+:focus-visible { outline: 2px solid rgb(var(--c-telemetry)); outline-offset: 2px; }
+
+/* ------------------------------------------------------------------ */
+/* Surfaces                                                            */
+/* ------------------------------------------------------------------ */
 .panel {
-  @apply bg-panel/90 backdrop-blur-md border border-line rounded-[12px] overflow-hidden;
-  box-shadow: 0 12px 32px -12px rgba(0, 0, 0, 0.65), inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
+  @apply bg-panel border border-line rounded-xl overflow-hidden shadow-panel;
 }
-
 .panel-header {
-  @apply flex items-center justify-between px-4 py-3 bg-panel2/60 border-b border-line text-[11px] font-mono uppercase tracking-wider text-muted font-medium;
+  @apply flex items-center justify-between gap-3 px-4 py-3 border-b border-line text-[13px] font-semibold text-ink;
+}
+.panel-eyebrow {
+  @apply text-[11px] font-medium uppercase tracking-[0.08em] text-faint;
 }
 
-.heat-rule {
-  height: 2px;
-  background: var(--ironbow);
+.data { @apply font-mono tabular-nums; font-size: 0.92em; }
+
+/* ------------------------------------------------------------------ */
+/* Controls                                                            */
+/* ------------------------------------------------------------------ */
+.btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-lg border border-line2 bg-panel px-3.5 py-1.5 text-[13px] font-medium text-ink
+         transition-colors duration-150 hover:bg-panel2 hover:border-faint/60 active:translate-y-px
+         disabled:opacity-40 disabled:pointer-events-none;
+}
+.btn-primary {
+  @apply inline-flex items-center justify-center gap-2 rounded-lg bg-telemetry px-4 py-2 text-[13px] font-semibold text-onaccent
+         transition-[filter,transform] duration-150 hover:brightness-110 active:translate-y-px
+         disabled:opacity-40 disabled:pointer-events-none;
+}
+.chip {
+  @apply rounded-full px-3 py-1 text-[12px] text-muted border border-line bg-panel cursor-pointer select-none
+         transition-colors duration-150 hover:text-ink hover:border-line2;
+}
+.chip[data-on="true"] { @apply text-telemetry border-telemetry/50 bg-telemetry/10 font-medium; }
+
+/* The one loud element on screen. Flat, high-contrast, no glow. */
+.estop-button {
+  background: rgb(var(--c-alarm));
+  color: #fff;
+  box-shadow: inset 0 -2px 0 rgb(0 0 0 / 0.18);
+}
+.estop-button:hover { filter: brightness(1.08); }
+.estop-button:active { transform: translateY(1px); box-shadow: none; }
+
+/* ------------------------------------------------------------------ */
+/* Helpers kept for existing pages                                     */
+/* ------------------------------------------------------------------ */
+.heat-rule { height: 1px; background: rgb(var(--c-line)); }
+.heatbar { background: var(--ironbow); background-size: var(--full, 100%) 100%; }
+
+.tactical-grid {
+  background-image: radial-gradient(rgb(var(--c-ink) / 0.10) 1px, transparent 1px);
+  background-size: 20px 20px;
 }
 
-.data {
-  @apply font-mono tabular-nums;
-  font-size: 0.92em;
-}
+.pulse-dot { animation: pulse-dot 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+@keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
 
-.pulse-dot {
-  animation: pulse-dot 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
-
-@keyframes pulse-dot {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.35; transform: scale(0.92); }
-}
-
-@keyframes radar-sweep {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-
-.radar-sweep {
-  animation: radar-sweep 4s linear infinite;
-}
-
-:focus-visible {
-  outline: 2px solid #ff8a2a;
-  outline-offset: 2px;
-}
+.radar-sweep { animation: radar-sweep 4s linear infinite; }
+@keyframes radar-sweep { to { transform: rotate(360deg); } }
 
 @media (prefers-reduced-motion: reduce) {
-  .pulse-dot, .radar-sweep { animation: none; }
-}
-
-.btn {
-  @apply rounded-lg border border-line bg-panel2/90 px-3.5 py-1.5 text-[13px] text-ink font-medium transition-all duration-150 hover:border-telemetry/60 hover:text-white hover:bg-panel2 hover:shadow-[0_0_12px_rgba(14,165,233,0.2)] active:scale-95 disabled:opacity-40 disabled:pointer-events-none;
-}
-
-.btn-primary {
-  @apply rounded-lg bg-telemetry text-base font-display font-extrabold text-[13px] px-4 py-2 transition-all duration-150 hover:brightness-110 hover:shadow-[0_0_16px_rgba(14,165,233,0.35)] active:scale-95 disabled:opacity-40 disabled:pointer-events-none;
-}
-
-.chip {
-  @apply rounded-full px-3 py-1 text-[12px] text-muted border border-line bg-panel2/40 cursor-pointer select-none transition-all duration-150 hover:text-ink hover:border-line/90;
-}
-
-.chip[data-on="true"] {
-  @apply text-ink border-telemetry/80 bg-telemetry/20 shadow-[0_0_10px_rgba(14,165,233,0.2)];
-}
-
-.heatbar {
-  background: var(--ironbow);
-  background-size: var(--full, 100%) 100%;
-}
-
-/* Guarded E-Stop Button Styling */
-.estop-button {
-  background: linear-gradient(135deg, #FF4A2B 0%, #C41E15 100%);
-  box-shadow: 0 0 20px -3px rgba(255, 74, 43, 0.5), inset 0 1px 1px 0 rgba(255, 255, 255, 0.3);
-}
-.estop-button:hover {
-  background: linear-gradient(135deg, #FF6145 0%, #D8261B 100%);
-  box-shadow: 0 0 25px -1px rgba(255, 74, 43, 0.75), inset 0 1px 1px 0 rgba(255, 255, 255, 0.4);
-}
-.estop-button:active {
-  transform: scale(0.96);
-  box-shadow: 0 0 10px 0 rgba(255, 74, 43, 0.4);
-}
-
-/* Grid & HUD overlay helpers */
-.tactical-grid {
-  background-image:
-    linear-gradient(to right, rgba(226, 214, 255, 0.04) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(226, 214, 255, 0.04) 1px, transparent 1px);
-  background-size: 24px 24px;
+  .pulse-dot, .radar-sweep, .animate-fadeIn { animation: none; }
 }

@@ -35,18 +35,28 @@ export default function Joystick({ enabled, onMove }) {
 
   return (
     <div className="flex flex-col items-center gap-2">
-      <div ref={base} onPointerDown={down} onPointerMove={(e) => timer.current && update(e)}
-        onPointerUp={() => timer.current && stop("released")} onPointerCancel={() => timer.current && stop("released")}
-        className={`relative touch-none select-none rounded-full border border-line ${enabled ? "cursor-grab" : "opacity-40"}`}
-        style={{ width: R * 2 + 32, height: R * 2 + 32, background: "radial-gradient(circle, #171E2E 0%, #101622 70%)" }}
-        role="application" aria-label="Drive stick. Push up to go forward, sideways to turn.">
-        <div className="absolute left-1/2 top-1/2 w-[2px] h-[70%] -translate-x-1/2 -translate-y-1/2 bg-line" />
-        <div className="absolute left-1/2 top-1/2 h-[2px] w-[70%] -translate-x-1/2 -translate-y-1/2 bg-line" />
-        <div className="absolute left-1/2 top-1/2 w-14 h-14 -ml-7 -mt-7 rounded-full"
-          style={{ transform: `translate(${p.x}px, ${p.y}px)`, transition: timer.current ? "none" : "transform .18s",
-            background: "linear-gradient(135deg, #0284c7, #0ea5e9)", boxShadow: "0 6px 18px -6px rgba(14,165,233,.5)" }} />
+      <div
+        ref={base}
+        onPointerDown={down}
+        onPointerMove={(e) => timer.current && update(e)}
+        onPointerUp={() => timer.current && stop("released")}
+        onPointerCancel={() => timer.current && stop("released")}
+        className={`relative touch-none select-none rounded-full border border-line bg-panel2 ${enabled ? "cursor-grab active:cursor-grabbing" : "opacity-40"}`}
+        style={{ width: R * 2 + 32, height: R * 2 + 32 }}
+        role="application"
+        aria-label="Drive stick. Push up to go forward, sideways to turn."
+      >
+        <div className="absolute left-1/2 top-1/2 w-[1px] h-[70%] -translate-x-1/2 -translate-y-1/2 bg-line2" />
+        <div className="absolute left-1/2 top-1/2 h-[1px] w-[70%] -translate-x-1/2 -translate-y-1/2 bg-line2" />
+        <div
+          className="absolute left-1/2 top-1/2 w-14 h-14 -ml-7 -mt-7 rounded-full bg-telemetry border-2 border-panel shadow-sm transition-transform"
+          style={{
+            transform: `translate(${p.x}px, ${p.y}px)`,
+            transition: timer.current ? "none" : "transform .18s ease-out",
+          }}
+        />
       </div>
-      <span className="text-[12px] text-faint">No reverse gear, so the lower half stops the robot</span>
+      <span className="text-[12px] text-faint">Push forward to drive; sideways to turn</span>
     </div>
   );
 }

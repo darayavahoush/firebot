@@ -4,17 +4,18 @@ import RunReplay from "../components/RunReplay.jsx";
 import RunInsights from "../components/RunInsights.jsx";
 import { fetchRuns, fetchRunDetail, fetchRunSummary, fetchRunAnomalies, seedRuns } from "../api/client.js";
 import { playSound } from "../lib/sound.js";
+import { Stat, Badge, Button, EmptyState, Panel } from "../components/ui";
 
 const SORTS = {
-  newest: { label: "Newest First", fn: (a, b) => new Date(b.started_at) - new Date(a.started_at) },
-  longest: { label: "Longest Duration", fn: (a, b) => b.duration_s - a.duration_s },
-  tank: { label: "Most Water Used", fn: (a, b) => (a.min_tank ?? 1) - (b.min_tank ?? 1) },
+  newest: { label: "Newest first", fn: (a, b) => new Date(b.started_at) - new Date(a.started_at) },
+  longest: { label: "Longest duration", fn: (a, b) => b.duration_s - a.duration_s },
+  tank: { label: "Most water used", fn: (a, b) => (a.min_tank ?? 1) - (b.min_tank ?? 1) },
 };
 
 const FILTERS = {
-  all: { label: "All Runs", fn: () => true },
-  spray: { label: "Sprayed Water", fn: (r) => r.pumped },
-  recon: { label: "Recon Only", fn: (r) => !r.pumped },
+  all: { label: "All runs", fn: () => true },
+  spray: { label: "Sprayed water", fn: (r) => r.pumped },
+  recon: { label: "Recon only", fn: (r) => !r.pumped },
 };
 
 const dur = (s) => `${Math.floor(s / 60)}m ${String(Math.round(s % 60)).padStart(2, "0")}s`;
@@ -24,6 +25,7 @@ export default function History() {
   const [sel, setSel] = useState(null);
   const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [seeding, setSeeding] = useState(false);
   const [sort, setSort] = useState("newest");
   const [filter, setFilter] = useState("all");
@@ -35,13 +37,14 @@ export default function History() {
   const loadRuns = useCallback(async () => {
     try {
       setLoading(true);
+      setError(null);
       let data = await fetchRuns();
       if (!data || data.length === 0) {
         try {
           await seedRuns();
           data = await fetchRuns();
         } catch (e) {
-          console.warn("Auto-seed error", e);
+          console.warn("Auto-seed fallback warning", e);
         }
       }
       setRuns(data || []);
@@ -50,6 +53,7 @@ export default function History() {
       }
     } catch (err) {
       console.error("Failed to load runs", err);
+      setError(err.message || "Failed to connect to archive database.");
     } finally {
       setLoading(false);
     }
@@ -103,74 +107,82 @@ export default function History() {
     setSel(id);
   };
 
+  if (error && runs.length === 0) {
+    return (
+      <div className="p-6 flex-1 flex items-center justify-center">
+        <EmptyState
+          illustration="error-generic"
+          title="Could not load run archives"
+          description={error}
+          action={<Button variant="primary" onClick={loadRuns}>Retry connection</Button>}
+        />
+      </div>
+    );
+  }
+
   return (
-    <div className="p-6 space-y-6 flex-1 overflow-y-auto">
+    <div className="p-4 sm:p-6 space-y-6 flex-1 overflow-y-auto">
       {/* Top Mission Analytics KPI Bar */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="panel p-4 space-y-1">
-          <div className="text-[11px] font-mono uppercase tracking-wider text-faint">
-            Total Sorties
-          </div>
-          <div className="data text-[26px] font-display font-black text-ink">
-            {loading ? "…" : runs.length}
-            <span className="text-[12px] font-mono text-faint ml-1 font-normal">missions</span>
-          </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="panel p-4">
+          <Stat
+            label="Total sorties"
+            value={loading ? "…" : `${runs.length}`}
+            hint="Recorded missions in database"
+          />
         </div>
 
-        <div className="panel p-4 space-y-1">
-          <div className="text-[11px] font-mono uppercase tracking-wider text-faint">
-            Suppression Rate
-          </div>
-          <div className="data text-[26px] font-display font-black text-ok">
-            {loading ? "…" : `${successRate}%`}
-            <span className="text-[12px] font-mono text-faint ml-1 font-normal">({pumped} sprayed)</span>
-          </div>
+        <div className="panel p-4">
+          <Stat
+            label="Suppression rate"
+            value={loading ? "…" : `${successRate}%`}
+            hint={`${pumped} sorties extinguished fires`}
+          />
         </div>
 
-        <div className="panel p-4 space-y-1">
-          <div className="text-[11px] font-mono uppercase tracking-wider text-faint">
-            Median Mission Time
-          </div>
-          <div className="data text-[26px] font-display font-black text-telemetry">
-            {loading ? "…" : dur(median)}
-          </div>
+        <div className="panel p-4">
+          <Stat
+            label="Median mission time"
+            value={loading ? "…" : dur(median)}
+            hint="Typical operational duration"
+          />
         </div>
 
-        <div className="panel p-4 space-y-1">
+        <div className="panel p-4 flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <div className="text-[11px] font-mono uppercase tracking-wider text-faint">
-              Archive Database
-            </div>
+            <span className="text-[11px] text-muted font-medium">Archive database</span>
             <button
+              type="button"
               onClick={handleManualSeed}
               disabled={seeding}
-              title="Seed or refresh demo mission sorties in postgres"
-              className="text-[10px] font-mono text-telemetry hover:underline"
+              className="text-[11px] text-telemetry hover:underline cursor-pointer"
             >
               {seeding ? "Seeding…" : "Re-seed"}
             </button>
           </div>
-          <div className="data text-[26px] font-display font-black text-ink flex items-center gap-2">
-            <span className="h-2.5 w-2.5 rounded-full bg-ok" />
-            <span className="text-[16px] font-mono">POSTGRES</span>
+          <div className="flex items-center gap-2 mt-2">
+            <span className="h-2 w-2 rounded-full bg-ok" />
+            <span className="data text-[18px] font-semibold text-ink">PostgreSQL</span>
           </div>
+          <span className="text-[11px] text-faint mt-1">Render managed persistence</span>
         </div>
       </div>
 
       {/* Main Content Area */}
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,380px)_1fr] items-start">
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,340px)_1fr] items-start">
         {/* Left List Section */}
-        <section aria-label="Sorties List" className="space-y-3">
+        <section aria-label="Sorties list" className="space-y-3">
           {/* Controls: Filter & Sort */}
           <div className="space-y-2">
-            <div className="flex items-center gap-1.5 bg-panel2 p-1 rounded-xl border border-line" role="group" aria-label="Filter runs">
+            <div className="flex items-center gap-1 bg-panel2 p-0.5 rounded-lg border border-line" role="group" aria-label="Filter runs">
               {Object.entries(FILTERS).map(([k, v]) => (
                 <button
                   key={k}
+                  type="button"
                   onClick={() => { playSound("click"); setFilter(k); }}
-                  className={`flex-1 py-1 text-[11px] font-mono rounded-lg transition-all ${
+                  className={`flex-1 py-1 text-[11.5px] rounded-md transition-colors ${
                     filter === k
-                      ? "bg-telemetry text-base font-bold shadow-[0_0_8px_rgba(14,165,233,0.35)]"
+                      ? "bg-panel text-ink font-semibold shadow-sm"
                       : "text-muted hover:text-ink"
                   }`}
                 >
@@ -179,15 +191,16 @@ export default function History() {
               ))}
             </div>
 
-            <div className="flex items-center gap-1.5 bg-panel p-1 rounded-xl border border-line" role="group" aria-label="Sort runs">
+            <div className="flex items-center gap-1 bg-panel p-0.5 rounded-lg border border-line" role="group" aria-label="Sort runs">
               {Object.entries(SORTS).map(([k, v]) => (
                 <button
                   key={k}
+                  type="button"
                   onClick={() => { playSound("click"); setSort(k); }}
-                  className={`flex-1 py-1 text-[10px] font-mono rounded-lg transition-all ${
+                  className={`flex-1 py-1 text-[11px] rounded-md transition-colors ${
                     sort === k
-                      ? "bg-panel2 text-ink font-bold border border-telemetry/40"
-                      : "text-faint hover:text-ink border border-transparent"
+                      ? "bg-panel2 text-ink font-semibold"
+                      : "text-muted hover:text-ink"
                   }`}
                 >
                   {v.label}
@@ -198,34 +211,35 @@ export default function History() {
 
           {/* List of Runs */}
           <div className="flex flex-col gap-2 max-h-[calc(100vh-280px)] overflow-y-auto pr-1">
-            {loading && <div className="text-muted text-[13px] font-mono py-8 text-center">Loading archives…</div>}
+            {loading && <div className="text-muted text-[13px] py-8 text-center">Loading archives…</div>}
             {!loading && list.length === 0 && (
-              <div className="p-8 text-center text-faint font-mono text-[13px] panel space-y-3">
-                <p>No sorties found in archives.</p>
-                <button
-                  onClick={handleManualSeed}
-                  disabled={seeding}
-                  className="px-4 py-2 rounded-xl text-xs font-mono font-bold bg-telemetry text-base shadow-[0_0_12px_rgba(14,165,233,0.35)] hover:brightness-110 active:scale-95 transition-all inline-block"
-                >
-                  {seeding ? "Generating Mission Telemetry…" : "+ Seed Sortie Archive"}
-                </button>
-              </div>
+              <EmptyState
+                illustration="empty-history"
+                title="No sorties found in archives"
+                description="No recorded missions match the current filter."
+                action={
+                  <Button variant="primary" onClick={handleManualSeed} disabled={seeding}>
+                    {seeding ? "Generating mission telemetry…" : "+ Seed sortie archive"}
+                  </Button>
+                }
+              />
             )}
             {list.map((r) => {
               const active = sel === r.id;
               return (
                 <button
                   key={r.id}
+                  type="button"
                   onClick={() => selectRun(r.id)}
                   aria-pressed={active}
-                  className={`w-full text-left rounded-xl p-3.5 border transition-all duration-150 cursor-pointer ${
+                  className={`w-full text-left rounded-lg p-3 border transition-colors cursor-pointer ${
                     active
-                      ? "border-telemetry bg-gradient-to-r from-telemetry/15 to-panel2/80 shadow-[0_0_16px_rgba(14,165,233,0.2)]"
-                      : "border-line bg-panel hover:bg-panel2/70 hover:border-line/90"
+                      ? "border-flame/40 bg-panel2"
+                      : "border-line bg-panel hover:bg-panel2/60 hover:border-line2"
                   }`}
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <span className="font-display font-bold text-[13px] text-ink">
+                    <span className="font-semibold text-[13px] text-ink">
                       {new Date(r.started_at).toLocaleString(undefined, {
                         month: "short",
                         day: "numeric",
@@ -233,19 +247,13 @@ export default function History() {
                         minute: "2-digit",
                       })}
                     </span>
-                    <span
-                      className={`text-[9px] font-mono px-2 py-0.5 rounded font-bold uppercase ${
-                        r.pumped
-                          ? "bg-ok/20 text-ok border border-ok/30"
-                          : "bg-panel2 text-faint border border-line"
-                      }`}
-                    >
-                      {r.pumped ? "SUPPRESSION" : "RECON"}
-                    </span>
+                    <Badge tone={r.pumped ? "ok" : "neutral"} dot>
+                      {r.pumped ? "Suppression" : "Recon"}
+                    </Badge>
                   </div>
 
                   {/* Duration Heatbar */}
-                  <div className="mt-2.5 h-[5px] rounded-full bg-panel2 overflow-hidden border border-line/40">
+                  <div className="mt-2.5 h-1 rounded-full bg-panel2 overflow-hidden border border-line">
                     <div
                       className="heatbar h-full rounded-full transition-all duration-300"
                       style={{
@@ -255,9 +263,9 @@ export default function History() {
                     />
                   </div>
 
-                  <div className="mt-2 flex items-center justify-between text-[11px] font-mono text-muted">
-                    <span className="text-ink font-bold">{dur(r.duration_s)}</span>
-                    <span className="text-faint">{r.frames} frames • {r.operator_commands} cmds</span>
+                  <div className="mt-2 flex items-center justify-between text-[11.5px] text-muted">
+                    <span className="data text-ink font-medium">{dur(r.duration_s)}</span>
+                    <span className="data text-faint">{r.frames} frames • {r.operator_commands} cmds</span>
                   </div>
                 </button>
               );
@@ -266,51 +274,51 @@ export default function History() {
         </section>
 
         {/* Right Detail Section */}
-        <section aria-label="Sortie Deep Dive" className="min-w-0">
+        <section aria-label="Sortie deep dive" className="min-w-0 space-y-5">
           {run ? (
-            <div className="space-y-6">
+            <div className="space-y-5">
               {/* Run Header Banner */}
               <div className="panel p-5">
                 <div className="flex items-center justify-between flex-wrap gap-2 pb-3 mb-3 border-b border-line">
-                  <div className="flex items-center gap-2.5">
-                    <span className="h-2.5 w-2.5 rounded-full bg-ok" />
-                    <h2 className="font-display font-black text-[22px] tracking-tight text-ink">
+                  <div className="flex items-center gap-2">
+                    <span className="h-2 w-2 rounded-full bg-ok" />
+                    <h2 className="text-[17px] font-semibold text-ink">
                       Sortie on {run.robot}
                     </h2>
                   </div>
-                  <div className="text-[11px] font-mono text-faint bg-panel2 px-2.5 py-1 rounded-lg border border-line">
-                    SESSION #{run.id}
+                  <div className="data text-[11px] text-faint bg-panel2 px-2.5 py-1 rounded-md border border-line">
+                    Session #{run.id}
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-[12px] font-mono">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-[12px]">
                   <div className="p-2.5 rounded-lg bg-panel2/60 border border-line">
-                    <span className="text-faint text-[10px] uppercase block">Start Time</span>
-                    <span className="text-ink font-bold">
+                    <span className="text-faint text-[10.5px] uppercase block">Start time</span>
+                    <span className="data text-ink font-semibold">
                       {new Date(run.started_at).toLocaleTimeString()}
                     </span>
                   </div>
                   <div className="p-2.5 rounded-lg bg-panel2/60 border border-line">
-                    <span className="text-faint text-[10px] uppercase block">Duration</span>
-                    <span className="text-ink font-bold">{dur(run.duration_s)}</span>
+                    <span className="text-faint text-[10.5px] uppercase block">Duration</span>
+                    <span className="data text-ink font-semibold">{dur(run.duration_s)}</span>
                   </div>
                   <div className="p-2.5 rounded-lg bg-panel2/60 border border-line">
-                    <span className="text-faint text-[10px] uppercase block">Final Tank</span>
-                    <span className="text-telemetry font-bold">
+                    <span className="text-faint text-[10.5px] uppercase block">Final tank</span>
+                    <span className="data text-telemetry font-semibold">
                       {run.min_tank != null ? `${(run.min_tank * 100).toFixed(0)}%` : "Unknown"}
                     </span>
                   </div>
                   <div className="p-2.5 rounded-lg bg-panel2/60 border border-line">
-                    <span className="text-faint text-[10px] uppercase block">Water Dispensed</span>
-                    <span className={run.pumped ? "text-ok font-bold" : "text-faint font-bold"}>
-                      {run.pumped ? "YES (FIRE OUT)" : "NONE"}
+                    <span className="text-faint text-[10.5px] uppercase block">Water delivery</span>
+                    <span className={`data font-semibold ${run.pumped ? "text-ok" : "text-muted"}`}>
+                      {run.pumped ? "Dispensed (fire out)" : "None"}
                     </span>
                   </div>
                 </div>
               </div>
 
-              {detail && (
-                <div className="space-y-6">
+              {detail ? (
+                <div className="space-y-5">
                   {/* Replay Scrubbing Station */}
                   <RunReplay
                     points={detail.points}
@@ -320,28 +328,21 @@ export default function History() {
                   />
 
                   {/* Telemetry Chart */}
-                  <div className="panel p-4 h-[320px]">
-                    <div className="text-[11px] font-mono uppercase tracking-wider text-faint mb-2">
-                      Certainty & Water Tank Telemetry Curves
-                    </div>
-                    <div className="h-[270px]">
-                      <RunChart runId={sel} detail={detail} cursorT={cursorT} />
-                    </div>
+                  <div className="h-[320px]">
+                    <RunChart runId={sel} detail={detail} cursorT={cursorT} />
                   </div>
 
-                  {/* AI & Statistical Insights */}
+                  {/* Insights & Anomaly Audit */}
                   <RunInsights summary={summary} anomalies={anoms} onSeek={setSeek} />
                 </div>
-              )}
-
-              {!detail && (
-                <div className="panel p-12 text-center text-muted font-mono text-[14px]">
+              ) : (
+                <div className="panel p-10 text-center text-muted text-[13px]">
                   Extracting sensor timeseries from telemetry archive…
                 </div>
               )}
             </div>
           ) : (
-            <div className="panel p-16 text-center text-faint font-mono text-[14px]">
+            <div className="panel p-12 text-center text-muted text-[13px]">
               Select a sortie from the archive to inspect its telemetry, anomalies, and playback.
             </div>
           )}

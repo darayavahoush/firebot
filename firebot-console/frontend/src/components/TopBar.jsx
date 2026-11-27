@@ -2,26 +2,29 @@ import React, { useEffect, useState } from "react";
 import { playSound } from "../lib/sound.js";
 
 const TITLES = {
-  home: { title: "Mission Control Overview", sub: "Autonomous firefighting rover & telemetry overview" },
-  live: { title: "Tactical Console", sub: "Real-time telemetry, thermal FLIR imaging & teleoperation" },
-  sim: { title: "2D Simulator", sub: "Browser simulation engine: RRT* path planner, SLAM & speech" },
-  mujoco: { title: "MuJoCo 3D Physics", sub: "High-fidelity rigid-body dynamics & 36-beam lidar sweep" },
-  voice: { title: "Voice Studio & Calibration", sub: "Operator acoustic profiling, avatar selection & custom command enrollment" },
-  history: { title: "Run History", sub: "Sortie database, fire-suppression analytics & telemetry replay" },
-  about: { title: "System Architecture", sub: "State estimation, planning algorithms & hardware specifications" },
+  home: { title: "Overview", sub: "The rover, its sensors and how it finds fires" },
+  live: { title: "Live ops", sub: "Telemetry, thermal imaging and teleoperation" },
+  sim: { title: "2D simulator", sub: "Plan, map and search in the browser — RRT*, SLAM and voice" },
+  mujoco: { title: "3D physics", sub: "Rigid-body dynamics and lidar sweep" },
+  voice: { title: "Voice studio", sub: "Operator profiles and custom command enrollment" },
+  history: { title: "Run history", sub: "Past sorties, analytics and replay" },
+  about: { title: "Architecture", sub: "State estimation, planning and hardware" },
 };
 
-export default function TopBar({ page, mode, onEstop, activeOperator, onExitToHome }) {
+const MODE_TONE = {
+  manual: "bg-warn/10 text-warn border-warn/30",
+  auto: "bg-ok/10 text-ok border-ok/30",
+};
+
+export default function TopBar({ page, mode, onEstop, activeOperator, onExitToHome, onOpenNav }) {
   const { title, sub } = TITLES[page] || TITLES.live;
   const [clock, setClock] = useState("");
 
   useEffect(() => {
-    const updateTime = () => {
-      const now = new Date();
-      setClock(now.toLocaleTimeString("en-GB", { hour12: false }) + " UTC");
-    };
-    updateTime();
-    const id = setInterval(updateTime, 1000);
+    const tick = () =>
+      setClock(new Date().toLocaleTimeString("en-GB", { hour12: false, timeZone: "UTC" }) + " UTC");
+    tick();
+    const id = setInterval(tick, 1000);
     return () => clearInterval(id);
   }, []);
 
@@ -31,98 +34,72 @@ export default function TopBar({ page, mode, onEstop, activeOperator, onExitToHo
   };
 
   return (
-    <header className="bg-base/90 backdrop-blur-md sticky top-0 z-20 border-b border-line">
-      <div className="flex items-center justify-between px-6 py-3.5 gap-4">
-        {/* Title and breadcrumb */}
-        <div className="min-w-0">
-          <div className="flex items-center gap-2.5">
-            <h1 className="font-display font-extrabold text-[24px] lg:text-[26px] leading-tight tracking-tight text-ink truncate">
-              {title}
-            </h1>
-            <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded text-[10px] font-mono font-bold tracking-wider uppercase bg-telemetry/15 text-telemetry border border-telemetry/30">
-              MISSION HUD
-            </span>
+    <header className="sticky top-0 z-20 bg-base/85 backdrop-blur border-b border-line">
+      <div className="flex items-center justify-between gap-3 px-4 sm:px-6 h-16">
+        <div className="flex items-center gap-3 min-w-0">
+          {/* Mobile Navigation Drawer Trigger */}
+          <button
+            type="button"
+            onClick={() => {
+              playSound("tab");
+              onOpenNav?.();
+            }}
+            aria-label="Open navigation menu"
+            className="md:hidden h-9 w-9 rounded-lg border border-line bg-panel flex items-center justify-center text-muted hover:text-ink shrink-0"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="3" y1="12" x2="21" y2="12" />
+              <line x1="3" y1="6" x2="21" y2="6" />
+              <line x1="3" y1="18" x2="21" y2="18" />
+            </svg>
+          </button>
+
+          <div className="min-w-0">
+            <h1 className="text-[17px] sm:text-[18px] font-semibold tracking-tight leading-tight truncate">{title}</h1>
+            <p className="text-[12px] text-muted truncate hidden sm:block">{sub}</p>
           </div>
-          <p className="text-[12px] text-muted truncate mt-0.5">{sub}</p>
         </div>
 
-        {/* Telemetry quick status chips and Emergency Stop button */}
-        <div className="flex items-center gap-3 shrink-0">
-          {onExitToHome && (
+        <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
+          {onExitToHome && page !== "home" && (
             <button
-              onClick={() => {
-                playSound("tab");
-                onExitToHome();
-              }}
-              className="px-3.5 py-1.5 rounded-lg bg-telemetry/10 hover:bg-telemetry/20 border border-telemetry/30 hover:border-telemetry/50 text-[11px] font-mono font-bold text-telemetry hover:text-white transition-all flex items-center gap-1.5 shadow-sm"
-              title="Return to Flight Deck Homepage [H]"
+              type="button"
+              onClick={() => { playSound("tab"); onExitToHome(); }}
+              className="btn hidden sm:inline-flex"
+              title="Back to overview [H]"
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-                <polyline points="9 22 9 12 15 12 15 22" />
-              </svg>
-              <span>← Flight Deck Home</span>
-              <span className="hidden sm:inline text-[9px] text-telemetry/70 ml-0.5">[H]</span>
+              Overview <kbd className="text-[10px] font-mono text-faint ml-1">H</kbd>
             </button>
           )}
 
-          {/* Clock */}
-          <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-panel border border-line text-[11px] font-mono text-faint">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="10" />
-              <polyline points="12 6 12 12 16 14" />
-            </svg>
-            <span className="text-ink font-semibold tabular-nums">{clock}</span>
-          </div>
+          <span className="hidden lg:inline data text-[12px] text-muted px-1">{clock}</span>
 
-          {/* Active Operator Chip */}
           {activeOperator && (
-            <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-panel border border-line text-[12px]">
-              <span className="w-2 h-2 rounded-full bg-telemetry animate-pulse" />
-              <span className="text-muted text-[11px] uppercase tracking-wider font-mono">Pilot</span>
-              <span className="font-mono font-bold text-[11px] text-ink capitalize tracking-wider">
-                {activeOperator}
-              </span>
-            </div>
+            <span className="hidden md:inline-flex items-center gap-2 rounded-lg border border-line bg-panel px-2.5 py-1.5 text-[12px]">
+              <span className="text-muted">Operator</span>
+              <span className="font-semibold capitalize">{activeOperator}</span>
+            </span>
           )}
 
-          {/* Mode Pill */}
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-panel border border-line text-[12px]">
-            <span className="text-muted text-[11px] uppercase tracking-wider font-mono">Mode</span>
-            <span
-              className={`font-mono font-bold text-[11px] px-2 py-0.5 rounded uppercase tracking-wider ${
-                mode === "manual"
-                  ? "bg-warn/20 text-warn border border-warn/30"
-                  : mode === "auto"
-                  ? "bg-ok/20 text-ok border border-ok/30"
-                  : "bg-telemetry/20 text-telemetry border border-telemetry/30"
-              }`}
-            >
-              {mode}
-            </span>
-          </div>
+          <span className={`inline-flex items-center gap-1.5 sm:gap-2 rounded-lg border px-2 sm:px-2.5 py-1 sm:py-1.5 text-[11px] sm:text-[12px] ${MODE_TONE[mode] || "bg-telemetry/10 text-telemetry border-telemetry/30"}`}>
+            <span className="text-current/70">Mode</span>
+            <span className="font-semibold capitalize">{mode}</span>
+          </span>
 
-          {/* Guarded Emergency Stop button */}
           <button
+            type="button"
             onClick={handleEstop}
-            aria-label="Emergency stop robot"
-            title="Immediate emergency motor and pump shutdown [SPACE / ESC]"
-            className="estop-button group relative h-10 px-5 rounded-xl text-white font-display font-black text-[13px] tracking-wider uppercase flex items-center gap-2 transition-all cursor-pointer"
+            aria-label="Emergency stop"
+            title="Immediately stop motors and pump"
+            className="estop-button h-9 sm:h-10 px-3 sm:px-4 rounded-lg text-[12px] sm:text-[13px] font-bold tracking-wide inline-flex items-center gap-1.5 sm:gap-2"
           >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="currentColor"
-              className="group-hover:rotate-90 transition-transform duration-200"
-            >
-              <rect x="4" y="4" width="16" height="16" rx="2" />
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
+              <rect x="3" y="3" width="18" height="18" rx="2" />
             </svg>
             <span>E-STOP</span>
           </button>
         </div>
       </div>
-      <div className="heat-rule" />
     </header>
   );
 }

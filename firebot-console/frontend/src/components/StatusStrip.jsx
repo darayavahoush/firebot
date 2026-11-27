@@ -1,66 +1,37 @@
 import React from "react";
+import Stat from "./ui/Stat.jsx";
 
 export default function StatusStrip({ frame, mode, logCount }) {
   const computeMs = frame?.compute_ms;
-  const isOnline = !!frame;
+  const online = !!frame;
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 divide-x divide-line border-b border-line bg-panel/70 backdrop-blur-md">
-      {/* System Status */}
-      <div className="px-5 py-3 flex items-center justify-between">
-        <div>
-          <div className="text-[11px] font-mono uppercase tracking-wider text-faint mb-1">Robot Link</div>
-          <div className="flex items-center gap-2">
-            <span className={`h-2.5 w-2.5 rounded-full ${isOnline ? "bg-ok shadow-[0_0_8px_#7DE3B0]" : "bg-alarm pulse-dot"}`} />
-            <span className={`text-[14px] font-display font-bold tracking-tight ${isOnline ? "text-ok" : "text-alarm"}`}>
-              {isOnline ? "ONLINE & NOMINAL" : "CONNECTING..."}
-            </span>
-          </div>
-        </div>
-        <div className="hidden sm:flex gap-0.5 items-end h-4" title="Signal strength">
-          <span className={`w-1 rounded-sm ${isOnline ? "h-2 bg-ok" : "h-1 bg-line"}`} />
-          <span className={`w-1 rounded-sm ${isOnline ? "h-3 bg-ok" : "h-1 bg-line"}`} />
-          <span className={`w-1 rounded-sm ${isOnline ? "h-4 bg-ok" : "h-1 bg-line"}`} />
-        </div>
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 px-6 py-4 border-b border-line">
+      <div className="panel px-4 py-3">
+        <Stat
+          label="Robot link"
+          value={online ? "Online" : "Connecting…"}
+          tone={online ? "ok" : "alarm"}
+          hint={online ? "Telemetry streaming" : "Waiting for first frame"}
+        />
       </div>
-
-      {/* Mode Status */}
-      <div className="px-5 py-3">
-        <div className="text-[11px] font-mono uppercase tracking-wider text-faint mb-1">Control Strategy</div>
-        <div className="flex items-center gap-2">
-          <span className="data text-[15px] font-bold text-ink uppercase tracking-wide">
-            {mode}
-          </span>
-          <span className="text-[11px] text-faint font-mono">
-            {mode === "auto" ? "• EIF & RRT*" : mode === "manual" ? "• Teleop Stick" : "• Standby"}
-          </span>
-        </div>
+      <div className="panel px-4 py-3">
+        <Stat
+          label="Control mode"
+          value={<span className="capitalize">{mode}</span>}
+          hint={mode === "auto" ? "EIF + RRT* autonomy" : mode === "manual" ? "Joystick teleop" : "Standby"}
+        />
       </div>
-
-      {/* Compute Performance */}
-      <div className="px-5 py-3">
-        <div className="text-[11px] font-mono uppercase tracking-wider text-faint mb-1">Perception Pipeline</div>
-        <div className="flex items-baseline gap-2">
-          <span className={`data text-[15px] font-bold ${computeMs && computeMs > 200 ? "text-warn" : "text-ink"}`}>
-            {computeMs != null ? `${computeMs.toFixed(1)} ms` : "—"}
-          </span>
-          <span className="text-[11px] text-faint font-mono">
-            {computeMs ? (computeMs < 100 ? "(optimal)" : "(elevated)") : "awaiting frame"}
-          </span>
-        </div>
+      <div className="panel px-4 py-3">
+        <Stat
+          label="Perception latency"
+          value={computeMs != null ? `${computeMs.toFixed(1)} ms` : "—"}
+          tone={computeMs > 200 ? "warn" : undefined}
+          hint={computeMs == null ? "Awaiting frame" : computeMs < 100 ? "Healthy" : "Elevated"}
+        />
       </div>
-
-      {/* Commands Processed */}
-      <div className="px-5 py-3 flex items-center justify-between">
-        <div>
-          <div className="text-[11px] font-mono uppercase tracking-wider text-faint mb-1">Commands Dispatched</div>
-          <div className="data text-[15px] font-bold text-telemetry">
-            {logCount} <span className="text-[11px] font-mono text-faint font-normal">verified</span>
-          </div>
-        </div>
-        <div className="text-[10px] font-mono px-2 py-1 rounded bg-panel2 text-muted border border-line">
-          PORT 5000
-        </div>
+      <div className="panel px-4 py-3">
+        <Stat label="Commands sent" value={logCount} tone="info" hint="This session" />
       </div>
     </div>
   );

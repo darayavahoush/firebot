@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { playSound } from "../lib/sound.js";
+import { Illustration, Button } from "./ui";
 
 const ROWS = 24, COLS = 32, CW = 640, CH = 480;
 
@@ -25,7 +26,7 @@ const PALETTES = {
     ],
   },
   arctic: {
-    label: "Cyber Arctic",
+    label: "Arctic",
     stops: [
       [0, [6, 14, 30]],
       [0.35, [14, 80, 140]],
@@ -35,7 +36,7 @@ const PALETTES = {
     ],
   },
   nvg: {
-    label: "Tactical NVG",
+    label: "Night vision",
     stops: [
       [0, [2, 18, 8]],
       [0.3, [12, 60, 24]],
@@ -80,27 +81,22 @@ function generateMLX90640Baseline(t = 0, sensors = null) {
       }
       flameRow = 11.5 + Math.cos(t * 2) * 0.6;
     } else {
-      // Actively sweeping thermal FOV across room
       flameCol = 16.0 + Math.sin(t * 1.6) * 8.5;
       flameRow = 11.0 + Math.cos(t * 1.1) * 2.0;
       flameIntensity = 0.82;
     }
   } else {
-    // Autonomous thermal search sweep
     flameCol = 16.0 + Math.sin(t * 1.6) * 8.5;
     flameRow = 11.0 + Math.cos(t * 1.1) * 2.0;
     flameIntensity = 0.85;
   }
 
-  // Subtle ambient thermal plume / room convection variation
   const waveX = Math.sin(t * 0.5) * 3.5;
   const waveY = Math.cos(t * 0.4) * 2.0;
 
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {
-      // Room ambient base: 22.4°C with gentle floor-to-ceiling gradient
       const roomGradient = (r / ROWS) * 1.6;
-      // Per-cell pseudo-radiometric sensor noise (typical MLX90640 noise floor ~0.15°C)
       const noise = Math.sin(r * 12.9898 + c * 78.233 + t * 0.8) * 0.35;
       let temp = 22.2 + roomGradient + noise;
 
@@ -108,11 +104,9 @@ function generateMLX90640Baseline(t = 0, sensors = null) {
         const dx = c - flameCol;
         const dy = r - flameRow;
         const dist = Math.sqrt(dx * dx + dy * dy);
-        // Thermal radiation falloff
         const heat = Math.max(0, 52.0 * flameIntensity - dist * 4.5);
         temp += heat;
       } else {
-        // Subtle ambient signature in room center
         const dx = c - (16.0 + waveX);
         const dy = r - (12.0 + waveY);
         const dist = Math.sqrt(dx * dx + dy * dy);
@@ -129,6 +123,7 @@ export default function ThermalHero({ frame }) {
   const cv = useRef(null);
   const last = useRef({ grid: null, at: 0, isHardware: false });
   const [paletteKey, setPaletteKey] = useState("ironbow");
+  const [previewSim, setPreviewSim] = useState(false);
 
   const now = Date.now();
   if (frame?.thermal && Array.isArray(frame.thermal) && frame.thermal.length > 0) {
@@ -137,16 +132,14 @@ export default function ThermalHero({ frame }) {
       at: now,
       isHardware: true,
     };
-  } else if (!last.current.grid) {
-    last.current = {
-      grid: generateMLX90640Baseline(now / 1000, frame?.sensors),
-      at: now,
-      isHardware: false,
-    };
-  } else if (!last.current.isHardware) {
-    // Evolve ambient baseline smoothly
-    last.current.grid = generateMLX90640Baseline(now / 1000, frame?.sensors);
-    last.current.at = now;
+  } else if (previewSim || frame) {
+    if (!last.current.grid || !last.current.isHardware) {
+      last.current = {
+        grid: generateMLX90640Baseline(now / 1000, frame?.sensors),
+        at: now,
+        isHardware: false,
+      };
+    }
   }
 
   const { grid, at, isHardware } = last.current;
@@ -171,7 +164,7 @@ export default function ThermalHero({ frame }) {
     const c = cv.current;
     if (!c || !grid) return;
     const g = c.getContext("2d");
-    g.fillStyle = "#0A0D14";
+    g.fillStyle = "#0C0E12";
     g.fillRect(0, 0, CW, CH);
 
     const off = document.createElement("canvas");
@@ -194,44 +187,20 @@ export default function ThermalHero({ frame }) {
     const px = (((pi % COLS) + 0.5) / COLS) * CW;
     const py = ((Math.floor(pi / COLS) + 0.5) / ROWS) * CH;
 
-    // Glowing target bracket
-    g.strokeStyle = hot ? "#FF4A2B" : "#0EA5E9";
-    g.lineWidth = 2;
-    g.shadowColor = hot ? "rgba(255,74,43,0.8)" : "rgba(14,165,233,0.5)";
-    g.shadowBlur = 8;
-
-    // Target reticle ring
+    // Reticle ring
+    g.strokeStyle = hot ? "rgb(232, 89, 12)" : "rgb(14, 124, 123)";
+    g.lineWidth = 1.75;
     g.beginPath();
     g.arc(px, py, 20, 0, Math.PI * 2);
     g.stroke();
 
     // Crosshair ticks
     g.beginPath();
-    g.moveTo(px - 32, py); g.lineTo(px - 10, py);
-    g.moveTo(px + 10, py); g.lineTo(px + 32, py);
-    g.moveTo(px, py - 32); g.lineTo(px, py - 10);
-    g.moveTo(px, py + 10); g.lineTo(px, py + 32);
+    g.moveTo(px - 30, py); g.lineTo(px - 8, py);
+    g.moveTo(px + 8, py); g.lineTo(px + 30, py);
+    g.moveTo(px, py - 30); g.lineTo(px, py - 8);
+    g.moveTo(px, py + 8); g.lineTo(px, py + 30);
     g.stroke();
-
-    // High-tech target lock bracket corners
-    const bw = 26, bh = 26;
-    g.beginPath();
-    g.moveTo(px - bw, py - bh + 8); g.lineTo(px - bw, py - bh); g.lineTo(px - bw + 8, py - bh);
-    g.moveTo(px + bw - 8, py - bh); g.lineTo(px + bw, py - bh); g.lineTo(px + bw, py - bh + 8);
-    g.moveTo(px - bw, py + bh - 8); g.lineTo(px - bw, py + bh); g.lineTo(px - bw + 8, py + bh);
-    g.moveTo(px + bw - 8, py + bh); g.lineTo(px + bw, py + bh); g.lineTo(px + bw, py + bh - 8);
-    g.stroke();
-
-    // Active FLIR infrared sweep scanline across the array
-    const scanY = ((Date.now() / 15) % CH);
-    g.strokeStyle = hot ? "rgba(255, 74, 43, 0.45)" : "rgba(14, 165, 233, 0.35)";
-    g.lineWidth = 1.5;
-    g.beginPath();
-    g.moveTo(0, scanY);
-    g.lineTo(CW, scanY);
-    g.stroke();
-
-    g.shadowBlur = 0; // reset
   }, [grid, pi, paletteKey, hot, currentPalette]);
 
   const selectPalette = (k) => {
@@ -239,30 +208,46 @@ export default function ThermalHero({ frame }) {
     setPaletteKey(k);
   };
 
+  // If frame is null and user has not asked for simulated preview, show no-signal illustration
+  if (!frame && !previewSim && !grid) {
+    return (
+      <figure className="m-0 panel p-6 flex flex-col items-center justify-center text-center">
+        <Illustration name="no-signal" className="w-[180px] max-w-full" />
+        <div className="text-[15px] font-semibold text-ink mt-3">Awaiting thermal sensor signal</div>
+        <p className="text-[13px] text-muted max-w-[44ch] mt-1">
+          FLIR MLX90640 radiometric 32×24 array telemetry will render here once the robot establishes connection.
+        </p>
+        <div className="mt-4">
+          <Button onClick={() => setPreviewSim(true)}>Preview simulated array</Button>
+        </div>
+      </figure>
+    );
+  }
+
   return (
-    <figure className="m-0 panel p-4">
+    <figure className="m-0 panel p-4 space-y-3">
       {/* Top Header Controls */}
-      <div className="flex items-center justify-between pb-3 mb-3 border-b border-line gap-2 flex-wrap">
+      <div className="flex items-center justify-between pb-3 border-b border-line gap-2 flex-wrap">
         <div className="flex items-center gap-2">
-          <span className="font-display font-bold text-[15px] tracking-tight text-ink flex items-center gap-2">
+          <span className="font-semibold text-[14.5px] text-ink flex items-center gap-2">
             <span className="h-2 w-2 rounded-full bg-telemetry animate-pulse" />
-            FLIR MLX90640 Thermal Imager
+            FLIR MLX90640 thermal imager
           </span>
-          <span className="text-[11px] font-mono text-faint bg-panel2 px-2 py-0.5 rounded border border-line">
-            32 × 24 ARRAY
+          <span className="data text-[11px] text-faint bg-panel2 px-2 py-0.5 rounded border border-line">
+            32 × 24 array
           </span>
         </div>
 
         {/* Color Palette Switcher */}
-        <div className="flex items-center gap-1 rounded-lg bg-panel2 p-1 border border-line" role="group" aria-label="Color Palette">
+        <div className="flex items-center gap-1 rounded-lg bg-panel2 p-0.5 border border-line" role="group" aria-label="Color Palette">
           {Object.entries(PALETTES).map(([k, v]) => (
             <button
               key={k}
+              type="button"
               onClick={() => selectPalette(k)}
-              data-on={paletteKey === k}
-              className={`text-[11px] font-mono px-2.5 py-1 rounded-md transition-all ${
+              className={`text-[11px] px-2.5 py-1 rounded-md transition-colors ${
                 paletteKey === k
-                  ? "bg-telemetry text-base font-bold shadow-[0_0_8px_rgba(14,165,233,0.4)]"
+                  ? "bg-telemetry text-onaccent font-medium"
                   : "text-muted hover:text-ink"
               }`}
             >
@@ -274,8 +259,8 @@ export default function ThermalHero({ frame }) {
 
       {/* Main Viewport */}
       <div
-        className="relative rounded-xl overflow-hidden border border-line bg-[#0A0D14] tactical-grid shadow-inner"
-        style={{ aspectRatio: "4 / 3", maxHeight: "56vh" }}
+        className="relative rounded-lg overflow-hidden border border-line bg-scope"
+        style={{ aspectRatio: "4 / 3", maxHeight: "54vh" }}
       >
         <canvas
           ref={cv}
@@ -286,73 +271,51 @@ export default function ThermalHero({ frame }) {
           aria-label={grid ? `Thermal view, peak ${peak.toFixed(0)} degrees` : "Thermal sensor awaiting data"}
         />
 
-        {/* HUD Corner Reticles */}
-        <div className="absolute top-2.5 left-2.5 text-[10px] font-mono text-ink/40 select-none">
-          ┌ REC 01
-        </div>
-        <div className="absolute top-2.5 right-2.5 text-[10px] font-mono text-ink/40 select-none">
-          FLIR 72° FOV ┐
-        </div>
-        <div className="absolute bottom-2.5 left-2.5 text-[10px] font-mono text-ink/40 select-none">
-          └ SENSOR: MLX90640
-        </div>
-        <div className="absolute bottom-2.5 right-2.5 text-[10px] font-mono text-ink/40 select-none">
-          GRID 768px ┘
-        </div>
-
-        {/* Real-time Radiometric Scanning Status Badge */}
-        <div className="absolute top-2.5 right-28 hidden sm:flex items-center gap-1.5 px-2 py-0.5 rounded bg-base/80 border border-line text-[10px] font-mono select-none">
-          <span className={`h-1.5 w-1.5 rounded-full ${hot ? "bg-alarm animate-ping" : "bg-telemetry animate-pulse"}`} />
-          <span className={hot ? "text-alarm font-bold" : "text-telemetry font-medium"}>
-            {hot ? "HEAT SIGNATURE LOCKED" : "SENSING FOR FIRE // FLIR 55°"}
-          </span>
-        </div>
-
         {grid && (
           <>
             {/* Top Status Badges */}
             <div className="absolute left-3 top-3 flex items-center gap-2">
-              <span className={`rounded-lg px-3 py-1.5 text-[12px] font-mono font-bold backdrop-blur-md border shadow-lg ${
+              <span className={`rounded-lg px-2.5 py-1 text-[12px] font-semibold border backdrop-blur-sm ${
                 hot
-                  ? "bg-alarm/25 border-alarm/50 text-white shadow-[0_0_12px_rgba(255,74,43,0.4)]"
-                  : "bg-base/80 border-line text-ink"
+                  ? "bg-flame text-white border-flame/40"
+                  : "bg-panel/90 border-line text-ink"
               }`}>
-                PEAK {peak.toFixed(1)} °C
+                Peak {peak.toFixed(1)} °C
               </span>
               {hot && (
-                <span className="rounded-lg px-2.5 py-1.5 text-[11px] font-mono font-bold bg-alarm text-base flex items-center gap-1.5 animate-pulse">
-                  <span>🔥</span> FIRE SIGNATURE
+                <span className="rounded-lg px-2 py-1 text-[11px] font-medium bg-flame/20 text-flame border border-flame/30">
+                  Heat signature locked
                 </span>
               )}
             </div>
 
             <div className="absolute right-3 top-3">
-              <span className="rounded-lg px-2.5 py-1 text-[11px] font-mono bg-base/80 backdrop-blur-md border border-line text-muted flex items-center gap-1.5">
-                <span className={`h-1.5 w-1.5 rounded-full ${live ? "bg-ok animate-pulse" : "bg-telemetry"}`} />
+              <span className="rounded-lg px-2.5 py-1 text-[11px] bg-panel/90 backdrop-blur-sm border border-line text-muted flex items-center gap-1.5">
+                <span className={`h-1.5 w-1.5 rounded-full ${live ? "bg-ok" : "bg-telemetry"}`} />
                 {live
-                  ? "● HARDWARE STREAM"
+                  ? "Hardware stream"
                   : isHardware
-                  ? `HELD ${Math.max(1, Math.round((Date.now() - at) / 1000))}s AGO`
-                  : "● MLX90640 BASELINE"}
+                  ? `Held ${Math.max(1, Math.round((Date.now() - at) / 1000))}s ago`
+                  : "Simulated baseline"}
               </span>
             </div>
 
             {/* Bottom HUD stats */}
-            <div className="absolute bottom-3 inset-x-3 flex items-center justify-between px-3 py-1.5 rounded-lg bg-base/85 backdrop-blur-md border border-line text-[11px] font-mono">
+            <div className="absolute bottom-3 inset-x-3 flex items-center justify-between px-3 py-1.5 rounded-lg bg-panel/90 backdrop-blur-sm border border-line text-[11px]">
               <div className="flex items-center gap-4 text-muted">
-                <span>MIN: <b className="text-ink">{min.toFixed(1)}°C</b></span>
-                <span>AVG: <b className="text-ink">{avg.toFixed(1)}°C</b></span>
-                <span>HOT CELL: <b className="text-telemetry">[{pi % COLS}, {Math.floor(pi / COLS)}]</b></span>
+                <span>Min: <b className="data text-ink font-semibold">{min.toFixed(1)}°C</b></span>
+                <span>Avg: <b className="data text-ink font-semibold">{avg.toFixed(1)}°C</b></span>
+                <span>Hot cell: <b className="data text-telemetry font-semibold">[{pi % COLS}, {Math.floor(pi / COLS)}]</b></span>
               </div>
-              <span className="text-faint">RANGE: 22°–70°C</span>
+              <span className="data text-faint">Range: 22°–70°C</span>
             </div>
           </>
         )}
       </div>
 
       {/* Calibration Spectrum Footnote */}
-      <figcaption className="flex items-center gap-3 mt-3 text-[12px] text-muted">
-        <span className="data font-mono font-bold text-faint">22°C</span>
+      <figcaption className="flex items-center gap-3 pt-1 text-[12px] text-muted">
+        <span className="data text-faint">22°C</span>
         <div className="flex-1 h-2 rounded-full overflow-hidden border border-line">
           <div
             className="h-full w-full"
@@ -363,7 +326,7 @@ export default function ThermalHero({ frame }) {
             }}
           />
         </div>
-        <span className="data font-mono font-bold text-warn">70°C+</span>
+        <span className="data text-flame font-medium">70°C+</span>
       </figcaption>
     </figure>
   );

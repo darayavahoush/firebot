@@ -16,6 +16,7 @@ import {
 import { AudioRecorder } from "../lib/audioRecorder.js";
 import { AVATAR_DEFINITIONS, OperatorAvatarBadge } from "../components/voice/OperatorAvatars.jsx";
 import { playSound } from "../lib/sound.js";
+import { PageHeader, Button, Badge, EmptyState } from "../components/ui";
 
 const DEFAULT_COMMAND_PROMPTS = {
   STOP: ["stop", "halt immediately", "emergency stop"],
@@ -177,7 +178,7 @@ export default function VoiceCalibration({ onContinueToLiveOps, activeOperatorId
           ? Math.max(4, Math.sin(phase + i * 0.4) * volumeLevel * cy * distFromCenter * 1.8 + volumeLevel * cy * 0.5)
           : 3;
 
-        ctx.fillStyle = isRecording ? (i % 2 === 0 ? "#0EA5E9" : "#38BDF8") : "#334155";
+        ctx.fillStyle = isRecording ? "rgb(var(--c-telemetry))" : "rgb(var(--c-line2))";
         ctx.fillRect(x, cy - dynamicH / 2, barW, Math.max(3, dynamicH));
       }
 
@@ -476,32 +477,18 @@ export default function VoiceCalibration({ onContinueToLiveOps, activeOperatorId
       )}
 
       {/* Header bar */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 pb-5 border-b border-line">
-        <div>
-          <div className="flex items-center gap-3">
-            <h2 className="text-2xl font-display font-extrabold tracking-tight text-ink flex items-center gap-2.5">
-              <span>Voice Studio & Calibration</span>
-              <span className="px-2 py-0.5 rounded text-[11px] font-mono font-bold tracking-wider uppercase bg-telemetry/15 text-telemetry border border-telemetry/30">
-                PROFILING
-              </span>
-            </h2>
-          </div>
-          <p className="text-xs text-muted mt-1">
-            Personalized Whisper Intent Classifier & ECAPA-TDNN Acoustic Voiceprint Enrollment
-          </p>
-        </div>
-
-        {/* Primary Continue to Live Ops CTA */}
-        <div className="flex items-center gap-3 shrink-0">
-          <button
-            onClick={() => onContinueToLiveOps?.(selectedUser)}
-            className="px-5 py-2.5 rounded-xl font-display font-bold text-xs tracking-wide bg-telemetry text-base shadow-[0_0_16px_rgba(14,165,233,0.35)] hover:brightness-110 active:scale-95 transition-all flex items-center gap-2"
-          >
-            <span>Continue to Live Ops</span>
-            <span>→</span>
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        eyebrow="Voice intent & acoustic profiling"
+        title="Voice studio & calibration"
+        description="Personalized Whisper intent classifier and ECAPA-TDNN acoustic voiceprint enrollment for high-stress noisy environments."
+        illustration="voice-studio"
+        actions={
+          <Button variant="primary" onClick={() => onContinueToLiveOps?.(selectedUser)}>
+            Continue to Live ops →
+          </Button>
+        }
+        className="mb-6"
+      />
 
       {/* Operator Avatar Selector Section */}
       <div className="mb-8">
@@ -535,18 +522,18 @@ export default function VoiceCalibration({ onContinueToLiveOps, activeOperatorId
                   setSelectedUser(p.id);
                   playSound("tab");
                 }}
-                className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex items-center gap-3.5 relative overflow-hidden ${
+                className={`p-3.5 rounded-xl border transition-colors cursor-pointer flex items-center gap-3.5 relative overflow-hidden ${
                   isSelected
-                    ? "bg-panel/95 border-telemetry shadow-[0_0_24px_rgba(14,165,233,0.2)] ring-1 ring-telemetry/50"
-                    : "bg-panel/50 border-line/70 hover:bg-panel hover:border-line hover:scale-[1.01]"
+                    ? "bg-panel border-flame/50 ring-1 ring-flame/30"
+                    : "bg-panel/60 border-line hover:bg-panel hover:border-line2"
                 }`}
               >
                 <OperatorAvatarBadge avatarId={p.avatar} size="md" active={isSelected} colorOverride={p.color} />
 
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-1">
-                    <span className="font-display font-bold text-sm text-ink truncate">{p.displayName}</span>
-                    <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-base/80 border border-line text-faint">
+                    <span className="font-semibold text-sm text-ink truncate">{p.displayName}</span>
+                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-panel2 border border-line text-faint">
                       {p.callsign}
                     </span>
                   </div>
@@ -556,10 +543,10 @@ export default function VoiceCalibration({ onContinueToLiveOps, activeOperatorId
                     <span
                       className={`inline-block w-2 h-2 rounded-full ${
                         p.has_voiceprint && (statusData?.supported ? p.has_model : true)
-                          ? "bg-emerald-400 shadow-[0_0_8px_#10B981]"
+                          ? "bg-ok"
                           : p.total_clips > 0
-                          ? "bg-amber-400"
-                          : "bg-slate-600"
+                          ? "bg-warn"
+                          : "bg-line2"
                       }`}
                     />
                     <span className="text-[10px] font-mono text-faint">
@@ -608,16 +595,16 @@ export default function VoiceCalibration({ onContinueToLiveOps, activeOperatorId
                       setSelectedClass(c.label);
                       playSound("tab");
                     }}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-mono font-semibold transition-all flex items-center gap-1.5 ${
+                    className={`px-3 py-1.5 rounded-lg text-xs font-mono font-medium transition-colors flex items-center gap-1.5 ${
                       isCurrent
-                        ? "bg-telemetry/20 text-telemetry border border-telemetry/50 shadow-[0_0_12px_rgba(14,165,233,0.2)]"
+                        ? "bg-telemetry/15 text-telemetry border border-telemetry/40"
                         : "bg-panel2/60 text-muted border border-line hover:text-ink hover:bg-panel2"
                     }`}
                   >
                     <span>{c.label}</span>
                     <span
                       className={`px-1.5 py-0.2 rounded-full text-[10px] ${
-                        c.count > 0 ? "bg-telemetry/30 text-ink" : "bg-panel border border-line text-faint"
+                        c.count > 0 ? "bg-telemetry/20 text-telemetry font-semibold" : "bg-panel border border-line text-faint"
                       }`}
                     >
                       {c.count}
@@ -628,16 +615,16 @@ export default function VoiceCalibration({ onContinueToLiveOps, activeOperatorId
             </div>
 
             {/* Active Command Recording Deck */}
-            <div className="p-5 rounded-xl bg-base/70 border border-line relative overflow-hidden flex flex-col items-center justify-center text-center">
+            <div className="p-5 rounded-xl bg-panel2/40 border border-line relative overflow-hidden flex flex-col items-center justify-center text-center">
               {/* Command Prompt */}
               <div className="mb-4">
-                <span className="text-[11px] font-mono text-muted uppercase tracking-wider">
-                  Target Command: <b className="text-ink">{selectedClass}</b>
+                <span className="text-[11px] text-muted">
+                  Target command: <b className="text-ink font-semibold">{selectedClass}</b>
                 </span>
-                <h4 className="text-xl font-display font-extrabold text-ink mt-1">
+                <h4 className="text-xl font-semibold text-ink mt-1">
                   "{currentClassInfo?.phrase || selectedClass}"
                 </h4>
-                <p className="text-xs text-faint mt-1">
+                <p className="text-xs text-muted mt-1">
                   Suggested natural variants:{" "}
                   {(DEFAULT_COMMAND_PROMPTS[selectedClass] || []).map((p) => `"${p}"`).join(" • ")}
                 </p>
@@ -648,20 +635,22 @@ export default function VoiceCalibration({ onContinueToLiveOps, activeOperatorId
                 <canvas ref={canvasRef} width={280} height={56} className="w-full h-full" />
               </div>
 
-              {/* Main Glowing Record Button */}
+              {/* Record Button */}
               <div className="flex flex-col items-center gap-2">
                 <button
+                  type="button"
                   onClick={isRecording ? stopRecording : startRecording}
-                  className={`w-18 h-18 rounded-full flex items-center justify-center transition-all duration-300 shadow-2xl active:scale-95 ${
+                  aria-label={isRecording ? "Stop recording voice take" : "Start recording voice take"}
+                  className={`w-16 h-16 rounded-full flex items-center justify-center transition-colors shadow-md ${
                     isRecording
-                      ? "bg-rose-500 text-white shadow-[0_0_30px_rgba(244,63,94,0.6)] animate-pulse ring-4 ring-rose-500/30"
-                      : "bg-telemetry text-base shadow-[0_0_20px_rgba(14,165,233,0.35)] hover:scale-105"
+                      ? "bg-alarm text-white ring-4 ring-alarm/20"
+                      : "bg-telemetry text-onaccent hover:brightness-105"
                   }`}
                 >
                   {isRecording ? (
-                    <div className="w-6 h-6 rounded-sm bg-white" />
+                    <div className="w-5 h-5 rounded-xs bg-white" />
                   ) : (
-                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
                       <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
                       <line x1="12" x2="12" y1="19" y2="22" />
@@ -712,10 +701,11 @@ export default function VoiceCalibration({ onContinueToLiveOps, activeOperatorId
                       >
                         <div className="flex items-center gap-2 min-w-0">
                           <button
+                            type="button"
                             onClick={() => (isPlaying ? stopAudio() : playAudio(audioUrl, clipName))}
-                            className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
+                            className={`w-7 h-7 rounded-md flex items-center justify-center shrink-0 transition-colors ${
                               isPlaying
-                                ? "bg-telemetry text-base shadow-[0_0_10px_rgba(14,165,233,0.5)]"
+                                ? "bg-telemetry text-onaccent"
                                 : "bg-panel text-muted hover:text-ink hover:bg-line/40"
                             }`}
                           >
@@ -800,28 +790,29 @@ export default function VoiceCalibration({ onContinueToLiveOps, activeOperatorId
 
             {/* Train & Calibrate Button */}
             <button
+              type="button"
               onClick={handleTrain}
               disabled={training || totalClipsRecorded === 0}
-              className={`w-full py-3 rounded-xl font-display font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${
+              className={`w-full py-2.5 rounded-lg text-xs font-semibold transition-colors flex items-center justify-center gap-2 ${
                 training
-                  ? "bg-telemetry/40 text-ink cursor-wait animate-pulse"
+                  ? "bg-telemetry/40 text-ink cursor-wait"
                   : totalClipsRecorded > 0
-                  ? "bg-telemetry text-base shadow-[0_0_16px_rgba(14,165,233,0.35)] hover:brightness-110 active:scale-95"
+                  ? "bg-telemetry text-onaccent hover:brightness-105"
                   : "bg-panel2 text-faint cursor-not-allowed border border-line"
               }`}
             >
               {training ? (
                 <>
-                  <span className="w-4 h-4 border-2 border-base border-t-transparent rounded-full animate-spin" />
-                  <span>Calibrating Voice Models...</span>
+                  <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                  <span>Calibrating voice models...</span>
                 </>
               ) : (
                 <>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <circle cx="12" cy="12" r="3" />
                     <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
                   </svg>
-                  <span>Train & Calibrate Voiceprint</span>
+                  <span>Train & calibrate voiceprint</span>
                 </>
               )}
             </button>
@@ -1149,7 +1140,7 @@ export default function VoiceCalibration({ onContinueToLiveOps, activeOperatorId
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4 animate-fadeIn">
           <div className="bg-panel border border-line rounded-2xl max-w-md w-full p-6 shadow-2xl">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-display font-extrabold text-lg text-ink">Enroll New Operator</h3>
+              <h3 className="font-display font-semibold text-lg text-ink">Enroll new operator</h3>
               <button onClick={() => setShowAddModal(false)} className="text-faint hover:text-ink">
                 ✕
               </button>

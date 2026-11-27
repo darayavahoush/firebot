@@ -6,41 +6,29 @@ export default function Ring({ label, value, low, good }) {
   const v = Math.max(0, Math.min(1, value ?? 0));
   const pct = Math.round(v * 100);
 
-  // Status colors
+  // Status tokens
   const stroke = low
-    ? "#DC2626"
+    ? "rgb(var(--c-alarm))"
     : good
-    ? "#10B981"
-    : "#0EA5E9";
-
-  const glowColor = low
-    ? "rgba(220, 38, 38, 0.4)"
-    : good
-    ? "rgba(16, 185, 129, 0.4)"
-    : "rgba(14, 165, 233, 0.3)";
+    ? "rgb(var(--c-ok))"
+    : "rgb(var(--c-telemetry))";
 
   return (
     <div
-      className="flex flex-col items-center gap-2 p-3 rounded-2xl bg-panel/60 border border-line backdrop-blur-sm transition-all duration-200 hover:border-line/80 hover:bg-panel"
+      className="flex flex-col items-center gap-2 p-3 rounded-xl bg-panel border border-line transition-colors hover:border-line2"
       role="img"
       aria-label={`${label} ${pct} percent`}
     >
       <div className="relative">
         <svg width="84" height="84" viewBox="0 0 84 84" className="overflow-visible">
-          <defs>
-            <filter id={`glow-${label.replace(/\s+/g, "")}`} x="-20%" y="-20%" width="140%" height="140%">
-              <feDropShadow dx="0" dy="0" stdDeviation="3" floodColor={stroke} floodOpacity="0.5" />
-            </filter>
-          </defs>
-
           {/* Background track */}
           <circle
             cx="42"
             cy="42"
             r={R}
             fill="none"
-            stroke="rgba(226, 214, 255, 0.08)"
-            strokeWidth="6"
+            stroke="rgb(var(--c-line2))"
+            strokeWidth="5"
           />
 
           {/* Calibrated Ticks */}
@@ -51,7 +39,7 @@ export default function Ring({ label, value, low, good }) {
               y1="6"
               x2="42"
               y2="9"
-              stroke="rgba(226, 214, 255, 0.18)"
+              stroke="rgb(var(--c-line))"
               strokeWidth="1.5"
               transform={`rotate(${deg} 42 42)`}
             />
@@ -64,11 +52,10 @@ export default function Ring({ label, value, low, good }) {
             r={R}
             fill="none"
             stroke={stroke}
-            strokeWidth="6"
+            strokeWidth="5"
             strokeLinecap="round"
             strokeDasharray={`${C * v} ${C}`}
             transform="rotate(-90 42 42)"
-            filter={`url(#glow-${label.replace(/\s+/g, "")})`}
             style={{ transition: "stroke-dasharray 0.5s ease-out" }}
           />
 
@@ -77,8 +64,8 @@ export default function Ring({ label, value, low, good }) {
             x="42"
             y="47"
             textAnchor="middle"
-            className="data font-mono font-bold"
-            fill="#F1ECFA"
+            className="data text-ink font-semibold"
+            fill="currentColor"
             fontSize="18"
           >
             {pct}
@@ -87,7 +74,9 @@ export default function Ring({ label, value, low, good }) {
             x="59"
             y="38"
             textAnchor="start"
-            className="font-mono text-[9px] fill-faint"
+            className="data text-faint"
+            fill="currentColor"
+            fontSize="9"
           >
             %
           </text>
@@ -95,16 +84,18 @@ export default function Ring({ label, value, low, good }) {
 
         {/* Warning Indicator Dot */}
         {low && (
-          <span className="absolute -top-1 -right-1 h-3 w-3 rounded-full bg-alarm pulse-dot border-2 border-panel shadow-[0_0_8px_#ff4a2b]" />
+          <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-alarm pulse-dot border border-panel" />
         )}
       </div>
 
-      <div className="flex flex-col items-center">
-        <span className="text-[12px] font-medium text-ink tracking-tight">{label}</span>
-        <span className={`text-[10px] font-mono uppercase tracking-wider ${
-          low ? "text-alarm font-bold" : good ? "text-ok" : "text-faint"
-        }`}>
-          {low ? "LOW LEVEL" : good ? "OPTIMAL" : "NOMINAL"}
+      <div className="flex flex-col items-center text-center">
+        <span className="text-[12.5px] font-medium text-ink tracking-tight">{label}</span>
+        <span
+          className={`text-[10.5px] ${
+            low ? "text-alarm font-semibold" : good ? "text-ok font-medium" : "text-faint"
+          }`}
+        >
+          {low ? "Low level" : good ? "Optimal" : "Nominal"}
         </span>
       </div>
     </div>

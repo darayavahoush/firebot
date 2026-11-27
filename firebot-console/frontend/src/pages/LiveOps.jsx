@@ -7,6 +7,7 @@ import ControlPanel from "../components/ControlPanel.jsx";
 import ModeSwitch from "../components/ModeSwitch.jsx";
 import CommandLog from "../components/CommandLog.jsx";
 import { playSound } from "../lib/sound.js";
+import { Panel } from "../components/ui";
 
 export default function LiveOps({ frame, mode, setMode, log, onAnalog, onPump, onNozzle }) {
   const [viewMode, setViewMode] = useState("split"); // "split" | "thermal" | "optical"
@@ -22,15 +23,16 @@ export default function LiveOps({ frame, mode, setMode, log, onAnalog, onPump, o
     <div className="flex-1 flex flex-col min-w-0">
       <StatusStrip frame={frame} mode={mode} logCount={log.length} />
 
-      {/* Quick Deck Subheader: View Controls & Hardware PDF Quick Link */}
-      <div className="px-6 py-2.5 bg-panel2/50 border-b border-line flex flex-wrap items-center justify-between gap-3 text-xs font-mono">
+      {/* View Controls & Hardware Spec Quick Link */}
+      <div className="px-4 sm:px-6 py-2.5 bg-panel2/40 border-b border-line flex flex-wrap items-center justify-between gap-3 text-[12px]">
         {/* Feed Layout Toggle */}
-        <div className="flex items-center gap-1.5 p-1 rounded-xl bg-panel border border-line">
+        <div className="flex items-center gap-1 p-0.5 rounded-lg bg-panel border border-line">
           <button
+            type="button"
             onClick={() => handleViewChange("split")}
-            className={`px-3 py-1 rounded-lg transition-all duration-150 flex items-center gap-1.5 ${
+            className={`px-2.5 py-1 rounded-md transition-colors flex items-center gap-1.5 ${
               viewMode === "split"
-                ? "bg-telemetry/20 text-telemetry font-bold border border-telemetry/40 shadow-sm"
+                ? "bg-telemetry text-onaccent font-medium"
                 : "text-muted hover:text-ink"
             }`}
           >
@@ -38,28 +40,30 @@ export default function LiveOps({ frame, mode, setMode, log, onAnalog, onPump, o
               <rect x="3" y="3" width="18" height="18" rx="2" />
               <line x1="12" y1="3" x2="12" y2="21" />
             </svg>
-            Split View
+            <span>Split view</span>
           </button>
 
           <button
+            type="button"
             onClick={() => handleViewChange("thermal")}
-            className={`px-3 py-1 rounded-lg transition-all duration-150 flex items-center gap-1.5 ${
+            className={`px-2.5 py-1 rounded-md transition-colors flex items-center gap-1.5 ${
               viewMode === "thermal"
-                ? "bg-flame/20 text-flame font-bold border border-flame/40 shadow-sm"
+                ? "bg-telemetry text-onaccent font-medium"
                 : "text-muted hover:text-ink"
             }`}
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 2c1 3 2.5 3.5 3.5 4.5A5 5 0 0 1 17 10a5 5 0 1 1-10 0c0-1.6.6-3.1 1.5-3.5 1-1 2.5-1.5 3.5-4.5Z" />
             </svg>
-            FLIR Thermal Only
+            <span>Thermal only</span>
           </button>
 
           <button
+            type="button"
             onClick={() => handleViewChange("optical")}
-            className={`px-3 py-1 rounded-lg transition-all duration-150 flex items-center gap-1.5 ${
+            className={`px-2.5 py-1 rounded-md transition-colors flex items-center gap-1.5 ${
               viewMode === "optical"
-                ? "bg-ok/20 text-ok font-bold border border-ok/40 shadow-sm"
+                ? "bg-telemetry text-onaccent font-medium"
                 : "text-muted hover:text-ink"
             }`}
           >
@@ -67,124 +71,110 @@ export default function LiveOps({ frame, mode, setMode, log, onAnalog, onPump, o
               <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
               <circle cx="12" cy="13" r="4" />
             </svg>
-            Tactical Optical (CAM-01)
+            <span>Optical only</span>
           </button>
         </div>
 
-        {/* Rover & Documentation Pill */}
+        {/* Documentation Link */}
         <div className="flex items-center gap-3">
-          <span className="hidden sm:inline-flex items-center gap-1.5 text-faint">
-            <span className="h-1.5 w-1.5 rounded-full bg-ok" />
-            TCP :8765 LINK
+          <span className="hidden sm:inline-flex items-center gap-1.5 text-faint data text-[11px]">
+            <span className={`h-1.5 w-1.5 rounded-full ${frame ? "bg-ok" : "bg-alarm"}`} />
+            {frame ? "TCP :8765 link" : "Awaiting link"}
           </span>
           <a
             href="/FireBot_Hardware_and_Wiring_Specification.pdf"
             download="FireBot_Hardware_and_Wiring_Specification.pdf"
-            className="px-3 py-1 rounded-lg bg-panel hover:bg-panel2 border border-line hover:border-line2 text-muted hover:text-ink transition-all flex items-center gap-1.5"
+            className="px-2.5 py-1 rounded-md bg-panel hover:bg-panel2 border border-line text-muted hover:text-ink transition-colors flex items-center gap-1.5 text-[12px]"
             title="Download complete ESP32 & Raspberry Pi hardware specification PDF"
           >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-ok">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-              <polyline points="7 10 12 15 17 10" />
-              <line x1="12" y1="15" x2="12" y2="3" />
-            </svg>
-            Hardware Spec (PDF)
+            <span>Wiring PDF</span>
+            <span className="text-faint">↓</span>
           </a>
         </div>
       </div>
 
-      <div className="p-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px] items-start">
+      <div className="p-4 sm:p-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px] items-start">
         {/* Left Column: Visual Feeds & Vital Sensor Rings */}
         <div className="flex flex-col gap-6 min-w-0">
-          {/* Main Visual Station based on viewMode */}
           {viewMode === "split" && (
             <div className="space-y-6">
-              {/* Thermal FLIR Station */}
               <ThermalHero frame={frame} />
-              {/* Tactical Camera Feed */}
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 <CameraFeed frame={frame} />
-                <p className="text-[11px] font-mono text-faint px-1">
-                  CAM-01 • Forward optical feed & thermal lock-on overlay. High-speed video stream synchronized with MLX90640.
+                <p className="text-[12px] text-muted px-1">
+                  Forward optical stream synchronized with FLIR MLX90640 radiometric array.
                 </p>
               </div>
             </div>
           )}
 
           {viewMode === "thermal" && (
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               <ThermalHero frame={frame} />
-              <p className="text-[11px] font-mono text-faint px-1">
-                MLX90640-D55 32×24 Far-Infrared sensor stream @ 8 Hz. Radiometric temperature gradients pierce dense smoke.
+              <p className="text-[12px] text-muted px-1">
+                MLX90640 32×24 far-infrared sensor stream at 8 Hz. Radiometric temperature gradients pierce dense smoke.
               </p>
             </div>
           )}
 
           {viewMode === "optical" && (
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               <CameraFeed frame={frame} />
-              <p className="text-[11px] font-mono text-faint px-1">
-                CAM-01 • Forward tactical optical feed & synthetic corridor view. Responsive vanishing-point pan tracking turn commands.
+              <p className="text-[12px] text-muted px-1">
+                Forward optical camera stream with vanishing-point turn responsive tracking.
               </p>
             </div>
           )}
 
           {/* Critical Gauges Bar */}
-          <div className="panel p-5 rounded-2xl border border-line bg-panel/80">
-            <div className="flex items-center justify-between pb-3 mb-4 border-b border-line">
-              <span className="text-[12px] font-mono uppercase tracking-wider text-muted font-medium flex items-center gap-2">
-                <span className="h-2 w-2 rounded-full bg-ok" />
-                Vessel State &amp; Environment Telemetry
-              </span>
-              <span className="text-[11px] font-mono text-faint">
-                REAL-TIME SENSORS (10 HZ)
-              </span>
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 items-center">
+          <Panel
+            title="Vessel state & telemetry telemetry"
+            headerRight={<span className="data text-[11px] text-faint">10 Hz sampling</span>}
+          >
+            <div className="p-4 grid grid-cols-2 sm:grid-cols-4 gap-4 items-center">
               <Ring
-                label="Water Tank"
+                label="Water tank"
                 value={frame?.tank ?? 0.85}
                 low={(frame?.tank ?? 0.85) < 0.2}
               />
               <Ring
-                label="Gas Sensor"
+                label="Gas sensor"
                 value={gas}
                 low={gas > 0.25}
               />
               <Ring
-                label="Fire Fix"
+                label="Fire fix"
                 value={fix ?? 0}
                 good={fix != null && fix > 0.6}
               />
 
               {/* Position & Odometry Card */}
-              <div className="flex flex-col justify-center p-3 rounded-2xl bg-panel2/40 border border-line space-y-2">
-                <div className="text-[10px] font-mono uppercase tracking-wider text-faint">
-                  Odometry Pose
+              <div className="flex flex-col justify-center p-3 rounded-xl bg-panel2/40 border border-line space-y-1.5">
+                <div className="panel-eyebrow text-[10px]">
+                  Odometry pose
                 </div>
-                <div className="space-y-1">
-                  <div className="flex justify-between items-baseline text-[11px] font-mono">
-                    <span className="text-muted">POS X:</span>
-                    <span className="text-ink font-bold">{frame ? frame.x.toFixed(2) : "0.00"} m</span>
+                <div className="space-y-1 text-[12px]">
+                  <div className="flex justify-between items-baseline">
+                    <span className="text-muted">Pos X:</span>
+                    <span className="data text-ink font-semibold">{frame ? frame.x.toFixed(2) : "0.00"} m</span>
                   </div>
-                  <div className="flex justify-between items-baseline text-[11px] font-mono">
-                    <span className="text-muted">POS Y:</span>
-                    <span className="text-ink font-bold">{frame ? frame.y.toFixed(2) : "0.00"} m</span>
+                  <div className="flex justify-between items-baseline">
+                    <span className="text-muted">Pos Y:</span>
+                    <span className="data text-ink font-semibold">{frame ? frame.y.toFixed(2) : "0.00"} m</span>
                   </div>
-                  <div className="flex justify-between items-baseline text-[11px] font-mono">
-                    <span className="text-muted">HEADING:</span>
-                    <span className="text-telemetry font-bold">
+                  <div className="flex justify-between items-baseline">
+                    <span className="text-muted">Heading:</span>
+                    <span className="data text-telemetry font-semibold">
                       {frame?.th != null ? `${((frame.th * 180) / Math.PI).toFixed(0)}°` : "0°"}
                     </span>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
+          </Panel>
         </div>
 
-        {/* Right Column: Teleoperation, Modes & Event Audit */}
+        {/* Right Column: Teleoperation, Modes & Command Log */}
         <div className="flex flex-col gap-5">
           <ModeSwitch mode={mode} onChange={setMode} />
           <ControlPanel

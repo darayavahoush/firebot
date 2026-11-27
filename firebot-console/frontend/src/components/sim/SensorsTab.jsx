@@ -9,24 +9,50 @@ const pt = (a, r) => [CX - Math.sin(a) * r, CY - Math.cos(a) * r];
 
 function Sonar({ s }) {
   return (
-    <svg viewBox="0 0 308 200" className="w-full" role="img" aria-label="Top-down view of the robot's range and flame sensors">
-      {[0.25, 0.5, 0.75, 1].map((f) => <circle key={f} cx={CX} cy={CY} r={R * f} fill="none" stroke="rgba(226,214,255,0.09)" strokeDasharray={f === 1 ? "" : "3 4"} />)}
+    <svg viewBox="0 0 308 200" className="w-full" role="img" aria-label="Top-down view of the robot range and flame sensors">
+      {[0.25, 0.5, 0.75, 1].map((f) => (
+        <circle key={f} cx={CX} cy={CY} r={R * f} fill="none" stroke="rgb(var(--c-line2))" strokeDasharray={f === 1 ? "" : "3 4"} />
+      ))}
       {Object.entries(FLAME_ANGLES).map(([k, a]) => {
         const v = s[k], [x, y] = pt(a, R + 16);
-        return <circle key={k} cx={x} cy={y} r={5 + v * 6} fill={v > 0.5 ? "#FF4A2B" : "#FFB238"} opacity={0.18 + v * 0.82} />;
+        return (
+          <circle
+            key={k}
+            cx={x}
+            cy={y}
+            r={5 + v * 6}
+            fill={v > 0.5 ? "rgb(var(--c-flame))" : "rgb(var(--c-warn))"}
+            opacity={0.25 + v * 0.75}
+          />
+        );
       })}
       {Object.entries(US_ANGLES).map(([k, a]) => {
         const d = s[k], len = (Math.min(d, 4) / 4) * R, [x, y] = pt(a, len), [lx, ly] = pt(a, R + 4);
         const near = d < 0.6;
         return (
           <g key={k}>
-            <line x1={CX} y1={CY} x2={x} y2={y} stroke={near ? "#EF4444" : "#0EA5E9"} strokeWidth="2.5" strokeLinecap="round" />
-            <circle cx={x} cy={y} r="4" fill={near ? "#EF4444" : "#0EA5E9"} />
-            <text x={lx} y={ly} textAnchor="middle" fontSize="10" className="data" fill="rgba(241,236,250,0.62)">{d.toFixed(1)}</text>
+            <line
+              x1={CX}
+              y1={CY}
+              x2={x}
+              y2={y}
+              stroke={near ? "rgb(var(--c-alarm))" : "rgb(var(--c-telemetry))"}
+              strokeWidth="2.5"
+              strokeLinecap="round"
+            />
+            <circle
+              cx={x}
+              cy={y}
+              r="4"
+              fill={near ? "rgb(var(--c-alarm))" : "rgb(var(--c-telemetry))"}
+            />
+            <text x={lx} y={ly} textAnchor="middle" fontSize="10" className="data" fill="rgb(var(--c-muted))">
+              {d.toFixed(1)}
+            </text>
           </g>
         );
       })}
-      <path d={`M${CX} ${CY - 10} L${CX + 8} ${CY + 8} L${CX - 8} ${CY + 8} Z`} fill="#F1ECFA" />
+      <path d={`M${CX} ${CY - 10} L${CX + 8} ${CY + 8} L${CX - 8} ${CY + 8} Z`} fill="rgb(var(--c-ink))" />
     </svg>
   );
 }
@@ -34,8 +60,16 @@ function Sonar({ s }) {
 function Meter({ label, value, alarm }) {
   return (
     <div className="px-4 py-2.5">
-      <div className="flex justify-between text-[12px] mb-1.5"><span className="text-muted">{label}</span><span className={`data ${alarm ? "text-warn" : "text-ink"}`}>{(value * 100).toFixed(0)}%</span></div>
-      <div className="h-[5px] rounded-full bg-line overflow-hidden"><div className={`h-full rounded-full ${alarm ? "bg-warn" : "bg-telemetry"}`} style={{ width: `${Math.min(100, value * 100)}%`, transition: "width .2s" }} /></div>
+      <div className="flex justify-between text-[12px] mb-1.5">
+        <span className="text-muted">{label}</span>
+        <span className={`data ${alarm ? "text-warn font-semibold" : "text-ink"}`}>{(value * 100).toFixed(0)}%</span>
+      </div>
+      <div className="h-1.5 rounded-full bg-line overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all duration-200 ${alarm ? "bg-warn" : "bg-telemetry"}`}
+          style={{ width: `${Math.min(100, value * 100)}%` }}
+        />
+      </div>
     </div>
   );
 }
@@ -44,17 +78,18 @@ export default function SensorsTab({ t }) {
   const s = t.sense;
   if (!s) return <div className="px-4 py-6 text-[13px] text-faint">Waiting for the first sensor frame…</div>;
   const flame = Math.max(s.flame_left, s.flame_center, s.flame_right);
+
   return (
     <div>
       <PanelHeader
-        label="FLIR MLX90640 Thermal Array"
+        label="Thermal sensor array"
         right={
           <div className="flex items-center gap-2">
-            <span className="flex items-center gap-1 text-[11px] font-mono text-telemetry">
-              <span className={`h-1.5 w-1.5 rounded-full ${s.thermalLock ? "bg-alarm animate-ping" : "bg-ok animate-pulse"}`} />
-              {s.thermalLock ? "HEAT LOCK" : "SENSING FIRE"}
+            <span className="flex items-center gap-1 text-[11px] font-medium text-telemetry">
+              <span className={`h-1.5 w-1.5 rounded-full ${s.thermalLock ? "bg-alarm" : "bg-ok"}`} />
+              {s.thermalLock ? "Heat lock" : "Sensing fire"}
             </span>
-            <span className={`data text-[12px] font-bold ${s.peakTemp > 45 ? "text-warn" : "text-muted"}`}>
+            <span className={`data text-[12px] font-semibold ${s.peakTemp > 45 ? "text-flame" : "text-muted"}`}>
               {s.peakTemp.toFixed(1)} °C
             </span>
           </div>
@@ -62,25 +97,29 @@ export default function SensorsTab({ t }) {
       />
       <div className="px-4 pb-3">
         <ThermalFrame frame={s.thermal} width={308} height={231} />
-        <div className="flex gap-2 mt-2 text-[11px] font-mono flex-wrap">
-          <span className={`chip ${s.seen ? "!text-alarm !border-alarm/40 bg-alarm/10 font-bold" : ""}`}>
-            {s.seen ? "🔥 FIRE IN FOV" : "SCANNING SECTOR"}
+        <div className="flex gap-1.5 mt-2 text-[11px] flex-wrap">
+          <span className={`chip ${s.seen ? "!text-flame !border-flame/40 bg-flame/10 font-semibold" : ""}`}>
+            {s.seen ? "Fire in FOV" : "Scanning sector"}
           </span>
           <span className="chip">
-            FLIR MAST: {(((s.mastPan || 0) * 180) / Math.PI).toFixed(0)}°
+            FLIR mast: {(((s.mastPan || 0) * 180) / Math.PI).toFixed(0)}°
           </span>
           <span className="chip">
-            BEARING: {((s.bearing * 180) / Math.PI).toFixed(0)}°
+            Bearing: {((s.bearing * 180) / Math.PI).toFixed(0)}°
           </span>
         </div>
       </div>
-      <PanelHeader label="Around the robot" right={<span className="text-[11px] text-faint">metres · flame dots outside</span>} />
-      <div className="px-4 pb-2 border-t border-line"><Sonar s={s} /></div>
-      <PanelHeader label="Gas and flame" />
+
+      <PanelHeader label="Sonar & flame directions" right={<span className="text-[11px] text-faint">metres</span>} />
+      <div className="px-4 pb-2 border-t border-line">
+        <Sonar s={s} />
+      </div>
+
+      <PanelHeader label="Gas and flame readings" />
       <div className="border-t border-line divide-y divide-line">
         <Meter label="Gas, front (MQ-2)" value={s.mq2_front} alarm={s.mq2_front > 0.5} />
         <Meter label="Gas, rear (MQ-2)" value={s.mq2_rear} alarm={s.mq2_rear > 0.5} />
-        <Meter label="Strongest flame reading" value={flame} alarm={flame > 0.5} />
+        <Meter label="Strongest flame sensor" value={flame} alarm={flame > 0.5} />
       </div>
     </div>
   );
