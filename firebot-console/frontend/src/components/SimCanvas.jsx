@@ -101,11 +101,12 @@ export default function SimCanvas({ engineRef, showTree, showSensors, showSlam, 
       mctx.fillStyle = rg;
       mctx.beginPath(); mctx.arc(mx, my, REVEAL_NEAR * MASK_RES, 0, Math.PI * 2); mctx.fill();
       if (showSensors) {
+        const mastOffset = controller.mastPan || 0;
         mctx.globalAlpha = 0.9;
         mctx.fillStyle = "#fff";
         mctx.beginPath();
         mctx.moveTo(mx, my);
-        mctx.arc(mx, my, REVEAL_FAR * MASK_RES, th - HFOV / 2, th + HFOV / 2);
+        mctx.arc(mx, my, REVEAL_FAR * MASK_RES, (th + mastOffset) - HFOV / 2, (th + mastOffset) + HFOV / 2);
         mctx.closePath(); mctx.fill();
         mctx.globalAlpha = 1;
       }
@@ -283,17 +284,84 @@ export default function SimCanvas({ engineRef, showTree, showSensors, showSlam, 
         drawFlame(ctx, X(fire.x), Y(fire.y), fire.p, t);
       }
 
+      const mastPan = controller.mastPan || 0;
+      const thermalLock = controller.thermalLock;
+      const mastAngle = -th - mastPan;
+
       if (showSensors) {
-        const cg = ctx.createRadialGradient(X(rx0), Y(ry0), 0, X(rx0), Y(ry0), REVEAL_FAR * scale);
-        cg.addColorStop(0, "rgba(125,227,176,0.30)"); cg.addColorStop(1, "rgba(125,227,176,0.02)");
+        // Active FLIR Radiometric Mast Beam
+        const beamFar = REVEAL_FAR * scale;
+        const cg = ctx.createRadialGradient(X(rx0), Y(ry0), 0, X(rx0), Y(ry0), beamFar);
+        if (thermalLock) {
+          cg.addColorStop(0, "rgba(255, 74, 43, 0.42)");
+          cg.addColorStop(0.5, "rgba(255, 178, 56, 0.20)");
+          cg.addColorStop(1, "rgba(255, 74, 43, 0.01)");
+        } else {
+          cg.addColorStop(0, "rgba(14, 165, 233, 0.32)");
+          cg.addColorStop(0.6, "rgba(14, 165, 233, 0.10)");
+          cg.addColorStop(1, "rgba(14, 165, 233, 0.01)");
+        }
         ctx.fillStyle = cg;
-        ctx.beginPath(); ctx.moveTo(X(rx0), Y(ry0));
-        ctx.arc(X(rx0), Y(ry0), REVEAL_FAR * scale, -th - HFOV / 2, -th + HFOV / 2);  // -th: screen y is flipped
-        ctx.closePath(); ctx.fill();
-        ctx.strokeStyle = "rgba(125,227,176,0.4)"; ctx.lineWidth = 1; ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(X(rx0), Y(ry0));
+        ctx.arc(X(rx0), Y(ry0), beamFar, mastAngle - HFOV / 2, mastAngle + HFOV / 2);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.strokeStyle = thermalLock ? "rgba(255, 74, 43, 0.6)" : "rgba(14, 165, 233, 0.45)";
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+
+        // Active FLIR Sweeping Laser Line inside the beam
+        const sweepPhase = (t * 2.4) % 1;
+        const sweepA = mastAngle - HFOV / 2 + sweepPhase * HFOV;
+        ctx.strokeStyle = thermalLock ? "rgba(255, 178, 56, 0.75)" : "rgba(56, 189, 248, 0.75)";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(X(rx0), Y(ry0));
+        ctx.lineTo(X(rx0) + Math.cos(sweepA) * beamFar, Y(ry0) + Math.sin(sweepA) * beamFar);
+        ctx.stroke();
+
+        // Concentric distance range rings within the cone (1.5m, 3.0m, 4.5m)
+        [1.5, 3.0, 4.5].forEach((distM) => {
+          const rPx = distM * scale;
+          if (rPx < beamFar) {
+            ctx.strokeStyle = thermalLock ? "rgba(255, 74, 43, 0.22)" : "rgba(14, 165, 233, 0.22)";
+            ctx.setLineDash([2, 4]);
+            ctx.beginPath();
+            ctx.arc(X(rx0), Y(ry0), rPx, mastAngle - HFOV / 2, mastAngle + HFOV / 2);
+            ctx.stroke();
+            ctx.setLineDash([]);
+          }
+        });
+
+        // Thermal Sensing Status HUD near Robot
+        const tagX = X(rx0), tagY = Y(ry0) - Math.max(16, 0.35 * scale);
+        ctx.font = "10px 'Martian Mono', monospace";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "bottom";
+        if (thermalLock) {
+          ctx.fillStyle = "rgba(10, 13, 20, 0.88)";
+          const txt = `🔥 FLIR LOCK // ${(controller.lastSense?.peakTemp || 82.4).toFixed(1)}°C`;
+          const tw = ctx.measureText(txt).width + 12;
+          ctx.fillRect(tagX - tw / 2, tagY - 14, tw, 15);
+          ctx.strokeStyle = "rgba(255, 74, 43, 0.65)";
+          ctx.strokeRect(tagX - tw / 2, tagY - 14, tw, 15);
+          ctx.fillStyle = "#FF8A65";
+          ctx.fillText(txt, tagX, tagY - 3);
+        } else {
+          ctx.fillStyle = "rgba(10, 13, 20, 0.88)";
+          const txt = `FLIR 55° // SENSING FOR FIRE`;
+          const tw = ctx.measureText(txt).width + 10;
+          ctx.fillRect(tagX - tw / 2, tagY - 13, tw, 14);
+          ctx.strokeStyle = "rgba(14, 165, 233, 0.45)";
+          ctx.strokeRect(tagX - tw / 2, tagY - 13, tw, 14);
+          ctx.fillStyle = "#38BDF8";
+          ctx.fillText(txt, tagX, tagY - 3);
+        }
       }
       drawSonarPing(ctx, X(rx0), Y(ry0), scale, t);
-      drawCar(ctx, X(rx0), Y(ry0), -th, scale, controller.mode, controller.pumpOn, t);
+      drawCar(ctx, X(rx0), Y(ry0), -th, scale, controller.mode, controller.pumpOn, t, mastPan, thermalLock);
 
       // scale bar, bottom-right
       const barM = world.width > 20 ? 5 : 1;
@@ -442,13 +510,12 @@ function drawSonarPing(ctx, x, y, scale, t) {
   ctx.beginPath(); ctx.arc(x, y, Math.max(1, phase * scale * 2.6), 0, 7); ctx.stroke();
 }
 
-// Robot: flat top-down glyph -- outlined body, four wheel blocks and a solid heading chevron,
-// so orientation is readable at a glance. Red when STOPPED.
-function drawCar(ctx, x, y, th, scale, mode, pumpOn, t) {
+// Robot: flat top-down glyph -- outlined body, tracks, and active rotating FLIR thermal sensor mast.
+function drawCar(ctx, x, y, th, scale, mode, pumpOn, t, mastPan = 0, thermalLock = false) {
   const rr = Math.max(8, 0.22 * scale);
   const len = rr * 2.2, wid = rr * 1.5;
   const stopped = mode === "STOPPED";
-  const col = stopped ? "#FF4A2B" : "#7DE3B0";
+  const col = stopped ? "#FF4A2B" : (thermalLock ? "#FF643D" : "#7DE3B0");
 
   ctx.save();
   ctx.translate(x, y);
@@ -459,17 +526,36 @@ function drawCar(ctx, x, y, th, scale, mode, pumpOn, t) {
     for (const wx of [-len * 0.3, len * 0.3 - rr * 0.5]) ctx.fillRect(wx - rr * 0.1, wy, rr * 0.6, 3);
   }
   roundedRectPath(ctx, -len / 2, -wid / 2, len, wid, 2.5);
-  ctx.fillStyle = stopped ? "#3A1512" : "#F1ECFA"; ctx.fill();
+  ctx.fillStyle = stopped ? "#3A1512" : "#1E293B"; ctx.fill();
   ctx.strokeStyle = col; ctx.lineWidth = 1.5; ctx.stroke();
 
+  // Heading nose indicator
   ctx.fillStyle = col;
   ctx.beginPath();
-  ctx.moveTo(len / 2 + rr * 0.55, 0);
-  ctx.lineTo(len / 2 - rr * 0.25, -wid * 0.34);
-  ctx.lineTo(len / 2 - rr * 0.25, wid * 0.34);
+  ctx.moveTo(len / 2 + rr * 0.45, 0);
+  ctx.lineTo(len / 2 - rr * 0.2, -wid * 0.28);
+  ctx.lineTo(len / 2 - rr * 0.2, wid * 0.28);
   ctx.closePath(); ctx.fill();
 
-  ctx.beginPath(); ctx.arc(-len * 0.08, 0, rr * 0.2, 0, 7); ctx.fill();
+  // Active Rotating FLIR Thermal Mast & Water Cannon Turret
+  ctx.save();
+  ctx.translate(len * 0.08, 0); // front-chassis mast pivot
+  ctx.rotate(-mastPan); // screen-oriented pan relative to chassis
+
+  // Mast base ring
+  ctx.fillStyle = "#0F172A";
+  ctx.beginPath(); ctx.arc(0, 0, rr * 0.46, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = thermalLock ? "#FF4A2B" : "#0EA5E9";
+  ctx.lineWidth = 1.5; ctx.stroke();
+
+  // Forward Thermal Sensor & Nozzle Block
+  ctx.fillStyle = thermalLock ? "#EF4444" : "#0284C7";
+  ctx.fillRect(rr * 0.15, -rr * 0.18, rr * 0.52, rr * 0.36);
+
+  // FLIR Germanium Lens Aperture
+  ctx.fillStyle = thermalLock ? "#FECDD3" : "#E0F2FE";
+  ctx.beginPath(); ctx.arc(rr * 0.67, 0, rr * 0.12, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
 
   if (pumpOn) {
     for (let i = 0; i < 6; i++) {

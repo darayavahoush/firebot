@@ -106,6 +106,8 @@ export class SimController {
     this.events = [];
     this.errHistory = [];
     this.lastSense = null;
+    this.mastPan = 0;
+    this.thermalLock = false;
     this._logEvent('scenario', `New building generated \u2013 ${width.toFixed(1)}m \u00d7 ${height.toFixed(1)}m, ${rooms.length} rooms (seed ${s})`);
   }
 
@@ -142,6 +144,8 @@ export class SimController {
     this.trackStallT = 0; this.trackCooldown = 0; this.lost = 0; this.spinT = 0;
     this.errHistory = [];
     this.lastSense = null;
+    this.mastPan = 0;
+    this.thermalLock = false;
     this.exploreBlacklist = [];
     this._firePrevP = 1.0;
     this._logEvent('scenario', `New fire placed at (${fx.toFixed(1)}, ${fy.toFixed(1)}) \u2013 approaching to extinguish (tank/battery reset)`);
@@ -303,6 +307,23 @@ export class SimController {
     this.errHistory.push(errTrue);
     if (this.errHistory.length > 600) this.errHistory.shift();
 
+    // Active Radiometric Thermal Mast: Sweeps when exploring, locks when tracking fire
+    if (sense.seen || flamePeak > 0.12) {
+      const targetBearing = sense.seen ? sense.bearing : (sense.flame_left > sense.flame_right ? 0.45 : -0.45);
+      this.mastPan = lerp(this.mastPan, targetBearing, clamp(dt * 7.0, 0, 1));
+      this.thermalLock = true;
+    } else if (this.state === 'TRACK' || this.state === 'PLAN') {
+      const estBearing = wrapA(Math.atan2(est.y - this.robot.y, est.x - this.robot.x) - this.robot.th);
+      this.mastPan = lerp(this.mastPan, clamp(estBearing, -1.0, 1.0), clamp(dt * 4.5, 0, 1));
+      this.thermalLock = true;
+    } else {
+      // Smooth FLIR radar sweep (+/- 35 degrees)
+      this.mastPan = Math.sin(this.t * 2.2) * (35 * Math.PI / 180);
+      this.thermalLock = false;
+    }
+    sense.mastPan = this.mastPan;
+    sense.thermalLock = this.thermalLock;
+
     let v = 0, w = 0, pump = false;
     this.sincePlan += dt;
 
@@ -356,22 +377,32 @@ export class SimController {
           }
           if (this.path) {
             const a = followPath(this.path, [this.robot.x, this.robot.y, this.robot.th], LOOKAHEAD);
-            if (a) [v, w] = a; else { this.path = null; v = 0.2; w = 0.4; }
-          } else { v = 0.15; w = 0.5 * Math.sin(this.t * 0.6); }
-          if (sense.mq2_front > 0.3) { v = 0.1; w = 0.9; }
+            if (a) [v, w] = a; else { this.path = null; v = 0.35; w = 0.0; }
+          } else {
+            // Smooth corridor patrol while FLIR sweeps for fire
+            v = 0.35;
+            w = (sense.us_left < 0.4 ? -0.25 : sense.us_right < 0.4 ? 0.25 : 0.0);
+          }
+          if (sense.mq2_front > 0.3) {
+            // Combustible gas/smoke plume detected: maintain forward thermal reconnaissance
+            v = 0.25;
+            w = 0.1 * Math.sin(this.t * 1.5);
+          }
         }
       } else if (this.state === 'TRACK') {
         this.lost = detected ? 0 : this.lost + dt;
         const dist = hyp(est.x - this.robot.x, est.y - this.robot.y);
         const inPosition = sense.seen && dist < Math.min(STANDOFF + 0.6, SPRAY_RANGE - 0.1);
-        if (inPosition) { this.state = 'SPRAY'; this.path = null; this._logEvent('state', 'Pump ON \u2013 suppressing'); }
-        else if (sigma < 1.0 || sense.seen) {
+        if (inPosition) {
+          this.state = 'SPRAY';
+          this.path = null;
+          this._logEvent('state', 'Pump ON \u2013 suppressing');
+        } else {
+          // Approach fire: solve standoff path or advance directly toward thermal centroid
           const moved = this.fireEstAtPlan && hyp(est.x - this.fireEstAtPlan[0], est.y - this.fireEstAtPlan[1]) > GOAL_SHIFT;
           const stuck = this.lastSpeed < 0.05 * VMAX && this.path && this.sincePlan > 1.0;
           const retry = !this.path && this.sincePlan > RETRY_AFTER;
           const first = !this.fireEstAtPlan;
-          // never replan more than once a second even if the (still-noisy) estimate drifted --
-          // otherwise a not-yet-converged filter can trigger a new RRT* solve almost every tick
           if (first || stuck || retry || this.sincePlan > REPLAN_EVERY || (moved && this.sincePlan > 1.0)) {
             const goal = standoffPoint(this.slam.map, this._slamCostMap(), [est.x, est.y], [this.robot.x, this.robot.y]);
             this.fireEstAtPlan = [est.x, est.y];
@@ -381,14 +412,13 @@ export class SimController {
             const a = followPath(this.path, [this.robot.x, this.robot.y, this.robot.th], LOOKAHEAD);
             if (a) { [v, w] = a; this.state = 'PLAN'; } else this.path = null;
           } else {
-            if (this.lost > 1.2) { w = 0.9; v = 0.0; } // no sensor confirmation for a while: sweep in place rather than chase a possibly-stale bearing estimate
-            else {
-              const tgt = sense.seen ? sense.bearing : wrapA(Math.atan2(est.y - this.robot.y, est.x - this.robot.x) - this.robot.th);
-              w = clamp(tgt * 2.2, -1.6, 1.6); v = Math.abs(tgt) > 0.7 ? 0.1 : 0.7;
-            }
+            // Direct bearing navigation toward fire: steer purposefully, NEVER circle
+            const tgt = sense.seen ? sense.bearing : wrapA(Math.atan2(est.y - this.robot.y, est.x - this.robot.x) - this.robot.th);
+            w = clamp(tgt * 1.6, -0.9, 0.9);
+            v = Math.abs(tgt) > 0.6 ? 0.15 : 0.45;
           }
-        } else { v = 0.1; w = 0.9; }
-        if (this.lost > 3) { this.state = 'EXPLORE'; this.path = null; this._logEvent('state', 'Target lost \u2013 resuming search'); }
+        }
+        if (this.lost > 4.5) { this.state = 'EXPLORE'; this.path = null; this._logEvent('state', 'Target lost \u2013 resuming search'); }
       } else if (this.state === 'PLAN') {
         // following a standoff-approach path laid down while in TRACK
         const stuck = this.lastSpeed < 0.05 * VMAX && this.sincePlan > 1.0;
@@ -415,22 +445,34 @@ export class SimController {
       }
     }
 
-    // stuck recovery: commanded to move but wheel odometry says we aren't -- rotate in place to
-    // break free. Without this a planner re-targeting an unreachable standoff point (small/oddly
-    // shaped room around the fire) can wedge the robot into a corner indefinitely.
+    // stuck recovery: reverse smoothly away from obstacle rather than spinning on its tail
     if (this.state !== 'SPRAY' && this.mode !== 'STOPPED') {
       const commandedMove = Math.abs(v) > 0.05;
-      this.stuckT = commandedMove && this.lastSpeed < 0.3 * Math.abs(v) * VMAX ? this.stuckT + dt : 0;
-      if (this.stuckT > 0.35 && this.recoveryT <= 0) { this.recoveryT = 1.6; this.recoveryDir = -(this.recoveryDir || 1); this.stuckT = 0; this.path = null; }
-      if (this.recoveryT > 0) { this.recoveryT -= dt; v = 0; w = 1.7 * this.recoveryDir; }
+      this.stuckT = commandedMove && this.lastSpeed < 0.2 * Math.abs(v) * VMAX ? this.stuckT + dt : 0;
+      if (this.stuckT > 1.8 && this.recoveryT <= 0) {
+        this.recoveryT = 0.8;
+        this.recoveryDir = -(this.recoveryDir || 1);
+        this.stuckT = 0;
+        this.path = null;
+      }
+      if (this.recoveryT > 0) {
+        this.recoveryT -= dt;
+        v = -0.32;
+        w = 0.25 * this.recoveryDir;
+      }
     }
 
-    // reactive ultrasonic backstop -- always has final say on forward speed, including over a
-    // recovery maneuver's own proposal, so a spin-to-clear can never itself drive into a wall.
-    if (this.state !== 'SPRAY' && this.mode !== 'STOPPED') {
+    // reactive ultrasonic backstop -- prevents collisions with proportional corridor deflection
+    if (this.state !== 'SPRAY' && this.mode !== 'STOPPED' && this.recoveryT <= 0) {
       const front = Math.min(sense.us_front_left, sense.us_front_right);
-      if (front < 0.55) { v = front < 0.35 ? 0 : Math.min(v, 0.1); w = this.recoveryT > 0 ? w : (sense.us_front_left > sense.us_front_right ? 1 : -1) * 1.7; }
-      else if (this.recoveryT <= 0) { if (sense.us_left < 0.32) w -= 0.5; if (sense.us_right < 0.32) w += 0.5; }
+      if (front < 0.55) {
+        v = front < 0.35 ? -0.1 : Math.min(v, 0.15);
+        const steerDir = sense.us_front_left > sense.us_front_right ? 0.65 : -0.65;
+        w = clamp(w + steerDir, -0.9, 0.9);
+      } else {
+        if (sense.us_left < 0.35) w = clamp(w - 0.35, -0.9, 0.9);
+        if (sense.us_right < 0.35) w = clamp(w + 0.35, -0.9, 0.9);
+      }
     }
 
     v = clamp(v, 0, 1) * VMAX; w = clamp(w, -1, 1) * WMAX;

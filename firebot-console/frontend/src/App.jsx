@@ -128,9 +128,15 @@ export default function App() {
     pushLog("system", "E-STOP triggered");
   }, [pushLog]);
 
-  // Basic keyboard control while on the Live page in manual mode.
+  // Basic keyboard control & global [H] return-to-home
   useEffect(() => {
     const handler = (e) => {
+      if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+      if (e.key === "h" || e.key === "H") {
+        playSound("tab");
+        setPage("home");
+        return;
+      }
       if (page !== "live" || mode !== "manual") return;
       const map = {
         ArrowUp: "fwd",

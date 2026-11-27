@@ -54,14 +54,15 @@ export default function TopBar({ page, mode, onEstop, activeOperator, onExitToHo
                 playSound("tab");
                 onExitToHome();
               }}
-              className="px-3 py-1.5 rounded-lg bg-panel hover:bg-panel2 border border-line hover:border-line2 text-[11px] font-mono text-muted hover:text-ink transition-all flex items-center gap-1.5"
-              title="Return to Public Homepage"
+              className="px-3.5 py-1.5 rounded-lg bg-telemetry/10 hover:bg-telemetry/20 border border-telemetry/30 hover:border-telemetry/50 text-[11px] font-mono font-bold text-telemetry hover:text-white transition-all flex items-center gap-1.5 shadow-sm"
+              title="Return to Flight Deck Homepage [H]"
             >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-telemetry">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
                 <polyline points="9 22 9 12 15 12 15 22" />
               </svg>
-              <span className="hidden sm:inline">Overview</span>
+              <span>← Flight Deck Home</span>
+              <span className="hidden sm:inline text-[9px] text-telemetry/70 ml-0.5">[H]</span>
             </button>
           )}
 

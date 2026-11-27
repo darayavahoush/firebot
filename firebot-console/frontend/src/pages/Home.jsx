@@ -299,35 +299,58 @@ export default function Home({ onEnterConsole, frame, linkOk }) {
             </div>
           </div>
 
-          {/* Center Vessel Telemetry */}
-          <div className="hidden lg:flex items-center gap-6 text-[11px] text-slate-400">
-            <div className="flex items-center gap-1.5">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              <span>STATUS: <b className="text-white">ARMED • READY</b></span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-slate-600">|</span>
-              <span>UPLINK: <b className="text-sky-400">TCP :8765</b></span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-slate-600">|</span>
-              <span>AVIONICS: <b className="text-white">ESP32 + PI 5</b></span>
-            </div>
-          </div>
+          {/* Center Navigation Bar */}
+          <nav className="hidden lg:flex items-center gap-1 bg-slate-900/90 p-1 rounded-xl border border-white/10 text-[11px] font-mono">
+            <button
+              className="px-3 py-1 rounded-lg bg-sky-500/20 text-sky-400 font-bold border border-sky-500/30 shadow-sm"
+              disabled
+            >
+              Overview Deck
+            </button>
+            <button
+              onClick={() => { playSound("tab"); onEnterConsole("live"); }}
+              className="px-3 py-1 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
+            >
+              Tactical Console [L]
+            </button>
+            <button
+              onClick={() => { playSound("tab"); onEnterConsole("sim"); }}
+              className="px-3 py-1 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
+            >
+              2D Sim [S]
+            </button>
+            <button
+              onClick={() => { playSound("tab"); onEnterConsole("mujoco"); }}
+              className="px-3 py-1 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
+            >
+              MuJoCo 3D [M]
+            </button>
+            <button
+              onClick={() => { playSound("tab"); onEnterConsole("voice"); }}
+              className="px-3 py-1 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
+            >
+              Voice Studio [V]
+            </button>
+            <button
+              onClick={() => { playSound("tab"); onEnterConsole("history"); }}
+              className="px-3 py-1 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
+            >
+              Sortie Logs
+            </button>
+          </nav>
 
           {/* Right Clock & Direct Action Links */}
-          <div className="flex items-center gap-3">
-            <span className="text-[11px] text-slate-400 hidden sm:inline tabular-nums">
+          <div className="flex items-center gap-2.5">
+            <span className="text-[11px] text-slate-400 hidden xl:inline tabular-nums">
               {utcTime || "00:00:00 UTC"}
             </span>
 
             <a
               href="/FireBot_Hardware_and_Wiring_Specification.pdf"
               download="FireBot_Hardware_and_Wiring_Specification.pdf"
-              className="px-2.5 py-1 rounded bg-slate-900 hover:bg-slate-800 border border-white/10 text-[10px] text-slate-300 hover:text-white transition-colors flex items-center gap-1.5"
+              className="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-white/10 text-[11px] text-slate-300 hover:text-white transition-colors flex items-center gap-1.5"
             >
-              <span>PDF Spec</span>
-              <span className="text-[9px] text-slate-500">[D]</span>
+              <span>Hardware Spec (PDF)</span>
             </a>
 
             <button
@@ -335,10 +358,9 @@ export default function Home({ onEnterConsole, frame, linkOk }) {
                 playSound("tab");
                 onEnterConsole("live");
               }}
-              className="px-3.5 py-1.5 rounded bg-red-600 hover:bg-red-500 text-white font-bold text-xs uppercase tracking-wider transition-all shadow-sm flex items-center gap-1.5"
+              className="px-3.5 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white font-bold text-xs uppercase tracking-wider transition-all shadow-sm flex items-center gap-1.5"
             >
-              <span>Console</span>
-              <span className="text-[10px] opacity-70">[L]</span>
+              <span>Enter Console [L]</span>
               <span>→</span>
             </button>
           </div>

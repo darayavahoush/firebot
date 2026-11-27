@@ -46,12 +46,32 @@ export default function SensorsTab({ t }) {
   const flame = Math.max(s.flame_left, s.flame_center, s.flame_right);
   return (
     <div>
-      <PanelHeader label="Thermal camera" right={<span className={`data text-[12px] ${s.peakTemp > 45 ? "text-warn" : "text-muted"}`}>hottest {s.peakTemp.toFixed(1)} °C</span>} />
+      <PanelHeader
+        label="FLIR MLX90640 Thermal Array"
+        right={
+          <div className="flex items-center gap-2">
+            <span className="flex items-center gap-1 text-[11px] font-mono text-telemetry">
+              <span className={`h-1.5 w-1.5 rounded-full ${s.thermalLock ? "bg-alarm animate-ping" : "bg-ok animate-pulse"}`} />
+              {s.thermalLock ? "HEAT LOCK" : "SENSING FIRE"}
+            </span>
+            <span className={`data text-[12px] font-bold ${s.peakTemp > 45 ? "text-warn" : "text-muted"}`}>
+              {s.peakTemp.toFixed(1)} °C
+            </span>
+          </div>
+        }
+      />
       <div className="px-4 pb-3">
         <ThermalFrame frame={s.thermal} width={308} height={231} />
-        <div className="flex gap-2 mt-2 text-[12px]">
-          <span className={`chip ${s.seen ? "!text-ok !border-ok/40" : ""}`}>{s.seen ? "fire in frame" : "no fire in frame"}</span>
-          <span className="chip">bearing {((s.bearing * 180) / Math.PI).toFixed(0)}°</span>
+        <div className="flex gap-2 mt-2 text-[11px] font-mono flex-wrap">
+          <span className={`chip ${s.seen ? "!text-alarm !border-alarm/40 bg-alarm/10 font-bold" : ""}`}>
+            {s.seen ? "🔥 FIRE IN FOV" : "SCANNING SECTOR"}
+          </span>
+          <span className="chip">
+            FLIR MAST: {(((s.mastPan || 0) * 180) / Math.PI).toFixed(0)}°
+          </span>
+          <span className="chip">
+            BEARING: {((s.bearing * 180) / Math.PI).toFixed(0)}°
+          </span>
         </div>
       </div>
       <PanelHeader label="Around the robot" right={<span className="text-[11px] text-faint">metres · flame dots outside</span>} />

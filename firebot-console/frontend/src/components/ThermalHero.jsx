@@ -61,8 +61,8 @@ function colorFor(t, stops) {
 function generateMLX90640Baseline(t = 0, sensors = null) {
   const result = [];
   let flameCol = 16.0;
-  let flameRow = 12.0;
-  let flameIntensity = 0;
+  let flameRow = 11.5;
+  let flameIntensity = 0.88;
 
   if (sensors) {
     const fl = Number(sensors.flame_left || 0);
@@ -79,7 +79,17 @@ function generateMLX90640Baseline(t = 0, sensors = null) {
         flameCol = 24.0 + Math.sin(t * 2) * 1.0;
       }
       flameRow = 11.5 + Math.cos(t * 2) * 0.6;
+    } else {
+      // Actively sweeping thermal FOV across room
+      flameCol = 16.0 + Math.sin(t * 1.6) * 8.5;
+      flameRow = 11.0 + Math.cos(t * 1.1) * 2.0;
+      flameIntensity = 0.82;
     }
+  } else {
+    // Autonomous thermal search sweep
+    flameCol = 16.0 + Math.sin(t * 1.6) * 8.5;
+    flameRow = 11.0 + Math.cos(t * 1.1) * 2.0;
+    flameIntensity = 0.85;
   }
 
   // Subtle ambient thermal plume / room convection variation
@@ -119,15 +129,6 @@ export default function ThermalHero({ frame }) {
   const cv = useRef(null);
   const last = useRef({ grid: null, at: 0, isHardware: false });
   const [paletteKey, setPaletteKey] = useState("ironbow");
-  const [calibrated, setCalibrated] = useState(false);
-
-  // Quick 600ms initial calibration sequence, then immediately unlocks
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setCalibrated(true);
-    }, 600);
-    return () => clearTimeout(timer);
-  }, []);
 
   const now = Date.now();
   if (frame?.thermal && Array.isArray(frame.thermal) && frame.thermal.length > 0) {
@@ -212,6 +213,24 @@ export default function ThermalHero({ frame }) {
     g.moveTo(px, py + 10); g.lineTo(px, py + 32);
     g.stroke();
 
+    // High-tech target lock bracket corners
+    const bw = 26, bh = 26;
+    g.beginPath();
+    g.moveTo(px - bw, py - bh + 8); g.lineTo(px - bw, py - bh); g.lineTo(px - bw + 8, py - bh);
+    g.moveTo(px + bw - 8, py - bh); g.lineTo(px + bw, py - bh); g.lineTo(px + bw, py - bh + 8);
+    g.moveTo(px - bw, py + bh - 8); g.lineTo(px - bw, py + bh); g.lineTo(px - bw + 8, py + bh);
+    g.moveTo(px + bw - 8, py + bh); g.lineTo(px + bw, py + bh); g.lineTo(px + bw, py + bh - 8);
+    g.stroke();
+
+    // Active FLIR infrared sweep scanline across the array
+    const scanY = ((Date.now() / 15) % CH);
+    g.strokeStyle = hot ? "rgba(255, 74, 43, 0.45)" : "rgba(14, 165, 233, 0.35)";
+    g.lineWidth = 1.5;
+    g.beginPath();
+    g.moveTo(0, scanY);
+    g.lineTo(CW, scanY);
+    g.stroke();
+
     g.shadowBlur = 0; // reset
   }, [grid, pi, paletteKey, hot, currentPalette]);
 
@@ -281,16 +300,13 @@ export default function ThermalHero({ frame }) {
           GRID 768px ┘
         </div>
 
-        {/* Calibration Grace Period Spinner (Dismisses automatically after 600ms) */}
-        {!calibrated && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center text-muted gap-2 bg-base/80 backdrop-blur-sm z-20 transition-opacity duration-300">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="animate-spin text-telemetry">
-              <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-            </svg>
-            <p className="text-[13px] font-mono tracking-wide text-ink">Calibrating MLX90640 thermal sensor array…</p>
-            <span className="text-[10px] font-mono text-faint uppercase tracking-wider">Establishing 32×24 radiometric noise floor</span>
-          </div>
-        )}
+        {/* Real-time Radiometric Scanning Status Badge */}
+        <div className="absolute top-2.5 right-28 hidden sm:flex items-center gap-1.5 px-2 py-0.5 rounded bg-base/80 border border-line text-[10px] font-mono select-none">
+          <span className={`h-1.5 w-1.5 rounded-full ${hot ? "bg-alarm animate-ping" : "bg-telemetry animate-pulse"}`} />
+          <span className={hot ? "text-alarm font-bold" : "text-telemetry font-medium"}>
+            {hot ? "HEAT SIGNATURE LOCKED" : "SENSING FOR FIRE // FLIR 55°"}
+          </span>
+        </div>
 
         {grid && (
           <>
