@@ -13,13 +13,20 @@ sudo apt-get update
 sudo apt-get install -y python3-venv python3-pip i2c-tools libgpiod-dev python3-libgpiod
 
 echo "==> enable I2C and set it to 400 kHz (MLX90640 needs fast mode for 8 Hz)"
-sudo raspi-config nonint do_i2c 0
+if command -v raspi-config >/dev/null 2>&1; then
+  sudo raspi-config nonint do_i2c 0 || true
+fi
 CFG=/boot/firmware/config.txt; [ -f "$CFG" ] || CFG=/boot/config.txt
-sudo sed -i '/^dtparam=i2c_arm_baudrate=/d' "$CFG"
-echo "dtparam=i2c_arm_baudrate=400000" | sudo tee -a "$CFG" >/dev/null
+if [ -f "$CFG" ]; then
+  sudo sed -i '/^dtparam=i2c_arm_baudrate=/d' "$CFG"
+  echo "dtparam=i2c_arm_baudrate=400000" | sudo tee -a "$CFG" >/dev/null
+fi
 
 echo "==> serial/I2C permissions (log out/in or reboot to take effect)"
-sudo usermod -aG dialout,i2c,gpio "$ME"
+for g in dialout i2c gpio; do
+  getent group "$g" >/dev/null || sudo groupadd -f "$g" || true
+  sudo usermod -aG "$g" "$ME" || true
+done
 
 echo "==> python venv + firebot[pi]"
 cd "$REPO_DIR"
