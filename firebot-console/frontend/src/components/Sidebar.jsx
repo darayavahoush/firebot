@@ -117,18 +117,18 @@ export default function Sidebar({ page, setPage, linkOk, notifOn, onToggleNotif 
       <div>
         <div className="h-16 px-4 flex items-center justify-between border-b border-line">
           <div className="flex items-center gap-3 overflow-hidden">
-            <div className="relative h-9 w-9 rounded-xl bg-gradient-to-br from-telemetry via-[#C4286F] to-warn flex items-center justify-center shadow-[0_0_16px_rgba(240,85,155,0.4)] shrink-0">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0E0919" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+            <div className="relative h-9 w-9 rounded-xl bg-gradient-to-br from-red-600 to-orange-500 flex items-center justify-center shadow-md shadow-red-900/30 shrink-0">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z" />
               </svg>
             </div>
             {!collapsed && (
               <div className="flex flex-col min-w-0">
-                <span className="font-display font-black text-[16px] tracking-wider text-ink leading-tight">
-                  NIRVANA
+                <span className="font-display font-black text-[15px] tracking-wider text-ink leading-tight">
+                  FIREBOT
                 </span>
                 <span className="text-[10px] font-mono tracking-widest text-telemetry uppercase leading-none font-semibold">
-                  FIREBOT v2.5
+                  TAC-OPS v2.5
                 </span>
               </div>
             )}

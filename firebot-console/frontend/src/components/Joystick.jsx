@@ -38,13 +38,13 @@ export default function Joystick({ enabled, onMove }) {
       <div ref={base} onPointerDown={down} onPointerMove={(e) => timer.current && update(e)}
         onPointerUp={() => timer.current && stop("released")} onPointerCancel={() => timer.current && stop("released")}
         className={`relative touch-none select-none rounded-full border border-line ${enabled ? "cursor-grab" : "opacity-40"}`}
-        style={{ width: R * 2 + 32, height: R * 2 + 32, background: "radial-gradient(circle, #211736 0%, #171027 70%)" }}
+        style={{ width: R * 2 + 32, height: R * 2 + 32, background: "radial-gradient(circle, #171E2E 0%, #101622 70%)" }}
         role="application" aria-label="Drive stick. Push up to go forward, sideways to turn.">
         <div className="absolute left-1/2 top-1/2 w-[2px] h-[70%] -translate-x-1/2 -translate-y-1/2 bg-line" />
         <div className="absolute left-1/2 top-1/2 h-[2px] w-[70%] -translate-x-1/2 -translate-y-1/2 bg-line" />
         <div className="absolute left-1/2 top-1/2 w-14 h-14 -ml-7 -mt-7 rounded-full"
           style={{ transform: `translate(${p.x}px, ${p.y}px)`, transition: timer.current ? "none" : "transform .18s",
-            background: "linear-gradient(135deg,#c4286f,#ff8a2a)", boxShadow: "0 6px 18px -6px rgba(196,40,111,.7)" }} />
+            background: "linear-gradient(135deg, #0284c7, #0ea5e9)", boxShadow: "0 6px 18px -6px rgba(14,165,233,.5)" }} />
       </div>
       <span className="text-[12px] text-faint">No reverse gear, so the lower half stops the robot</span>
     </div>

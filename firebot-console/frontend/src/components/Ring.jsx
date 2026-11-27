@@ -8,16 +8,16 @@ export default function Ring({ label, value, low, good }) {
 
   // Status colors
   const stroke = low
-    ? "#FF4A2B"
+    ? "#DC2626"
     : good
-    ? "#7DE3B0"
-    : "#F0559B";
+    ? "#10B981"
+    : "#0EA5E9";
 
   const glowColor = low
-    ? "rgba(255, 74, 43, 0.4)"
+    ? "rgba(220, 38, 38, 0.4)"
     : good
-    ? "rgba(125, 227, 176, 0.4)"
-    : "rgba(240, 85, 155, 0.4)";
+    ? "rgba(16, 185, 129, 0.4)"
+    : "rgba(14, 165, 233, 0.3)";
 
   return (
     <div

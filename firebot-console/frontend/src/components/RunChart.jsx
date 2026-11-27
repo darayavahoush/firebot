@@ -71,7 +71,7 @@ export default function RunChart({ runId, detail, cursorT }) {
             <Line
               type="monotone"
               dataKey="tank"
-              stroke="#F0559B"
+              stroke="#0EA5E9"
               strokeWidth={1.5}
               dot={false}
               name="Tank"
@@ -82,7 +82,7 @@ export default function RunChart({ runId, detail, cursorT }) {
       </div>
       <div className="border-t border-line px-4 py-2 flex gap-4 font-mono text-[10px] text-muted">
         <Legend color="#FFB000" label="Fire Est. σ" />
-        <Legend color="#F0559B" label="Tank" />
+        <Legend color="#0EA5E9" label="Tank" />
       </div>
     </div>
   );

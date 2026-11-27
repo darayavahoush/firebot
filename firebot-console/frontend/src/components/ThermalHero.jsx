@@ -86,7 +86,7 @@ export default function ThermalHero({ frame }) {
     const c = cv.current;
     if (!c) return;
     const g = c.getContext("2d");
-    g.fillStyle = "#0E0919";
+    g.fillStyle = "#0A0D14";
     g.fillRect(0, 0, CW, CH);
 
     if (!grid) return;
@@ -173,7 +173,7 @@ export default function ThermalHero({ frame }) {
 
       {/* Main Viewport */}
       <div
-        className="relative rounded-xl overflow-hidden border border-line bg-[#0E0919] tactical-grid shadow-inner"
+        className="relative rounded-xl overflow-hidden border border-line bg-[#0A0D14] tactical-grid shadow-inner"
         style={{ aspectRatio: "4 / 3", maxHeight: "56vh" }}
       >
         <canvas

@@ -264,7 +264,7 @@ export default function MuJoCo() {
         </div>
 
         {/* 3D Canvas Host Container */}
-        <div className="relative flex-1 min-h-[480px] bg-[#0E0919]">
+        <div className="relative flex-1 min-h-[480px] bg-[#0A0D14]">
           <div ref={hostRef} className="absolute inset-0 w-full h-full" />
 
           {/* Tactical Corner HUD Reticles */}

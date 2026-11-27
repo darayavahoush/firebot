@@ -21,15 +21,15 @@ canvas, .cursor-crosshair, [data-viewport="mujoco"] {
 body {
   @apply bg-base text-ink font-sans antialiased selection:bg-telemetry/30 selection:text-ink;
   background-image:
-    radial-gradient(ellipse at 50% 0%, rgba(90, 26, 134, 0.12) 0%, transparent 60%),
-    radial-gradient(circle at 100% 100%, rgba(196, 40, 111, 0.06) 0%, transparent 40%);
+    radial-gradient(ellipse at 50% 0%, rgba(14, 165, 233, 0.05) 0%, transparent 60%),
+    radial-gradient(circle at 100% 100%, rgba(234, 88, 12, 0.03) 0%, transparent 40%);
 }
 
 :root {
-  --ironbow: linear-gradient(90deg, #1b0a3c 0%, #5a1a86 24%, #c4286f 50%, #ff8a2a 76%, #fff2c9 100%);
-  --cyber-glow: 0 0 16px -2px rgba(240, 85, 155, 0.35);
-  --alarm-glow: 0 0 20px -2px rgba(255, 74, 43, 0.45);
-  --ok-glow: 0 0 16px -2px rgba(125, 227, 176, 0.35);
+  --ironbow: linear-gradient(90deg, #090d16 0%, #1e293b 24%, #0284c7 50%, #f97316 76%, #fef08a 100%);
+  --cyber-glow: 0 0 16px -2px rgba(14, 165, 233, 0.25);
+  --alarm-glow: 0 0 20px -2px rgba(220, 38, 38, 0.4);
+  --ok-glow: 0 0 16px -2px rgba(16, 185, 129, 0.3);
 }
 
 /* Custom Tactical Scrollbars */
@@ -38,14 +38,14 @@ body {
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: rgba(14, 9, 25, 0.6);
+  background: rgba(10, 13, 20, 0.8);
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(226, 214, 255, 0.16);
+  background: rgba(255, 255, 255, 0.12);
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(240, 85, 155, 0.4);
+  background: rgba(14, 165, 233, 0.35);
 }
 
 .panel {

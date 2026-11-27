@@ -203,7 +203,7 @@ function drawThermalOverlay(ctx, w, h, thermal) {
 function thermalColor(norm) {
   const stops = [
     [0.0, [8, 10, 14]],
-    [0.35, [240, 85, 155]],
+    [0.35, [14, 165, 233]],
     [0.65, [255, 176, 0]],
     [1.0, [252, 61, 33]],
   ];
@@ -366,16 +366,16 @@ function CrosshairOverlay() {
       viewBox="0 0 100 100"
       preserveAspectRatio="none"
     >
-      <line x1="50" y1="0" x2="50" y2="100" stroke="#F0559B" strokeWidth="0.15" />
-      <line x1="0" y1="50" x2="100" y2="50" stroke="#F0559B" strokeWidth="0.15" />
-      <circle cx="50" cy="50" r="8" fill="none" stroke="#F0559B" strokeWidth="0.15" />
+      <line x1="50" y1="0" x2="50" y2="100" stroke="#0EA5E9" strokeWidth="0.15" />
+      <line x1="0" y1="50" x2="100" y2="50" stroke="#0EA5E9" strokeWidth="0.15" />
+      <circle cx="50" cy="50" r="8" fill="none" stroke="#0EA5E9" strokeWidth="0.15" />
     </svg>
   );
 }
 
 function CornerBrackets() {
   const size = 16;
-  const stroke = "#F0559B";
+  const stroke = "#0EA5E9";
   const positions = [
     { top: 10, left: 10, rotate: 0 },
     { top: 10, right: 10, rotate: 90 },
