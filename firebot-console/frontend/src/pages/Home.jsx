@@ -526,10 +526,18 @@ function ChassisInspectionView({ onEnterConsole }) {
   );
 }
 
+const SORTIE_CLIPS = [
+  { id: "sortie-1", label: "Sortie 01", title: "Forward Incursion & Suppression", src: "/footage.mp4" },
+  { id: "sortie-2", label: "Sortie 02", title: "Tactical Iris Rover Recon", src: "https://upload.wikimedia.org/wikipedia/commons/transcoded/d/d0/The_Iris_Robot_of_the_Bureau_of_Fire_Protection.webm/The_Iris_Robot_of_the_Bureau_of_Fire_Protection.webm.480p.vp9.webm" },
+];
+
 function HeroVideoBanner({ onEnterConsole, online }) {
   const videoRef = useRef(null);
   const [isPlaying, setIsPlaying] = useState(true);
   const [viewMode, setViewMode] = useState("video"); // "video" | "blueprint"
+  const [activeSortie, setActiveSortie] = useState("sortie-1");
+
+  const currentClip = SORTIE_CLIPS.find((c) => c.id === activeSortie) || SORTIE_CLIPS[0];
 
   useEffect(() => {
     if (videoRef.current) {
@@ -537,7 +545,7 @@ function HeroVideoBanner({ onEnterConsole, online }) {
         setIsPlaying(false);
       });
     }
-  }, []);
+  }, [activeSortie]);
 
   const togglePlay = () => {
     playSound("click");
@@ -556,8 +564,9 @@ function HeroVideoBanner({ onEnterConsole, online }) {
       {viewMode === "video" ? (
         <div className="absolute inset-0 overflow-hidden">
           <video
+            key={currentClip.src}
             ref={videoRef}
-            src="/footage.mp4"
+            src={currentClip.src}
             poster="/firebot-hero.jpg"
             autoPlay
             loop
@@ -591,10 +600,31 @@ function HeroVideoBanner({ onEnterConsole, online }) {
             <span className={`w-1.5 h-1.5 rounded-full ${online ? "bg-ok" : "bg-flame"}`} />
             <span className="font-semibold text-flame">FB-01</span>
             <span className="text-faint">/</span>
-            <span className="text-white/80">Autonomous firefighting rover</span>
+            <span className="text-white/80">{viewMode === "video" ? currentClip.title : "CAD Schematic View"}</span>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Sortie Clip Switcher (visible in video mode) */}
+            {viewMode === "video" && (
+              <div className="flex items-center bg-panel/30 backdrop-blur-md rounded-lg p-0.5 border border-line/40">
+                {SORTIE_CLIPS.map((clip) => (
+                  <button
+                    key={clip.id}
+                    type="button"
+                    onClick={() => {
+                      playSound("tab");
+                      setActiveSortie(clip.id);
+                    }}
+                    className={`px-2 py-1 rounded text-[11px] font-medium transition-colors ${
+                      activeSortie === clip.id ? "bg-panel text-ink" : "text-white/70 hover:text-white"
+                    }`}
+                  >
+                    {clip.label}
+                  </button>
+                ))}
+              </div>
+            )}
+
             {/* View Mode Switcher */}
             <div className="flex items-center bg-panel/30 backdrop-blur-md rounded-lg p-0.5 border border-line/40">
               <button

@@ -22,11 +22,15 @@ export default function CameraFeed({ frame }) {
   const rafRef = useRef(null);
   const frameRef = useRef(frame);
   const thermalRef = useRef(null);
+  const [selectedFeed, setSelectedFeed] = useState("cam-01"); // "cam-01" | "cam-02" | "sim-01"
   const [footageOk, setFootageOk] = useState(true);
   const motionRef = useRef({ phase: 0, pan: 0, lastNow: null });
 
   frameRef.current = frame;
   if (frame?.thermal) thermalRef.current = frame.thermal;
+
+  const isVideoMode = selectedFeed !== "sim-01" && footageOk;
+  const currentVideoUrl = selectedFeed === "cam-02" ? FALLBACK_FOOTAGE_URL : PRIMARY_FOOTAGE_URL;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -56,7 +60,7 @@ export default function CameraFeed({ frame }) {
       m.phase += v * dt * 5.5;
       m.pan += (w * 26 - m.pan) * Math.min(1, dt * 6);
 
-      if (footageOk) {
+      if (isVideoMode) {
         ctx.clearRect(0, 0, cssW, cssH);
       } else {
         drawCorridor(ctx, cssW, cssH, cx, cy, f, t, m.phase, m.pan);
@@ -64,7 +68,7 @@ export default function CameraFeed({ frame }) {
       }
       if (thermalRef.current) {
         drawThermalOverlay(ctx, cssW, cssH, thermalRef.current);
-      } else if (!footageOk) {
+      } else if (!isVideoMode) {
         drawHeatSource(ctx, cssW, cssH, cx, cy, f, t);
       }
       drawGrain(ctx, cssW, cssH, t);
@@ -72,7 +76,7 @@ export default function CameraFeed({ frame }) {
     }
     rafRef.current = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [footageOk]);
+  }, [isVideoMode]);
 
   const peak = thermalPeak(thermalRef.current);
   const driving = frame && (Math.abs(frame.cmd_v ?? 0) > 0.03 || Math.abs(frame.cmd_w ?? 0) > 0.03);
@@ -80,11 +84,45 @@ export default function CameraFeed({ frame }) {
   return (
     <div className="panel h-full flex flex-col">
       <PanelHeader
-        label="Forward camera (CAM-01)"
+        label="Forward optical feed"
         right={
-          <span className="data text-[11px] text-faint">
-            {frame ? `t+${frame.t.toFixed(1)}s` : "Standby"}
-          </span>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center bg-panel2 rounded p-0.5 border border-line text-[10px]">
+              <button
+                type="button"
+                onClick={() => setSelectedFeed("cam-01")}
+                className={`px-1.5 py-0.5 rounded transition-colors ${
+                  selectedFeed === "cam-01" ? "bg-panel text-ink font-semibold" : "text-muted hover:text-ink"
+                }`}
+                title="Primary sortie incursion"
+              >
+                CAM-01
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedFeed("cam-02")}
+                className={`px-1.5 py-0.5 rounded transition-colors ${
+                  selectedFeed === "cam-02" ? "bg-panel text-ink font-semibold" : "text-muted hover:text-ink"
+                }`}
+                title="Tactical Iris rover reconnaissance"
+              >
+                CAM-02
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedFeed("sim-01")}
+                className={`px-1.5 py-0.5 rounded transition-colors ${
+                  selectedFeed === "sim-01" ? "bg-panel text-ink font-semibold" : "text-muted hover:text-ink"
+                }`}
+                title="Synthetic physics corridor engine"
+              >
+                SIM-01
+              </button>
+            </div>
+            <span className="data text-[11px] text-faint">
+              {frame ? `t+${frame.t.toFixed(1)}s` : "Standby"}
+            </span>
+          </div>
         }
       />
 
@@ -99,19 +137,20 @@ export default function CameraFeed({ frame }) {
           </div>
         ) : (
           <>
-            {footageOk && (
+            {isVideoMode && (
               <video
+                key={currentVideoUrl}
                 ref={videoRef}
                 className="absolute inset-0 w-full h-full object-cover"
                 style={{ filter: "saturate(0.7) brightness(0.75) contrast(1.15)" }}
-                src={PRIMARY_FOOTAGE_URL}
+                src={currentVideoUrl}
                 autoPlay
                 loop
                 muted
                 playsInline
-                onError={(e) => {
-                  if (e.currentTarget.src !== FALLBACK_FOOTAGE_URL) {
-                    e.currentTarget.src = FALLBACK_FOOTAGE_URL;
+                onError={() => {
+                  if (selectedFeed === "cam-01") {
+                    setSelectedFeed("cam-02");
                   } else {
                     setFootageOk(false);
                   }
