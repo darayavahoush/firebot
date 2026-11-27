@@ -526,51 +526,239 @@ function ChassisInspectionView({ onEnterConsole }) {
   );
 }
 
+function HeroVideoBanner({ onEnterConsole, online }) {
+  const videoRef = useRef(null);
+  const [isPlaying, setIsPlaying] = useState(true);
+  const [viewMode, setViewMode] = useState("video"); // "video" | "blueprint"
+
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.play().catch(() => {
+        setIsPlaying(false);
+      });
+    }
+  }, []);
+
+  const togglePlay = () => {
+    playSound("click");
+    if (!videoRef.current) return;
+    if (videoRef.current.paused) {
+      videoRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
+    } else {
+      videoRef.current.pause();
+      setIsPlaying(false);
+    }
+  };
+
+  return (
+    <div className="relative w-full rounded-2xl md:rounded-3xl overflow-hidden border border-line bg-[#0A0C10] text-white shadow-2xl">
+      {/* Background Media Layer */}
+      {viewMode === "video" ? (
+        <div className="absolute inset-0 overflow-hidden">
+          <video
+            ref={videoRef}
+            src="/footage.mp4"
+            poster="/firebot-hero.jpg"
+            autoPlay
+            loop
+            muted
+            playsInline
+            onPlay={() => setIsPlaying(true)}
+            onPause={() => setIsPlaying(false)}
+            className="w-full h-full object-cover scale-[1.03] opacity-80 transition-opacity duration-700"
+          />
+        </div>
+      ) : (
+        <div className="absolute inset-0 bg-[#0F1218] flex items-center justify-center p-8">
+          <Illustration name="hero-rover" className="w-full max-h-[360px] opacity-90" />
+        </div>
+      )}
+
+      {/* Atmospheric Overlays & Scrims */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background:
+            "linear-gradient(180deg, rgba(10, 12, 16, 0.75) 0%, rgba(10, 12, 16, 0.4) 40%, rgba(10, 12, 16, 0.85) 80%, rgba(10, 12, 16, 0.98) 100%)",
+        }}
+      />
+      <div
+        className="absolute inset-0 pointer-events-none hidden md:block"
+        style={{
+          background:
+            "radial-gradient(circle at 75% 35%, rgba(232, 89, 12, 0.12) 0%, transparent 60%)",
+        }}
+      />
+      {/* Subtle Engineering Grid Overlay */}
+      <div
+        className="absolute inset-0 pointer-events-none opacity-20"
+        style={{
+          backgroundImage:
+            "linear-gradient(to right, rgba(255, 255, 255, 0.08) 1px, transparent 1px), linear-gradient(to bottom, rgba(255, 255, 255, 0.08) 1px, transparent 1px)",
+          backgroundSize: "48px 48px",
+        }}
+      />
+
+      {/* Interactive Hero Content Container */}
+      <div className="relative z-10 flex flex-col justify-between min-h-[500px] md:min-h-[560px] p-6 sm:p-8 md:p-12 pb-0 sm:pb-0 md:pb-0">
+        {/* Top HUD Bar */}
+        <div className="flex flex-wrap items-center justify-between gap-3 text-[11px] font-mono tracking-wider">
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 backdrop-blur-md border border-white/15 text-white/90">
+            <span className={`w-2 h-2 rounded-full ${online ? "bg-emerald-400" : "bg-flame"} animate-pulse`} />
+            <span className="font-semibold text-orange-400">FB-01</span>
+            <span className="text-white/40">/</span>
+            <span>AUTONOMOUS FIREFIGHTING ROVER</span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {/* View Mode Switcher */}
+            <div className="flex items-center bg-black/50 backdrop-blur-md rounded-lg p-0.5 border border-white/15">
+              <button
+                type="button"
+                onClick={() => {
+                  playSound("tab");
+                  setViewMode("video");
+                }}
+                className={`px-2.5 py-1 rounded text-[11px] font-medium transition-colors ${
+                  viewMode === "video" ? "bg-white/20 text-white" : "text-white/60 hover:text-white"
+                }`}
+              >
+                Sortie Video
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  playSound("tab");
+                  setViewMode("blueprint");
+                }}
+                className={`px-2.5 py-1 rounded text-[11px] font-medium transition-colors ${
+                  viewMode === "blueprint" ? "bg-white/20 text-white" : "text-white/60 hover:text-white"
+                }`}
+              >
+                Schematic
+              </button>
+            </div>
+
+            {/* Video Play/Pause toggle */}
+            {viewMode === "video" && (
+              <button
+                type="button"
+                onClick={togglePlay}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/50 backdrop-blur-md border border-white/15 text-white/80 hover:text-white transition-colors"
+                title={isPlaying ? "Pause Video" : "Play Video"}
+              >
+                {isPlaying ? (
+                  <>
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                    <span>REC 1080P</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                    <span>PAUSED</span>
+                  </>
+                )}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Center Typography & CTAs */}
+        <div className="my-8 md:my-10 max-w-[760px] space-y-4">
+          <div className="inline-flex items-center gap-2 text-xs font-mono uppercase tracking-widest text-teal-300">
+            <span>FLIR LWIR Perception</span>
+            <span className="text-white/40">•</span>
+            <span>Bearing-Only EIF</span>
+            <span className="text-white/40">•</span>
+            <span>4.5 L/min Suppression</span>
+          </div>
+
+          <h1 className="text-3xl sm:text-5xl md:text-6xl font-semibold tracking-tight leading-[1.08] text-white">
+            Find the fire.{" "}
+            <span className="block text-transparent bg-clip-text bg-gradient-to-r from-orange-400 via-amber-300 to-teal-200">
+              Put it out.
+            </span>
+          </h1>
+
+          <p className="text-sm sm:text-base md:text-[17px] text-white/80 leading-relaxed font-normal max-w-[62ch]">
+            Firebot pierces dense zero-visibility smoke using 32×24 radiometric thermal computer vision, triangulates fire bearings autonomously, and deploys high-pressure suppression with real-time teleoperation fallback.
+          </p>
+
+          <div className="flex flex-wrap items-center gap-3 pt-2">
+            <Button
+              variant="primary"
+              onClick={() => {
+                playSound("tab");
+                onEnterConsole("live");
+              }}
+              className="!py-2.5 !px-5 text-[14px] !bg-flame hover:!bg-flame/90 text-white font-medium shadow-lg shadow-orange-500/25 border-0"
+            >
+              Launch Live Ops →
+            </Button>
+            <Button
+              onClick={() => {
+                playSound("tab");
+                onEnterConsole("sim");
+              }}
+              className="!py-2.5 !px-5 text-[14px] !bg-white/10 hover:!bg-white/20 !text-white !border-white/20 backdrop-blur-md font-medium"
+            >
+              Open 2D Simulator
+            </Button>
+            <button
+              type="button"
+              onClick={() => {
+                playSound("tab");
+                const el = document.getElementById("how-it-works-panel");
+                if (el) el.scrollIntoView({ behavior: "smooth" });
+              }}
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-[13px] text-white/70 hover:text-white transition-colors"
+            >
+              <span>Explore Architecture ↓</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Bottom Dock: Integrated Live Telemetry Specs Strip */}
+        <div className="border-t border-white/10 bg-black/60 backdrop-blur-md -mx-6 sm:-mx-8 md:-mx-12 p-4 sm:p-6 grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+          {FACTS.map((f) => (
+            <div key={f.label} className="space-y-0.5">
+              <div className="text-[11px] font-mono uppercase tracking-wider text-white/50">{f.label}</div>
+              <div className="text-xl sm:text-2xl font-bold font-mono text-white tracking-tight">{f.value}</div>
+              <div className="text-[12px] text-white/40">{f.hint}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Home({ onEnterConsole, frame, linkOk }) {
   const online = !!frame && linkOk;
 
   return (
     <main className="flex-1 min-w-0 p-6 space-y-6 max-w-[1200px] w-full mx-auto">
-      <PageHeader
-        eyebrow="Autonomous firefighting rover"
-        title="Find the fire. Put it out."
-        description="Firebot navigates smoke-filled buildings, locates the fire through thermal imaging, and suppresses it — with a human always able to take over."
-        illustration="hero-rover"
-        actions={
-          <>
-            <Button variant="primary" onClick={() => onEnterConsole("live")}>
-              Open live ops
-            </Button>
-            <Button onClick={() => onEnterConsole("sim")}>Try the simulator</Button>
-          </>
-        }
-      />
+      <HeroVideoBanner onEnterConsole={onEnterConsole} online={online} />
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {FACTS.map((f) => (
-          <div key={f.label} className="panel px-4 py-3.5">
-            <Stat {...f} />
-          </div>
-        ))}
+      <div id="how-it-works-panel">
+        <Panel
+          title="How it works"
+          actions={
+            <Badge tone={online ? "ok" : "neutral"} dot>
+              {online ? "Robot online" : "Robot offline"}
+            </Badge>
+          }
+          bodyClassName="grid md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-line"
+        >
+          {PIPELINE.map((p) => (
+            <div key={p.step} className="p-5 space-y-2">
+              <div className="data text-[12px] text-flame font-semibold">{p.step}</div>
+              <h3 className="text-[16px] font-semibold">{p.title}</h3>
+              <p className="text-[13.5px] text-muted leading-relaxed">{p.body}</p>
+            </div>
+          ))}
+        </Panel>
       </div>
-
-      <Panel
-        title="How it works"
-        actions={
-          <Badge tone={online ? "ok" : "neutral"} dot>
-            {online ? "Robot online" : "Robot offline"}
-          </Badge>
-        }
-        bodyClassName="grid md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-line"
-      >
-        {PIPELINE.map((p) => (
-          <div key={p.step} className="p-5 space-y-2">
-            <div className="data text-[12px] text-flame font-semibold">{p.step}</div>
-            <h3 className="text-[16px] font-semibold">{p.title}</h3>
-            <p className="text-[13.5px] text-muted leading-relaxed">{p.body}</p>
-          </div>
-        ))}
-      </Panel>
 
       {/* Ported from Home.legacy: Optical vs Thermal Smoke Demonstration */}
       <SmokePenetrationView />
