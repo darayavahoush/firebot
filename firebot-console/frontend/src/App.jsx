@@ -258,7 +258,7 @@ export default function App() {
           <History />
         </div>
         <div className={page === "about" ? "contents" : "hidden"}>
-          <About />
+          <About onNavigate={(target) => { playSound("tab"); setPage(target); }} />
         </div>
       </div>
     </div>
