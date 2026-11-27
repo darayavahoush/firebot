@@ -1,701 +1,757 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { playSound } from "../lib/sound.js";
 
-// Interactive Rover Hotspots metadata
-const HOTSPOTS = [
-  {
-    id: "flir",
-    label: "FLIR Radiometric Thermal Mast",
-    tag: "MLX90640-D55",
-    x: 48,
-    y: 28,
-    desc: "32×24 Far-Infrared array (768 pixels). Penetrates zero-visibility particulate smoke and fog to isolate thermal fire centroids at 8 Hz.",
-    specs: ["I2C Bus (0x33) @ 400 kHz", "-40°C to 300°C Target Range", "±1.0°C Radiometric Accuracy", "55° × 35° Field of View"],
-  },
-  {
-    id: "turret",
-    label: "High-Pressure Water Cannon",
-    tag: "12V Diaphragm Nozzle",
-    x: 64,
-    y: 22,
-    desc: "Machined brass suppression nozzle driven by logic-level N-MOSFET (IRLZ44N) and SG90 pan servo swept across a 180° frontal arc.",
-    specs: ["4.5 L/min Flow Rate", "180° Continuous Pan Sweep", "1N4007 Diode Kickback Protection", "12V / 3A Switched Inductive Load"],
-  },
-  {
-    id: "tracks",
-    label: "High-Traction Tracked Chassis",
-    tag: "Differential Drive",
-    x: 24,
-    y: 74,
-    desc: "Heavy-duty steel-reinforced continuous rubber tracks driven by dual geared DC motors with 20 kHz inaudible PWM.",
-    specs: ["20 kHz Ultrasonic PWM (No Whine)", "TB6612FNG Dual H-Bridge", "0.60 m/s Maximum Linear Velocity", "220 mm Chassis Track Width"],
-  },
-  {
-    id: "compute",
-    label: "Dual-Compute Avionics Core",
-    tag: "ESP32 RTOS + Pi 4/5",
-    x: 52,
-    y: 52,
-    desc: "Hard real-time ESP32 microcontroller for 500ms safety watchdog and sensor polling, bridged via high-speed UART to Raspberry Pi 4/5.",
-    specs: ["240 MHz Dual-Core Tensilica MCU", "500 ms Hardware Watchdog Cutoff", "115200 Baud Bidirectional Stream", "Isolated Dual Buck Regulators"],
-  },
-];
+const CW = 640, CH = 480;
+const ROWS = 24, COLS = 32;
 
-// Interactive Hardware Tabs
-const HW_TABS = {
-  esp32: {
-    title: "ESP32 DevKit V1 (Hard Real-Time RTOS)",
-    badge: "240 MHz MCU",
-    desc: "Dedicated to microsecond-level ultrasonic pulse timing, 20 kHz PWM motor control, 12-bit ADC sampling, and hardware fail-safe watchdog.",
-    items: [
-      { name: "4x HC-SR04 Ultrasonic", pins: "GPIO 13, 12, 14, 27", note: "Echo via 1kΩ / 2kΩ 3.3V divider" },
-      { name: "3x IR Flame Modules", pins: "GPIO 25, 26, 33", note: "Active-LOW optical fire trigger" },
-      { name: "2x MQ-2 Smoke/Gas", pins: "GPIO 32, 15 (ADC1)", note: "Continuous 0–3.3V gas density" },
-      { name: "Dual DC Motor Drive", pins: "GPIO 18, 19, 21 / 22, 23, 5", note: "20 kHz PWM + Direction IN1-IN4" },
-      { name: "12V Diaphragm Pump", pins: "GPIO 17", note: "IRLZ44N MOSFET gate with 10kΩ pull-down" },
-      { name: "SG90 Turret Servo", pins: "GPIO 16", note: "50 Hz PWM (-90° to +90° pan sweep)" },
+const PALETTES = {
+  ironbow: {
+    label: "Ironbow",
+    stops: [
+      [0, [14, 8, 32]],
+      [0.25, [90, 26, 134]],
+      [0.5, [196, 40, 111]],
+      [0.75, [255, 138, 42]],
+      [1, [255, 242, 201]],
     ],
   },
-  pi: {
-    title: "Raspberry Pi 4 / 5 (Linux SBC Telemetry Bridge)",
-    badge: "Quad-Core ARM SBC",
-    desc: "Samples the MLX90640-D55 thermal camera over I2C, runs the client link agent, and streams encrypted telemetry packets over TCP.",
-    items: [
-      { name: "MLX90640-D55 Thermal", pins: "Pin 3 (SDA), Pin 5 (SCL)", note: "I2C Address 0x33 @ 400kHz Fast-Mode" },
-      { name: "Thermal Power & Ground", pins: "Pin 1 (3.3V), Pin 9 (GND)", note: "Filtered 3.3V ASIC supply rail" },
-      { name: "ESP32 Serial Link", pins: "USB 2.0 / 3.0 (/dev/ttyUSB0)", note: "115200 Baud line-delimited JSON" },
-      { name: "PC Brain Network", pins: "Wi-Fi 802.11ac / GbE", note: "Encrypted TCP socket on port 8765" },
+  inferno: {
+    label: "Inferno",
+    stops: [
+      [0, [10, 5, 25]],
+      [0.3, [120, 28, 129]],
+      [0.6, [217, 72, 38]],
+      [0.85, [248, 168, 48]],
+      [1, [252, 255, 164]],
     ],
   },
-  power: {
-    title: "Isolated Power Distribution Architecture",
-    badge: "Dual Buck Isolation",
-    desc: "Separates noisy motor and pump inductive loads from sensitive Raspberry Pi logic to eliminate brownout reboots during motor stalls.",
-    items: [
-      { name: "Main Battery Rail", pins: "12V 3S LiPo / LiFePO4", note: "Direct power to Motor VM & 12V Pump" },
-      { name: "Buck Regulator #1", pins: "12V -> 5V @ 3A", note: "Powers ESP32 VIN, Servos, Sensors" },
-      { name: "Buck Regulator #2", pins: "12V -> 5V @ 3A-5A", note: "Dedicated isolated power for Raspberry Pi" },
-      { name: "Common Ground Bus", pins: "Single GND Star Topology", note: "Ties battery, bucks, MCU, and SBC" },
+  arctic: {
+    label: "Arctic",
+    stops: [
+      [0, [6, 14, 30]],
+      [0.35, [14, 80, 140]],
+      [0.7, [38, 200, 220]],
+      [0.9, [140, 245, 255]],
+      [1, [255, 255, 255]],
+    ],
+  },
+  nvg: {
+    label: "NVG",
+    stops: [
+      [0, [2, 18, 8]],
+      [0.3, [12, 60, 24]],
+      [0.6, [40, 180, 70]],
+      [0.85, [110, 245, 140]],
+      [1, [230, 255, 235]],
     ],
   },
 };
 
-export default function Home({ onEnterConsole, frame, linkOk }) {
-  const [activeSpot, setActiveSpot] = useState(HOTSPOTS[0]);
-  const [activeHwTab, setActiveHwTab] = useState("esp32");
-  const [simLog, setSimLog] = useState([
-    "EIF STATE ESTIMATION: Multi-modal sensor fusion nominal",
-    "FLIR MLX90640: Thermal centroid locked at 68.4°C [Bearing: +12°]",
-    "RRT* PLANNER: Path verified (24 waypoints, clearance > 0.45m)",
-    "ESP32 WATCHDOG: Heartbeat confirmed (latency 12ms)",
-  ]);
+function colorFor(t, stops) {
+  const v = Math.max(0, Math.min(1, (t - 22) / 48));
+  for (let i = 1; i < stops.length; i++) {
+    if (v <= stops[i][0]) {
+      const [a, ca] = stops[i - 1], [b, cb] = stops[i];
+      const f = (v - a) / (b - a || 1);
+      return ca.map((c, k) => Math.round(c + (cb[k] - c) * f));
+    }
+  }
+  return stops[stops.length - 1][1];
+}
 
-  const handleLaunch = (target = "live") => {
-    playSound("tab");
-    onEnterConsole(target);
-  };
+const SUBSYSTEMS = [
+  {
+    id: "flir",
+    name: "FLIR MLX90640-D55 Thermal Mast",
+    role: "Target Acquisition & Smoke Penetration",
+    bus: "I2C 0x33 @ 400 kHz",
+    power: "3.3V Filtered Rail • 23 mA",
+    specs: [
+      "32×24 Radiometric pixel array (768 total cells)",
+      "Target dynamic range: -40°C to +300°C (±1.0°C accuracy)",
+      "55° × 35° Field of View aligned to turret pan bore",
+      "Thermal plume centroid lock-on latency: <125 ms",
+    ],
+    pinout: [
+      { pin: "Pin 1 (3.3V)", target: "Raspberry Pi 3.3V Rail" },
+      { pin: "Pin 3 (SDA)", target: "BCM GPIO 2 (I2C1 SDA)" },
+      { pin: "Pin 5 (SCL)", target: "BCM GPIO 3 (I2C1 SCL)" },
+      { pin: "Pin 9 (GND)", target: "Star Ground Reference" },
+    ],
+  },
+  {
+    id: "esp32",
+    name: "ESP32 DevKit V1 Hard Real-Time Core",
+    role: "500ms Watchdog & Actuator Dispatch",
+    bus: "UART 115200 Baud /dev/ttyUSB0",
+    power: "5.0V / 3A Buck Regulated",
+    specs: [
+      "Dual-Core Xtensa LX6 @ 240 MHz (Dedicated FreeRTOS Tasks)",
+      "20 kHz Ultrasonic motor PWM (Zero audible coil whine)",
+      "Microsecond-level HC-SR04 pulse duration timing",
+      "Hardware fail-safe cutoff: Motors & pump halt on 500ms silence",
+    ],
+    pinout: [
+      { pin: "GPIO 13, 12, 14, 27", target: "HC-SR04 Ultrasonic Trigger/Echo" },
+      { pin: "GPIO 25, 26, 33", target: "3× IR Photodiode Flame Sensors" },
+      { pin: "GPIO 32, 15", target: "2× MQ-2 Combustible Gas ADC1" },
+      { pin: "GPIO 18, 19, 21, 22, 23, 5", target: "TB6612FNG Dual H-Bridge Motor Logic" },
+      { pin: "GPIO 17", target: "IRLZ44N MOSFET Water Pump Gate" },
+      { pin: "GPIO 16", target: "SG90 Turret Pan Servo (50 Hz PWM)" },
+    ],
+  },
+  {
+    id: "cannon",
+    name: "High-Pressure Water Suppression Turret",
+    role: "Autonomous Hazard Neutralization",
+    bus: "Logic-Level N-Channel MOSFET (IRLZ44N)",
+    power: "12V Direct LiPo • 3.2A Switched Load",
+    specs: [
+      "Diaphragm delivery: 4.5 L/min @ 4.2 Bar hydraulic pressure",
+      "SG90 Servo pan arc: -90° to +90° (180° frontal azimuth)",
+      "Flyback protection: 1N4007 Schottky diode across inductive pump leads",
+      "Gate isolation: 10 kΩ pull-down resistor prevents floating turn-on",
+    ],
+    pinout: [
+      { pin: "Gate (G)", target: "ESP32 GPIO 17 via 220Ω resistor" },
+      { pin: "Drain (D)", target: "12V Pump Negative Terminal" },
+      { pin: "Source (S)", target: "Common System Ground Rail" },
+      { pin: "Diode Cathode", target: "Pump Positive Terminal (+12V LiPo)" },
+    ],
+  },
+  {
+    id: "chassis",
+    name: "Tracked Continuous Differential Chassis",
+    role: "Obstacle Crossing & All-Terrain Mobility",
+    bus: "TB6612FNG Dual H-Bridge Driver",
+    power: "12V Motor Rail • 1.2A Continuous / 3.2A Stall",
+    specs: [
+      "Steel-reinforced rubber tracks with 220 mm chassis span",
+      "Max linear velocity: 0.60 m/s with closed-loop PID ramp",
+      "Turning capability: Zero-radius in-place differential rotation",
+      "Thermal dissipation: Aluminum chassis-heatsink mounting",
+    ],
+    pinout: [
+      { pin: "VM / VCC", target: "+12V LiPo Rail / 5V Logic Rail" },
+      { pin: "PWMA / PWMB", target: "ESP32 GPIO 18 & 23 (20 kHz PWM)" },
+      { pin: "AIN1 / AIN2", target: "ESP32 GPIO 19 & 21 (Left Track)" },
+      { pin: "BIN1 / BIN2", target: "ESP32 GPIO 22 & 5 (Right Track)" },
+    ],
+  },
+  {
+    id: "power",
+    name: "Dual-Buck Isolated Power Distribution",
+    role: "Brownout Prevention & Noise Immunity",
+    bus: "Star Ground Bus Architecture",
+    power: "12.6V 3S LiPo Primary Rail",
+    specs: [
+      "Primary Rail: 12V direct to Motor H-Bridge and Water Cannon",
+      "Buck #1 (5V 3A): Powers ESP32, SG90 servo, and analog sensors",
+      "Buck #2 (5V 4A): Isolated rail dedicated strictly to Raspberry Pi",
+      "Star Ground Topology: Prevents motor inductive spikes from resetting MCU",
+    ],
+    pinout: [
+      { pin: "Main In", target: "12V 3S LiPo (15A Fuse inline)" },
+      { pin: "Buck 1 Out", target: "5.0V Logic & Actuator Bus" },
+      { pin: "Buck 2 Out", target: "5.1V Raspberry Pi Type-C Input" },
+      { pin: "GND Star", target: "Central Grounding Post" },
+    ],
+  },
+];
+
+export default function Home({ onEnterConsole, frame, linkOk }) {
+  const [feedMode, setFeedMode] = useState("optical"); // "optical" | "thermal" | "blueprint"
+  const [paletteKey, setPaletteKey] = useState("ironbow");
+  const [activeSubsystem, setActiveSubsystem] = useState(SUBSYSTEMS[0]);
+  const [utcTime, setUtcTime] = useState("");
+  const canvasRef = useRef(null);
 
   useEffect(() => {
-    const messages = [
-      "EIF FUSION: Flame photodiode vector bearing locked at +12.4°",
-      "ULTRASONIC RING: FL: 1.45m | FR: 1.52m | Left: 2.10m | Right: 1.88m",
-      "GAS DETECTOR: MQ-2 front reading 0.142 norm (Combustible PPM nominal)",
-      "WATER RESERVOIR: Tank level at 88% • Diaphragm pump primed",
-      "TURRET SERVO: SG90 pan centered (0.00 rad)",
-      "ODOMETRY POSE: Position [X: 1.24m, Y: 0.85m, θ: 18°] • Speed: 0.32 m/s",
-    ];
-    const timer = setInterval(() => {
-      setSimLog((prev) => [
-        messages[Math.floor(Math.random() * messages.length)],
-        ...prev.slice(0, 4),
-      ]);
-    }, 3200);
-    return () => clearInterval(timer);
+    const updateTime = () => {
+      const d = new Date();
+      setUtcTime(d.toISOString().substring(11, 19) + " UTC");
+    };
+    updateTime();
+    const t = setInterval(updateTime, 1000);
+    return () => clearInterval(t);
   }, []);
 
-  return (
-    <div className="min-h-screen bg-[#0A0D14] text-[#F8FAFC] flex flex-col font-sans selection:bg-sky-500/30 selection:text-white relative overflow-x-hidden">
-      {/* Subtle Technical Grid Overlay */}
-      <div className="fixed inset-0 pointer-events-none z-0 opacity-25">
-        <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:40px_40px]" />
-      </div>
+  // Keyboard shortcut listener for mission-critical actions
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+      if (e.key === "l" || e.key === "L") {
+        playSound("tab");
+        onEnterConsole("live");
+      } else if (e.key === "m" || e.key === "M") {
+        playSound("tab");
+        onEnterConsole("mujoco");
+      } else if (e.key === "s" || e.key === "S") {
+        playSound("tab");
+        onEnterConsole("sim");
+      } else if (e.key === "v" || e.key === "V") {
+        playSound("tab");
+        onEnterConsole("voice");
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onEnterConsole]);
 
-      {/* Engineering Header Navigation Bar */}
-      <header className="sticky top-0 z-50 backdrop-blur-md bg-[#0A0D14]/90 border-b border-white/[0.08]">
-        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-          {/* Logo & Platform Name */}
+  // Radiometric Thermal Canvas Loop when in "thermal" mode
+  useEffect(() => {
+    if (feedMode !== "thermal") return;
+    const cv = canvasRef.current;
+    if (!cv) return;
+    const g = cv.getContext("2d");
+    let animId;
+    let t = 0;
+
+    const currentPalette = PALETTES[paletteKey] || PALETTES.ironbow;
+
+    const renderThermal = () => {
+      t += 0.04;
+      g.fillStyle = "#0A0D14";
+      g.fillRect(0, 0, CW, CH);
+
+      const off = document.createElement("canvas");
+      off.width = COLS;
+      off.height = ROWS;
+      const og = off.getContext("2d");
+      const img = og.createImageData(COLS, ROWS);
+
+      // Simulated hotspot centered near middle
+      const hotC = 16.0 + Math.sin(t * 0.8) * 1.5;
+      const hotR = 11.5 + Math.cos(t * 0.6) * 0.8;
+
+      let peakVal = -Infinity;
+      let peakIdx = 0;
+
+      for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+          const idx = r * COLS + c;
+          const dx = c - hotC;
+          const dy = r - hotR;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          const noise = Math.sin(r * 12.9898 + c * 78.233 + t) * 0.4;
+          const temp = 22.4 + (r / ROWS) * 1.4 + Math.max(0, 48.0 - dist * 4.2) + noise;
+
+          if (temp > peakVal) {
+            peakVal = temp;
+            peakIdx = idx;
+          }
+
+          const [red, grn, blu] = colorFor(temp, currentPalette.stops);
+          img.data.set([red, grn, blu, 255], idx * 4);
+        }
+      }
+
+      og.putImageData(img, 0, 0);
+      g.imageSmoothingEnabled = true;
+      g.imageSmoothingQuality = "high";
+      g.drawImage(off, 0, 0, CW, CH);
+
+      // Target reticle lock
+      const px = (((peakIdx % COLS) + 0.5) / COLS) * CW;
+      const py = ((Math.floor(peakIdx / COLS) + 0.5) / ROWS) * CH;
+
+      g.strokeStyle = "#FF4A2B";
+      g.lineWidth = 2;
+      g.beginPath();
+      g.arc(px, py, 22, 0, Math.PI * 2);
+      g.stroke();
+
+      g.beginPath();
+      g.moveTo(px - 32, py); g.lineTo(px - 10, py);
+      g.moveTo(px + 10, py); g.lineTo(px + 32, py);
+      g.moveTo(px, py - 32); g.lineTo(px, py - 10);
+      g.moveTo(px, py + 10); g.lineTo(px, py + 32);
+      g.stroke();
+
+      animId = requestAnimationFrame(renderThermal);
+    };
+
+    renderThermal();
+    return () => cancelAnimationFrame(animId);
+  }, [feedMode, paletteKey]);
+
+  return (
+    <div className="min-h-screen bg-[#07090E] text-[#E2E8F0] font-mono selection:bg-sky-500/30 selection:text-white flex flex-col relative overflow-x-hidden">
+      {/* Background Engineering Hairline Grid */}
+      <div className="fixed inset-0 pointer-events-none opacity-[0.035] bg-[radial-gradient(#94a3b8_1px,transparent_1px)] [background-size:24px_24px]" />
+
+      {/* TOP SYSTEM MANIFEST BAR */}
+      <header className="border-b border-white/[0.08] bg-[#0A0D14]/95 backdrop-blur-md sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-4">
+          {/* Platform Identity */}
           <div className="flex items-center gap-3">
-            <div className="h-8 w-8 rounded-lg bg-red-600 flex items-center justify-center text-white shadow-md shadow-red-950/40 shrink-0">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z" />
-              </svg>
+            <div className="h-6 w-6 rounded bg-red-600 flex items-center justify-center text-white font-bold text-xs shadow-sm">
+              F
             </div>
-            <div className="flex items-center gap-2.5">
-              <span className="font-display font-extrabold text-base tracking-wider text-white">
+            <div className="flex items-center gap-2">
+              <span className="font-display font-black text-sm tracking-widest text-white">
                 FIREBOT
               </span>
-              <span className="h-3 w-px bg-white/20" />
-              <span className="text-[10px] font-mono uppercase tracking-widest text-slate-400 font-semibold">
-                Autonomous Robotics v2.5
+              <span className="text-[10px] text-slate-500">//</span>
+              <span className="text-[10px] text-slate-400 font-semibold tracking-wider">
+                TACTICAL DEFENSE ROVER
               </span>
             </div>
           </div>
 
-          {/* Clean Navigation Links */}
-          <nav className="hidden md:flex items-center gap-7 text-xs font-mono text-slate-400 tracking-wider uppercase">
-            <a href="#overview" className="hover:text-white transition-colors">Vessel Overview</a>
-            <a href="#hologram" className="hover:text-white transition-colors">Subsystems</a>
-            <a href="#features" className="hover:text-white transition-colors">Architecture</a>
-            <a href="#hardware" className="hover:text-white transition-colors">Hardware &amp; Wiring</a>
-          </nav>
+          {/* Center Vessel Telemetry */}
+          <div className="hidden lg:flex items-center gap-6 text-[11px] text-slate-400">
+            <div className="flex items-center gap-1.5">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span>STATUS: <b className="text-white">ARMED • READY</b></span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-slate-600">|</span>
+              <span>UPLINK: <b className="text-sky-400">TCP :8765</b></span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-slate-600">|</span>
+              <span>AVIONICS: <b className="text-white">ESP32 + PI 5</b></span>
+            </div>
+          </div>
 
-          {/* Header Action Buttons */}
+          {/* Right Clock & Direct Action Links */}
           <div className="flex items-center gap-3">
+            <span className="text-[11px] text-slate-400 hidden sm:inline tabular-nums">
+              {utcTime || "00:00:00 UTC"}
+            </span>
+
             <a
               href="/FireBot_Hardware_and_Wiring_Specification.pdf"
               download="FireBot_Hardware_and_Wiring_Specification.pdf"
-              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#161F2E] hover:bg-[#1E293B] border border-white/10 text-xs font-mono text-slate-300 hover:text-white transition-all"
-              title="Download 14-page Hardware & Wiring PDF"
+              className="px-2.5 py-1 rounded bg-slate-900 hover:bg-slate-800 border border-white/10 text-[10px] text-slate-300 hover:text-white transition-colors flex items-center gap-1.5"
             >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="7 10 12 15 17 10" />
-                <line x1="12" y1="15" x2="12" y2="3" />
-              </svg>
-              <span>Spec PDF (14p)</span>
+              <span>PDF Spec</span>
+              <span className="text-[9px] text-slate-500">[D]</span>
             </a>
 
             <button
-              onClick={() => handleLaunch("live")}
-              className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-white font-mono text-xs font-bold shadow-md shadow-red-950/50 hover:shadow-red-700/40 transition-all flex items-center gap-2"
+              onClick={() => {
+                playSound("tab");
+                onEnterConsole("live");
+              }}
+              className="px-3.5 py-1.5 rounded bg-red-600 hover:bg-red-500 text-white font-bold text-xs uppercase tracking-wider transition-all shadow-sm flex items-center gap-1.5"
             >
-              <span className="h-2 w-2 rounded-full bg-white animate-pulse" />
-              <span>COMMAND CONSOLE &rarr;</span>
+              <span>Console</span>
+              <span className="text-[10px] opacity-70">[L]</span>
+              <span>→</span>
             </button>
           </div>
         </div>
       </header>
 
-      {/* Main Content Sections */}
-      <main className="flex-1 space-y-28 py-12 md:py-16 relative z-10">
-        {/* HERO SECTION */}
-        <section id="overview" className="max-w-7xl mx-auto px-6">
-          <div className="grid lg:grid-cols-[1.1fr_0.9fr] gap-12 items-center">
-            {/* Left Narrative */}
-            <div className="space-y-6">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-md bg-[#161F2E] border border-white/10 text-[11px] font-mono text-slate-300 tracking-wide uppercase">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                <span>Autonomous Tactical Defense &bull; First Responder Rover</span>
+      {/* MAIN COCKPIT & FLIGHT DECK */}
+      <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 py-8 space-y-12 relative z-10">
+        {/* HERO SECTION: LIVE AVIONICS CONSOLE VIEWPORT */}
+        <section className="space-y-4">
+          {/* Subheader Title */}
+          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 pb-2 border-b border-white/[0.08]">
+            <div>
+              <div className="flex items-center gap-2 text-[10px] text-sky-400 font-bold uppercase tracking-widest">
+                <span>AVIONICS TELEMETRY DECK</span>
+                <span className="text-slate-600">•</span>
+                <span>VESSEL FB-01</span>
+              </div>
+              <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight font-display mt-0.5">
+                Autonomous Hazardous Fire Suppression Platform
+              </h1>
+            </div>
+
+            {/* Quick Keyboard Hotkeys Prompt */}
+            <div className="text-[10px] text-slate-400 flex items-center gap-3 shrink-0">
+              <span>Hotkeys:</span>
+              <span className="bg-slate-900 border border-white/10 px-1.5 py-0.5 rounded text-white">[L] Live Ops</span>
+              <span className="bg-slate-900 border border-white/10 px-1.5 py-0.5 rounded text-white">[M] 3D MuJoCo</span>
+              <span className="bg-slate-900 border border-white/10 px-1.5 py-0.5 rounded text-white">[S] Simulator</span>
+            </div>
+          </div>
+
+          {/* Main Visual Display & Telemetry Columns */}
+          <div className="grid lg:grid-cols-[1fr_320px] gap-6 items-start">
+            {/* Center Stage: Viewport */}
+            <div className="rounded-xl border border-white/[0.12] bg-[#0A0D14] p-3 shadow-2xl relative overflow-hidden flex flex-col gap-3">
+              {/* Corner Registration Hairlines */}
+              <div className="absolute top-1 left-1 text-[9px] text-slate-600 pointer-events-none select-none">┌</div>
+              <div className="absolute top-1 right-1 text-[9px] text-slate-600 pointer-events-none select-none">┐</div>
+              <div className="absolute bottom-1 left-1 text-[9px] text-slate-600 pointer-events-none select-none">└</div>
+              <div className="absolute bottom-1 right-1 text-[9px] text-slate-600 pointer-events-none select-none">┘</div>
+
+              {/* Viewport Mode Switcher & Indicators */}
+              <div className="flex items-center justify-between gap-2 flex-wrap pb-1 border-b border-white/[0.06]">
+                <div className="flex items-center gap-1.5">
+                  {[
+                    { id: "optical", label: "CAM-01 OPTICAL STREAM" },
+                    { id: "thermal", label: "FLIR MLX90640 THERMAL IR" },
+                    { id: "blueprint", label: "MECHANICAL BLUEPRINT" },
+                  ].map((m) => (
+                    <button
+                      key={m.id}
+                      onClick={() => {
+                        playSound("tab");
+                        setFeedMode(m.id);
+                      }}
+                      className={`px-3 py-1 rounded text-[11px] font-mono tracking-wider transition-all cursor-pointer ${
+                        feedMode === m.id
+                          ? "bg-sky-500/20 text-sky-400 border border-sky-400/50 font-bold shadow-sm"
+                          : "text-slate-400 hover:text-white bg-slate-900/60 border border-white/[0.06]"
+                      }`}
+                    >
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+
+                {feedMode === "thermal" && (
+                  <div className="flex items-center gap-1">
+                    {Object.entries(PALETTES).map(([k, v]) => (
+                      <button
+                        key={k}
+                        onClick={() => {
+                          playSound("click");
+                          setPaletteKey(k);
+                        }}
+                        className={`px-2 py-0.5 rounded text-[10px] font-mono transition-colors ${
+                          paletteKey === k
+                            ? "bg-white text-black font-bold"
+                            : "text-slate-400 hover:text-white"
+                        }`}
+                      >
+                        {v.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
-              <div className="space-y-3">
-                <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-white tracking-tight leading-[1.08] font-display">
-                  Autonomous <br />
-                  Fire Suppression. <br />
-                  <span className="text-red-500">
-                    Engineered For High-Risk Hazard Response.
-                  </span>
-                </h1>
-                <p className="text-slate-400 text-sm sm:text-base leading-relaxed max-w-xl font-sans">
-                  Deploying hard real-time edge processing (ESP32 RTOS + Raspberry Pi 4/5 SBC),
-                  MLX90640 radiometric thermal IR tracking, RRT* dynamic path planning, and fail-safe voice control.
-                </p>
+              {/* Viewport Frame */}
+              <div
+                className="relative rounded-lg overflow-hidden border border-white/[0.08] bg-black"
+                style={{ aspectRatio: "16 / 9" }}
+              >
+                {/* 1. Optical Video Mode */}
+                {feedMode === "optical" && (
+                  <div className="relative w-full h-full">
+                    <video
+                      autoPlay
+                      loop
+                      muted
+                      playsInline
+                      className="w-full h-full object-cover"
+                      src="/footage.mp4"
+                    />
+
+                    {/* HUD Target Overlay */}
+                    <div className="absolute inset-0 pointer-events-none flex flex-col justify-between p-4 font-mono text-[11px] text-white/90">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 bg-black/60 backdrop-blur px-2 py-1 rounded border border-white/10">
+                          <span className="h-2 w-2 rounded-full bg-red-500 animate-pulse" />
+                          <span>OPTICAL LOCK // TARGET CENTROID</span>
+                        </div>
+                        <span className="bg-black/60 backdrop-blur px-2 py-1 rounded border border-white/10 text-slate-300">
+                          FPS: 30.0 • 1080p
+                        </span>
+                      </div>
+
+                      {/* Center Crosshairs */}
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <div className="w-16 h-16 border border-sky-400/50 rounded-full flex items-center justify-center">
+                          <div className="w-1.5 h-1.5 bg-red-500 rounded-full" />
+                        </div>
+                        <div className="absolute w-24 h-px bg-sky-400/40" />
+                        <div className="absolute h-24 w-px bg-sky-400/40" />
+                      </div>
+
+                      {/* Bottom Telemetry HUD */}
+                      <div className="flex items-center justify-between bg-black/60 backdrop-blur p-2 rounded border border-white/10 text-[10px]">
+                        <span>PAN AZIMUTH: 0.00 RAD</span>
+                        <span>DISTANCE: 1.45 M</span>
+                        <span>PUMP PRESSURE: 4.2 BAR</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 2. Thermal Canvas Mode */}
+                {feedMode === "thermal" && (
+                  <div className="relative w-full h-full bg-[#0A0D14]">
+                    <canvas
+                      ref={canvasRef}
+                      width={CW}
+                      height={CH}
+                      className="w-full h-full block"
+                    />
+                    <div className="absolute top-3 left-3 bg-black/70 backdrop-blur px-2.5 py-1 rounded border border-white/10 text-[10px] text-white font-mono">
+                      PEAK: 68.4°C • MLX90640-D55
+                    </div>
+                  </div>
+                )}
+
+                {/* 3. Mechanical Blueprint Mode */}
+                {feedMode === "blueprint" && (
+                  <div className="relative w-full h-full bg-black">
+                    <img
+                      src="/firebot-rover-detail.jpg"
+                      alt="FireBot Mechanical Blueprint"
+                      className="w-full h-full object-cover opacity-90"
+                    />
+                    <div className="absolute bottom-3 left-3 bg-black/80 backdrop-blur p-2 rounded border border-white/10 text-[11px] text-white">
+                      PHYSICAL ARCHITECTURE // DUAL-COMPUTE PLATFORM
+                    </div>
+                  </div>
+                )}
               </div>
 
-              {/* Action Buttons */}
-              <div className="flex flex-wrap items-center gap-3.5 pt-1">
+              {/* Viewport Footer Operational Actions */}
+              <div className="grid sm:grid-cols-2 gap-3 pt-1">
                 <button
-                  onClick={() => handleLaunch("live")}
-                  className="px-7 py-3.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-mono text-xs font-bold tracking-wider shadow-lg shadow-red-950/60 hover:shadow-red-700/50 transition-all flex items-center gap-2.5 uppercase"
+                  onClick={() => {
+                    playSound("tab");
+                    onEnterConsole("live");
+                  }}
+                  className="py-3 px-4 rounded bg-red-600 hover:bg-red-500 text-white font-display font-extrabold text-xs tracking-wider uppercase transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
                 >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="12" cy="12" r="2" />
-                    <path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48-.01a6 6 0 0 1 0-8.49m11.31-2.82a10 10 0 0 1 0 14.14m-14.14 0a10 10 0 0 1 0-14.14" />
-                  </svg>
-                  <span>Launch Operations Console</span>
-                  <span>&rarr;</span>
+                  <span className="h-2 w-2 rounded-full bg-white animate-pulse" />
+                  <span>ENGAGE TACTICAL COMMAND CONSOLE</span>
+                  <span>→</span>
                 </button>
 
                 <button
-                  onClick={() => handleLaunch("mujoco")}
-                  className="px-6 py-3.5 rounded-xl bg-[#161F2E] hover:bg-[#1E293B] border border-white/10 text-white font-mono text-xs font-medium transition-all flex items-center gap-2"
+                  onClick={() => {
+                    playSound("tab");
+                    onEnterConsole("mujoco");
+                  }}
+                  className="py-3 px-4 rounded bg-slate-900 hover:bg-slate-800 border border-white/10 hover:border-sky-400/50 text-white font-mono font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer"
                 >
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-sky-400">
-                    <path d="m21 16-9 5-9-5V8l9-5 9 5v8z" />
-                    <path d="m3.27 6.96 8.73 4.85 8.73-4.85M12 22V12" />
-                  </svg>
-                  <span>3D MuJoCo Physics Sim</span>
+                  <span>3D RIGID-BODY PHYSICS (MUJOCO)</span>
+                  <span>→</span>
                 </button>
-
-                <a
-                  href="/FireBot_Hardware_and_Wiring_Specification.pdf"
-                  download="FireBot_Hardware_and_Wiring_Specification.pdf"
-                  className="px-4 py-3.5 rounded-xl bg-transparent hover:bg-white/5 border border-white/10 text-slate-400 hover:text-white font-mono text-xs font-medium transition-all flex items-center gap-1.5"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                    <polyline points="7 10 12 15 17 10" />
-                    <line x1="12" y1="15" x2="12" y2="3" />
-                  </svg>
-                  <span>Wiring Spec</span>
-                </a>
-              </div>
-
-              {/* Technical Benchmarks */}
-              <div className="grid grid-cols-3 gap-4 pt-5 border-t border-white/[0.08]">
-                <div className="space-y-0.5">
-                  <div className="text-2xl font-bold font-mono text-white">32×24</div>
-                  <div className="text-[11px] font-mono text-slate-400">FLIR Thermal Array</div>
-                </div>
-                <div className="space-y-0.5">
-                  <div className="text-2xl font-bold font-mono text-sky-400">&lt; 120 ms</div>
-                  <div className="text-[11px] font-mono text-slate-400">Decision Latency</div>
-                </div>
-                <div className="space-y-0.5">
-                  <div className="text-2xl font-bold font-mono text-orange-400">4.5 L/min</div>
-                  <div className="text-[11px] font-mono text-slate-400">Suppression Cannon</div>
-                </div>
               </div>
             </div>
 
-            {/* Right Hero Image */}
-            <div className="relative group">
-              <div className="relative rounded-2xl overflow-hidden border border-white/10 shadow-2xl bg-[#111622]">
-                <img
-                  src="/firebot-hero.jpg"
-                  alt="FireBot Autonomous Tactical Firefighting Rover"
-                  className="w-full h-auto object-cover transform group-hover:scale-[1.02] transition-transform duration-500 ease-out"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-[#0A0D14] via-transparent to-transparent opacity-80 pointer-events-none" />
-
-                {/* Tactical Status Tag */}
-                <div className="absolute top-4 left-4 bg-[#0A0D14]/85 backdrop-blur-md border border-white/10 px-3 py-1 rounded-md text-[11px] font-mono text-white flex items-center gap-2">
-                  <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-                  <span>UNIT: firebot-1 &bull; READY</span>
+            {/* Right Column: Instrument Telemetry Tapes */}
+            <div className="space-y-4">
+              {/* Telemetry Gauge Box 1 */}
+              <div className="rounded-xl border border-white/[0.12] bg-[#0A0D14] p-4 space-y-3">
+                <div className="flex items-center justify-between pb-2 border-b border-white/[0.08] text-[11px] font-bold">
+                  <span className="text-white">POWER &amp; PROPULSION</span>
+                  <span className="text-emerald-400">NOMINAL</span>
                 </div>
 
-                {/* Bottom HUD Bar */}
-                <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between text-[11px] font-mono text-slate-200">
-                  <div className="flex items-center gap-2">
-                    <span className="px-2 py-0.5 rounded bg-sky-900/60 border border-sky-400/40 text-sky-200 font-bold">
-                      FLIR LOCK
-                    </span>
-                    <span className="text-slate-300">CENTROID [68.4°C]</span>
+                <div className="space-y-2.5 text-xs">
+                  <div>
+                    <div className="flex justify-between text-slate-400 text-[11px] mb-1">
+                      <span>BATTERY RAIL (3S LiPo)</span>
+                      <span className="text-white font-bold">12.58 V (92%)</span>
+                    </div>
+                    <div className="h-1.5 rounded-full bg-slate-800 overflow-hidden">
+                      <div className="h-full bg-emerald-400 w-[92%]" />
+                    </div>
                   </div>
-                  <span className="text-slate-400">ESP32 RTOS 240MHz</span>
+
+                  <div>
+                    <div className="flex justify-between text-slate-400 text-[11px] mb-1">
+                      <span>WATER RESERVOIR</span>
+                      <span className="text-white font-bold">88% (4.2 BAR)</span>
+                    </div>
+                    <div className="h-1.5 rounded-full bg-slate-800 overflow-hidden">
+                      <div className="h-full bg-sky-400 w-[88%]" />
+                    </div>
+                  </div>
+
+                  <div className="pt-1 flex items-center justify-between text-[11px] text-slate-400 border-t border-white/[0.06]">
+                    <span>MOTOR DRIVE PWM:</span>
+                    <span className="text-white font-bold">20 kHz (TB6612FNG)</span>
+                  </div>
+
+                  <div className="flex items-center justify-between text-[11px] text-slate-400">
+                    <span>TRACK VELOCITY:</span>
+                    <span className="text-white font-bold">0.32 m/s</span>
+                  </div>
                 </div>
               </div>
+
+              {/* Telemetry Gauge Box 2 */}
+              <div className="rounded-xl border border-white/[0.12] bg-[#0A0D14] p-4 space-y-3">
+                <div className="flex items-center justify-between pb-2 border-b border-white/[0.08] text-[11px] font-bold">
+                  <span className="text-white">ENVIRONMENTAL ARRAY</span>
+                  <span className="text-sky-400">ACTIVE</span>
+                </div>
+
+                <div className="space-y-2 text-[11px]">
+                  <div className="flex justify-between text-slate-400">
+                    <span>FLIR ARRAY:</span>
+                    <span className="text-white font-bold">MLX90640 [32×24]</span>
+                  </div>
+                  <div className="flex justify-between text-slate-400">
+                    <span>THERMAL CENTROID:</span>
+                    <span className="text-red-400 font-bold">68.4°C @ +12°</span>
+                  </div>
+                  <div className="flex justify-between text-slate-400">
+                    <span>MQ-2 GAS DENSITY:</span>
+                    <span className="text-white font-bold">0.082 NORM (CLEAN)</span>
+                  </div>
+                  <div className="flex justify-between text-slate-400">
+                    <span>ULTRASONIC CLEARANCE:</span>
+                    <span className="text-white font-bold">FL: 1.45m | FR: 1.52m</span>
+                  </div>
+                  <div className="flex justify-between text-slate-400">
+                    <span>WATCHDOG INTERVAL:</span>
+                    <span className="text-emerald-400 font-bold">12 ms / 500 ms</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Hardware Spec PDF Card */}
+              <a
+                href="/FireBot_Hardware_and_Wiring_Specification.pdf"
+                download="FireBot_Hardware_and_Wiring_Specification.pdf"
+                className="block p-4 rounded-xl border border-white/[0.12] bg-slate-900/50 hover:bg-slate-900 transition-colors group"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="h-9 w-9 rounded bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 shrink-0">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                      <polyline points="14 2 14 8 20 8" />
+                      <line x1="16" y1="13" x2="8" y2="13" />
+                      <line x1="16" y1="17" x2="8" y2="17" />
+                      <polyline points="10 9 9 9 8 9" />
+                    </svg>
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs font-bold text-white group-hover:text-sky-400 transition-colors">
+                      Hardware &amp; Wiring Spec
+                    </div>
+                    <div className="text-[10px] text-slate-400 truncate">
+                      Complete 14-page schematic &amp; pinout PDF
+                    </div>
+                  </div>
+                  <span className="text-slate-500 group-hover:text-white transition-colors">↓</span>
+                </div>
+              </a>
             </div>
           </div>
         </section>
 
-        {/* INTERACTIVE ROVER ANATOMY & SUBSYSTEM EXPLORER */}
-        <section id="hologram" className="max-w-7xl mx-auto px-6 space-y-6">
-          <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+        {/* INTERACTIVE SUBSYSTEM ENGINEERING BENCH */}
+        <section className="space-y-4 pt-4 border-t border-white/[0.08]">
+          <div className="flex items-center justify-between pb-2 border-b border-white/[0.08]">
             <div>
-              <span className="text-[11px] font-mono uppercase tracking-widest text-sky-400 font-semibold">
-                ANATOMY &amp; MECHANICAL BLUEPRINT
+              <span className="text-[10px] text-sky-400 font-bold uppercase tracking-widest">
+                AVIONICS &amp; ELECTRICAL BLUEPRINT
               </span>
-              <h2 className="text-2xl sm:text-3xl font-extrabold text-white font-display tracking-tight mt-1">
-                Explore The Physical Subsystems
+              <h2 className="text-xl sm:text-2xl font-extrabold text-white font-display mt-0.5">
+                Subsystem Architecture &amp; Wiring Matrix
               </h2>
             </div>
-            <p className="text-xs font-mono text-slate-400 max-w-sm">
-              Select any component to inspect physical pinouts, power ratings, and fail-safe specs.
-            </p>
+            <span className="text-[11px] text-slate-400 hidden sm:inline">
+              SELECT SUBSYSTEM TO INSPECT PINOUTS
+            </span>
           </div>
 
-          <div className="grid lg:grid-cols-[1.2fr_0.8fr] gap-8 items-start">
-            {/* Visual Interactive Map */}
-            <div className="relative rounded-2xl overflow-hidden border border-white/10 bg-[#111622] p-4 shadow-xl">
-              <div className="relative rounded-xl overflow-hidden bg-black">
-                <img
-                  src="/firebot-rover-detail.jpg"
-                  alt="FireBot Hardware Anatomy"
-                  className="w-full h-auto object-cover opacity-90"
-                />
+          {/* Subsystem Selector Buttons */}
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+            {SUBSYSTEMS.map((s) => (
+              <button
+                key={s.id}
+                onClick={() => {
+                  playSound("tab");
+                  setActiveSubsystem(s);
+                }}
+                className={`p-3 rounded-lg border text-left transition-all cursor-pointer ${
+                  activeSubsystem.id === s.id
+                    ? "bg-slate-800 text-white border-sky-400/50 shadow-sm"
+                    : "bg-[#0A0D14] text-slate-400 hover:text-white border-white/[0.08] hover:bg-slate-900"
+                }`}
+              >
+                <div className="text-[10px] text-sky-400 font-semibold truncate">{s.role}</div>
+                <div className="text-xs font-bold text-white mt-1 truncate">{s.name.split(" ")[0]} {s.name.split(" ")[1]}</div>
+              </button>
+            ))}
+          </div>
 
-                {/* Radar Hotspots */}
-                {HOTSPOTS.map((spot) => (
-                  <button
-                    key={spot.id}
-                    onClick={() => {
-                      playSound("tab");
-                      setActiveSpot(spot);
-                    }}
-                    style={{ left: `${spot.x}%`, top: `${spot.y}%` }}
-                    className={`absolute -translate-x-1/2 -translate-y-1/2 p-2 rounded-full transition-transform duration-200 ${
-                      activeSpot.id === spot.id ? "scale-125 z-20" : "hover:scale-110 z-10"
-                    }`}
-                  >
-                    <span className="relative flex h-5 w-5">
-                      <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
-                        activeSpot.id === spot.id ? "bg-sky-400" : "bg-white"
-                      }`}></span>
-                      <span className={`relative inline-flex rounded-full h-5 w-5 border-2 border-white/80 shadow-md ${
-                        activeSpot.id === spot.id ? "bg-sky-500" : "bg-slate-800"
-                      }`}></span>
-                    </span>
-                  </button>
-                ))}
+          {/* Active Subsystem Detailed Dossier Card */}
+          <div className="rounded-xl border border-white/[0.12] bg-[#0A0D14] p-6 space-y-6">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-white/[0.08]">
+              <div>
+                <span className="text-[10px] text-sky-400 uppercase font-bold tracking-widest">
+                  {activeSubsystem.role}
+                </span>
+                <h3 className="text-xl font-bold font-display text-white mt-0.5">
+                  {activeSubsystem.name}
+                </h3>
               </div>
 
-              {/* Hotspot Quick Selectors */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-4">
-                {HOTSPOTS.map((spot) => (
-                  <button
-                    key={spot.id}
-                    onClick={() => {
-                      playSound("tab");
-                      setActiveSpot(spot);
-                    }}
-                    className={`px-3 py-2 rounded-lg text-[11px] font-mono text-left transition-all border ${
-                      activeSpot.id === spot.id
-                        ? "bg-sky-500/15 border-sky-400/50 text-sky-400 font-bold"
-                        : "bg-[#161F2E] border-white/[0.08] text-slate-400 hover:text-white"
-                    }`}
-                  >
-                    {spot.label}
-                  </button>
-                ))}
+              <div className="flex items-center gap-3 text-[11px]">
+                <span className="px-2.5 py-1 rounded bg-slate-900 border border-white/10 text-slate-300">
+                  BUS: <b className="text-white">{activeSubsystem.bus}</b>
+                </span>
+                <span className="px-2.5 py-1 rounded bg-slate-900 border border-white/10 text-slate-300">
+                  POWER: <b className="text-white">{activeSubsystem.power}</b>
+                </span>
               </div>
             </div>
 
-            {/* Active Component Specification Card */}
-            <div className="p-7 rounded-2xl border border-white/10 bg-[#111622] space-y-6">
-              <div className="flex items-center justify-between pb-4 border-b border-white/[0.08]">
-                <div>
-                  <span className="text-[10px] font-mono uppercase tracking-widest text-sky-400 font-semibold">
-                    COMPONENT SPECIFICATION
-                  </span>
-                  <h3 className="text-xl font-bold font-display text-white mt-0.5">
-                    {activeSpot.label}
-                  </h3>
-                </div>
-                <span className="px-2.5 py-1 rounded-md bg-[#161F2E] border border-white/10 text-[11px] font-mono text-slate-200 font-bold">
-                  {activeSpot.tag}
-                </span>
-              </div>
-
-              <p className="text-xs text-slate-300 leading-relaxed font-sans">
-                {activeSpot.desc}
-              </p>
-
-              <div className="space-y-2.5 pt-2">
-                <span className="text-[10px] font-mono uppercase tracking-widest text-slate-500 font-semibold">
-                  TECHNICAL CHARACTERISTICS
+            {/* Technical Characteristics & Pinout Matrix */}
+            <div className="grid md:grid-cols-2 gap-6 items-start">
+              {/* Left: Engineering Characteristics */}
+              <div className="space-y-3">
+                <span className="text-[11px] text-slate-400 font-bold uppercase tracking-wider">
+                  Operational Parameters
                 </span>
                 <div className="space-y-2">
-                  {activeSpot.specs.map((spec, i) => (
-                    <div key={i} className="flex items-center gap-2.5 p-2.5 rounded-lg bg-[#161F2E] border border-white/[0.06] text-xs font-mono text-slate-200">
-                      <span className="h-1.5 w-1.5 rounded-full bg-sky-400" />
-                      <span>{spec}</span>
+                  {activeSubsystem.specs.map((item, idx) => (
+                    <div key={idx} className="flex items-start gap-2.5 p-2.5 rounded bg-slate-900/60 border border-white/[0.06] text-xs text-slate-200">
+                      <span className="text-sky-400 mt-0.5 font-bold">›</span>
+                      <span>{item}</span>
                     </div>
                   ))}
                 </div>
               </div>
 
-              {/* Direct Link to View in Command Console */}
-              <div className="pt-4 border-t border-white/[0.08]">
-                <button
-                  onClick={() => handleLaunch("live")}
-                  className="w-full py-2.5 rounded-lg bg-[#161F2E] hover:bg-[#1E293B] border border-white/10 hover:border-sky-400/40 text-slate-200 hover:text-white font-mono text-xs font-semibold flex items-center justify-center gap-2 transition-all"
-                >
-                  <span>Open In Tactical Teleop Deck</span>
-                  <span>&rarr;</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* 4 CORE AUTONOMY PILLARS (ENGINEERING GRID) */}
-        <section id="features" className="max-w-7xl mx-auto px-6 space-y-8">
-          <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-            <div>
-              <span className="text-[11px] font-mono uppercase tracking-widest text-sky-400 font-semibold">
-                TECHNOLOGY MATRIX
-              </span>
-              <h2 className="text-2xl sm:text-3xl font-extrabold text-white font-display tracking-tight mt-1">
-                Engineered For Mission Autonomy
-              </h2>
-            </div>
-            <span className="text-[11px] font-mono text-slate-400">4 INTEGRATED ROBOTIC SUBSYSTEMS</span>
-          </div>
-
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-5">
-            {/* Bento Card 1: Thermal FLIR */}
-            <div
-              onClick={() => handleLaunch("live")}
-              className="p-6 rounded-2xl border border-white/10 hover:border-sky-400/40 bg-[#111622] hover:bg-[#161F2E] transition-all duration-200 cursor-pointer space-y-4 group flex flex-col justify-between"
-            >
-              <div className="space-y-4">
-                <div className="h-11 w-11 rounded-lg bg-orange-500/10 border border-orange-500/20 flex items-center justify-center text-orange-400 group-hover:scale-105 transition-transform">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M12 2c1 3 2.5 3.5 3.5 4.5A5 5 0 0 1 17 10a5 5 0 1 1-10 0c0-1.6.6-3.1 1.5-3.5 1-1 2.5-1.5 3.5-4.5Z" />
-                  </svg>
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-white font-mono">Thermal Fire Fix</h3>
-                  <p className="text-xs text-slate-400 leading-relaxed mt-1">
-                    MLX90640-D55 32×24 Far-Infrared array cuts through dense smoke and darkness, computing heat centroids at 8 Hz.
-                  </p>
-                </div>
-              </div>
-              <div className="text-[11px] font-mono text-sky-400 font-semibold flex items-center gap-1 pt-2">
-                Launch Live View &rarr;
-              </div>
-            </div>
-
-            {/* Bento Card 2: Edge RTOS */}
-            <div
-              onClick={() => handleLaunch("live")}
-              className="p-6 rounded-2xl border border-white/10 hover:border-sky-400/40 bg-[#111622] hover:bg-[#161F2E] transition-all duration-200 cursor-pointer space-y-4 group flex flex-col justify-between"
-            >
-              <div className="space-y-4">
-                <div className="h-11 w-11 rounded-lg bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-400 group-hover:scale-105 transition-transform">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="4" y="4" width="16" height="16" rx="2" />
-                    <rect x="9" y="9" width="6" height="6" />
-                    <path d="M15 2v2M9 2v2M15 20v2M9 20v2M2 15h2M2 9h2M20 15h2M20 9h2" />
-                  </svg>
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-white font-mono">Dual-Compute Split</h3>
-                  <p className="text-xs text-slate-400 leading-relaxed mt-1">
-                    ESP32 RTOS manages 20 kHz motor PWM and 500ms safety watchdog, bridged via UART to Raspberry Pi Linux.
-                  </p>
-                </div>
-              </div>
-              <div className="text-[11px] font-mono text-sky-400 font-semibold flex items-center gap-1 pt-2">
-                Inspect Hardware &rarr;
-              </div>
-            </div>
-
-            {/* Bento Card 3: MuJoCo Physics */}
-            <div
-              onClick={() => handleLaunch("mujoco")}
-              className="p-6 rounded-2xl border border-white/10 hover:border-sky-400/40 bg-[#111622] hover:bg-[#161F2E] transition-all duration-200 cursor-pointer space-y-4 group flex flex-col justify-between"
-            >
-              <div className="space-y-4">
-                <div className="h-11 w-11 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 group-hover:scale-105 transition-transform">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <polygon points="12 2 2 7 12 12 22 7 12 2" />
-                    <polyline points="2 17 12 22 22 17" />
-                    <polyline points="2 12 12 17 22 12" />
-                  </svg>
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-white font-mono">MuJoCo 3D Physics</h3>
-                  <p className="text-xs text-slate-400 leading-relaxed mt-1">
-                    Rigid-body dynamics simulation modeling 36-beam lidar sweeps, corridor obstacle collisions, and water arc ballistics.
-                  </p>
-                </div>
-              </div>
-              <div className="text-[11px] font-mono text-sky-400 font-semibold flex items-center gap-1 pt-2">
-                Launch 3D Physics &rarr;
-              </div>
-            </div>
-
-            {/* Bento Card 4: Biometric Voice */}
-            <div
-              onClick={() => handleLaunch("voice")}
-              className="p-6 rounded-2xl border border-white/10 hover:border-sky-400/40 bg-[#111622] hover:bg-[#161F2E] transition-all duration-200 cursor-pointer space-y-4 group flex flex-col justify-between"
-            >
-              <div className="space-y-4">
-                <div className="h-11 w-11 rounded-lg bg-slate-700/30 border border-white/10 flex items-center justify-center text-slate-300 group-hover:scale-105 transition-transform">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
-                    <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                    <line x1="12" y1="15" x2="12" y2="22" />
-                  </svg>
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-white font-mono">Voice Biometrics</h3>
-                  <p className="text-xs text-slate-400 leading-relaxed mt-1">
-                    Offline Vosk speech recognition with enrolled speaker voiceprints ensures only authorized pilots can issue commands.
-                  </p>
-                </div>
-              </div>
-              <div className="text-[11px] font-mono text-sky-400 font-semibold flex items-center gap-1 pt-2">
-                Calibrate Voice &rarr;
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* LIVE SIMULATED TACTICAL TELEMETRY TERMINAL */}
-        <section id="telemetry" className="max-w-7xl mx-auto px-6">
-          <div className="p-6 sm:p-8 rounded-2xl border border-white/10 bg-[#111622] space-y-5">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/[0.08]">
-              <div className="flex items-center gap-3">
-                <span className="relative flex h-2.5 w-2.5">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-400"></span>
+              {/* Right: Pinout Connections Table */}
+              <div className="space-y-3">
+                <span className="text-[11px] text-slate-400 font-bold uppercase tracking-wider">
+                  Physical Hardware Interconnects
                 </span>
-                <div>
-                  <h3 className="text-base font-bold font-mono text-white">
-                    Live Telemetry Heartbeat Stream
-                  </h3>
-                  <p className="text-[11px] font-mono text-slate-400">
-                    10 Hz JSON telemetry packets received over TCP socket
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => handleLaunch("live")}
-                className="px-4 py-2 rounded-lg bg-[#161F2E] border border-white/10 hover:border-sky-400/40 text-xs font-mono text-white font-semibold flex items-center gap-2 self-start sm:self-auto transition-all"
-              >
-                <span>Open Full Teleop Console</span>
-                <span>&rarr;</span>
-              </button>
-            </div>
-
-            {/* Terminal Feed Box */}
-            <div className="bg-[#0A0D14] rounded-xl p-4 sm:p-5 border border-white/[0.08] font-mono text-xs space-y-2 overflow-hidden">
-              <div className="flex items-center justify-between text-slate-500 pb-2 border-b border-white/[0.06] text-[10px]">
-                <span>STREAM: firebot-1 &bull; 115200 BAUD UART BRIDGE</span>
-                <span className="text-emerald-400 font-bold">STATUS: 200 OK</span>
-              </div>
-              {simLog.map((line, idx) => (
-                <div key={idx} className="flex items-start gap-3 text-slate-300">
-                  <span className="text-sky-400 font-bold shrink-0">&gt;</span>
-                  <span className={idx === 0 ? "text-white font-semibold" : "text-slate-400"}>{line}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* HARDWARE ARCHITECTURE & WIRING TABS */}
-        <section id="hardware" className="max-w-7xl mx-auto px-6 space-y-6">
-          <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-            <div>
-              <span className="text-[11px] font-mono uppercase tracking-widest text-sky-400 font-semibold">
-                HARDWARE ENGINEERING
-              </span>
-              <h2 className="text-2xl sm:text-3xl font-extrabold text-white font-display tracking-tight mt-1">
-                Verified Schematics &amp; Wiring
-              </h2>
-            </div>
-            <a
-              href="/FireBot_Hardware_and_Wiring_Specification.pdf"
-              download="FireBot_Hardware_and_Wiring_Specification.pdf"
-              className="px-4 py-2 rounded-lg bg-[#161F2E] hover:bg-[#1E293B] border border-white/10 text-white font-mono text-xs font-semibold transition-all flex items-center gap-2 shrink-0 self-start md:self-auto"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="7 10 12 15 17 10" />
-                <line x1="12" y1="15" x2="12" y2="3" />
-              </svg>
-              <span>Download 14-Page Manual (PDF)</span>
-            </a>
-          </div>
-
-          <div className="p-6 sm:p-8 rounded-2xl border border-white/10 bg-[#111622] space-y-6">
-            {/* Tab Buttons */}
-            <div className="flex flex-wrap gap-2 pb-4 border-b border-white/[0.08]">
-              {Object.keys(HW_TABS).map((tabKey) => (
-                <button
-                  key={tabKey}
-                  onClick={() => {
-                    playSound("tab");
-                    setActiveHwTab(tabKey);
-                  }}
-                  className={`px-3.5 py-1.5 rounded-lg text-xs font-mono font-semibold transition-all border ${
-                    activeHwTab === tabKey
-                      ? "bg-sky-500/15 border-sky-400/50 text-sky-400"
-                      : "bg-[#161F2E] border-white/[0.08] text-slate-400 hover:text-white"
-                  }`}
-                >
-                  {HW_TABS[tabKey].title}
-                </button>
-              ))}
-            </div>
-
-            {/* Active Tab Details */}
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <p className="text-xs text-slate-300 max-w-2xl font-sans">
-                  {HW_TABS[activeHwTab].desc}
-                </p>
-                <span className="px-2.5 py-1 rounded-md bg-[#161F2E] border border-white/10 text-[11px] font-mono text-slate-200 font-bold">
-                  {HW_TABS[activeHwTab].badge}
-                </span>
-              </div>
-
-              {/* Pinout Table */}
-              <div className="overflow-x-auto rounded-xl border border-white/[0.08]">
-                <table className="w-full text-left text-xs font-mono">
-                  <thead className="bg-[#161F2E] text-slate-400 text-[10px] uppercase tracking-wider border-b border-white/[0.08]">
-                    <tr>
-                      <th className="py-2.5 px-4 font-semibold">Component / Subsystem</th>
-                      <th className="py-2.5 px-4 font-semibold">Connected Pin / Bus</th>
-                      <th className="py-2.5 px-4 font-semibold">Electrical Notes &amp; Protection</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-white/[0.06] bg-[#0A0D14]/70">
-                    {HW_TABS[activeHwTab].items.map((row, idx) => (
-                      <tr key={idx} className="hover:bg-[#161F2E]/40 transition-colors">
-                        <td className="py-2.5 px-4 text-white font-medium">{row.name}</td>
-                        <td className="py-2.5 px-4 text-sky-400 font-bold">{row.pins}</td>
-                        <td className="py-2.5 px-4 text-slate-400">{row.note}</td>
+                <div className="rounded border border-white/[0.08] overflow-hidden text-xs">
+                  <table className="w-full text-left">
+                    <thead className="bg-slate-900 text-slate-400 text-[10px] uppercase font-bold border-b border-white/[0.08]">
+                      <tr>
+                        <th className="p-2.5">Component Terminal</th>
+                        <th className="p-2.5">Avionics Interconnect</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-white/[0.06] bg-[#0A0D14]">
+                      {activeSubsystem.pinout.map((row, idx) => (
+                        <tr key={idx} className="hover:bg-slate-900/40 transition-colors">
+                          <td className="p-2.5 font-bold text-sky-300">{row.pin}</td>
+                          <td className="p-2.5 text-slate-300">{row.target}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           </div>
         </section>
 
-        {/* READY TO LAUNCH FINAL CTA BANNER */}
-        <section className="max-w-7xl mx-auto px-6">
-          <div className="relative rounded-2xl overflow-hidden border border-white/10 bg-[#111622] p-8 md:p-12 text-center space-y-5">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-md bg-[#161F2E] border border-white/10 text-emerald-400 text-[11px] font-mono uppercase tracking-wider font-semibold">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-              OPERATIONAL READINESS: 100% NOMINAL
-            </div>
-            <h3 className="text-2xl md:text-4xl font-extrabold text-white font-display tracking-tight">
-              Ready To Deploy FireBot?
-            </h3>
-            <p className="text-xs sm:text-sm font-mono text-slate-400 max-w-xl mx-auto leading-relaxed">
-              Launch the live command console to monitor real-time thermal matrices, trigger high-pressure suppression, and review emergency sorties.
-            </p>
-            <div className="pt-2">
-              <button
-                onClick={() => handleLaunch("live")}
-                className="px-8 py-3.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-mono text-xs font-bold tracking-wider shadow-lg shadow-red-950/60 hover:shadow-red-700/50 transition-all inline-flex items-center gap-2.5 uppercase"
-              >
-                <span>ENTER TACTICAL COMMAND CENTRE</span>
-                <span>&rarr;</span>
-              </button>
-            </div>
+        {/* BOTTOM SORTIE SUMMARY & FOOTER */}
+        <footer className="pt-6 border-t border-white/[0.08] flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500">
+          <div className="flex items-center gap-3">
+            <span className="h-2 w-2 rounded-full bg-emerald-400" />
+            <span>FIREBOT PLATFORM CORE v2.5 // AUTONOMOUS SUPPRESSION VESSEL</span>
           </div>
-        </section>
+          <div>
+            Built with ESP32 RTOS, Raspberry Pi Linux, and FLIR Far-Infrared Imaging.
+          </div>
+        </footer>
       </main>
-
-      {/* Engineering Footer */}
-      <footer className="border-t border-white/[0.08] bg-[#0A0D14] py-8 px-6 text-xs font-mono text-slate-500">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2.5">
-            <span className="text-white font-bold font-display">FIREBOT</span>
-            <span>&bull;</span>
-            <span>Autonomous Emergency Response Robotics Platform</span>
-          </div>
-          <div className="flex items-center gap-6">
-            <a href="https://github.com/darayavahoush/firebot" target="_blank" rel="noreferrer" className="hover:text-white transition-colors">
-              GitHub Source
-            </a>
-            <a href="/FireBot_Hardware_and_Wiring_Specification.pdf" download="FireBot_Hardware_and_Wiring_Specification.pdf" className="hover:text-white transition-colors">
-              Hardware Spec PDF
-            </a>
-            <a href="https://firebot-api.onrender.com" target="_blank" rel="noreferrer" className="hover:text-white transition-colors">
-              Render API Link
-            </a>
-          </div>
-        </div>
-      </footer>
     </div>
   );
 }
