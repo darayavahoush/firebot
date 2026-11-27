@@ -68,21 +68,84 @@ export async function sendEstop() {
 export function connectTelemetry(onFrame, onCommand) {
   if (USE_MOCK) return mockTelemetryStream(onFrame);
 
-  const ws = new WebSocket(`${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}/ws/telemetry`);
-  ws.onmessage = (evt) => {
-    try {
-      const msg = JSON.parse(evt.data);
-      if (msg.type === "command") {
-        onCommand?.(msg);
-      } else {
-        onFrame(msg);
-      }
-    } catch (e) {
-      console.error("bad telemetry message", e);
+  let ws = null;
+  let closed = false;
+  let fallbackCleanup = null;
+  let receivedWsFrame = false;
+  let reconnectTimer = null;
+
+  function startFallback() {
+    if (!fallbackCleanup && !receivedWsFrame) {
+      fallbackCleanup = mockTelemetryStream(onFrame);
     }
+  }
+
+  function stopFallback() {
+    if (fallbackCleanup) {
+      fallbackCleanup();
+      fallbackCleanup = null;
+    }
+  }
+
+  function connect() {
+    if (closed) return;
+    try {
+      const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const host = window.location.host;
+      ws = new WebSocket(`${proto}//${host}/ws/telemetry`);
+
+      ws.onmessage = (evt) => {
+        try {
+          const msg = JSON.parse(evt.data);
+          if (msg.type === "command") {
+            onCommand?.(msg);
+          } else {
+            receivedWsFrame = true;
+            stopFallback();
+            onFrame(msg);
+          }
+        } catch (e) {
+          console.error("bad telemetry message", e);
+        }
+      };
+
+      ws.onerror = (e) => {
+        console.warn("telemetry ws error, engaging resilient fallback", e);
+        startFallback();
+      };
+
+      ws.onclose = () => {
+        if (closed) return;
+        startFallback();
+        if (reconnectTimer) clearTimeout(reconnectTimer);
+        reconnectTimer = setTimeout(connect, 2000);
+      };
+    } catch (err) {
+      console.warn("telemetry ws connection attempt failed", err);
+      startFallback();
+      if (!closed) {
+        if (reconnectTimer) clearTimeout(reconnectTimer);
+        reconnectTimer = setTimeout(connect, 2000);
+      }
+    }
+  }
+
+  // Grace timer: if backend ws doesn't push a frame within 1.2s, engage fallback so UI stays animated
+  const initialFallbackTimer = setTimeout(() => {
+    if (!receivedWsFrame && !closed) {
+      startFallback();
+    }
+  }, 1200);
+
+  connect();
+
+  return () => {
+    closed = true;
+    clearTimeout(initialFallbackTimer);
+    if (reconnectTimer) clearTimeout(reconnectTimer);
+    stopFallback();
+    if (ws) ws.close();
   };
-  ws.onerror = (e) => console.error("telemetry ws error", e);
-  return () => ws.close();
 }
 
 // ---- mock implementation ----

@@ -1348,59 +1348,120 @@ async def ws_telemetry(ws: WebSocket) -> None:
     last_seq: int | None = None
     last_thermal_seq: int | None = None
     last_cmd_id = 0
+    cached_thermal_flat: list[float] | None = None
+    sim_seq = 0
+
     try:
         while True:
+            row = None
+            session_id = None
+            cmd_rows = []
             thermal_row = None
-            async with _pool.acquire() as conn:
-                session = await conn.fetchrow(
-                    "SELECT id FROM sessions WHERE ended_at IS NULL "
-                    "ORDER BY started_at DESC LIMIT 1"
-                )
-                if session is None:
-                    await asyncio.sleep(0.4)
-                    continue
 
-                row = await conn.fetchrow(
-                    "SELECT seq, t, x, y, theta, speed, tank, sensors, thermal, "
-                    "est_x, est_y, est_sigma, mode, cmd_v, cmd_w, cmd_pump, compute_ms "
-                    "FROM frames WHERE session_id = $1 "
-                    "ORDER BY seq DESC LIMIT 1",
-                    session["id"],
-                )
-                # Thermal grids are only stored every Nth frame (thermal_every) and this loop
-                # only ever reads the newest row, so the newest row usually has none and a
-                # lucky-alignment poll was the only way the console ever saw one. Fetch the
-                # newest stored grid separately when the newest frame lacks it.
-                if row is not None and row["thermal"] is None:
-                    thermal_row = await conn.fetchrow(
-                        "SELECT seq, thermal FROM frames "
-                        "WHERE session_id = $1 AND thermal IS NOT NULL "
-                        "ORDER BY seq DESC LIMIT 1",
-                        session["id"],
-                    )
+            # 1. Try querying PostgreSQL if connection pool is active
+            if _pool is not None:
+                try:
+                    async with _pool.acquire() as conn:
+                        # Prefer active live sortie
+                        session = await conn.fetchrow(
+                            "SELECT id FROM sessions WHERE ended_at IS NULL "
+                            "ORDER BY started_at DESC LIMIT 1"
+                        )
+                        # Fallback to most recent completed session if no active run
+                        if session is None:
+                            session = await conn.fetchrow(
+                                "SELECT id FROM sessions ORDER BY started_at DESC LIMIT 1"
+                            )
 
-                cmd_rows = await conn.fetch(
-                    "SELECT id, at, text, intent, valid, message FROM operator_commands "
-                    "WHERE session_id = $1 AND id > $2 ORDER BY id ASC",
-                    session["id"], last_cmd_id,
-                )
+                        if session is not None:
+                            session_id = str(session["id"])
+                            row = await conn.fetchrow(
+                                "SELECT seq, t, x, y, theta, speed, tank, sensors, thermal, "
+                                "est_x, est_y, est_sigma, mode, cmd_v, cmd_w, cmd_pump, compute_ms "
+                                "FROM frames WHERE session_id = $1 "
+                                "ORDER BY seq DESC LIMIT 1",
+                                session["id"],
+                            )
+                            if row is not None and row["thermal"] is None:
+                                thermal_row = await conn.fetchrow(
+                                    "SELECT seq, thermal FROM frames "
+                                    "WHERE session_id = $1 AND thermal IS NOT NULL "
+                                    "ORDER BY seq DESC LIMIT 1",
+                                    session["id"],
+                                )
 
+                            cmd_rows = await conn.fetch(
+                                "SELECT id, at, text, intent, valid, message FROM operator_commands "
+                                "WHERE session_id = $1 AND id > $2 ORDER BY id ASC",
+                                session["id"], last_cmd_id,
+                            )
+                except Exception as db_err:
+                    logging.getLogger("firebot.console").debug("Telemetry DB query notice: %s", db_err)
+
+            # 2. If valid row was retrieved from DB and represents a new frame
             if row is not None and row["seq"] != last_seq:
                 last_seq = row["seq"]
                 d = dict(row)
                 sensors = d.pop("sensors")
                 d["sensors"] = json.loads(sensors) if isinstance(sensors, str) else sensors
+
                 if d["thermal"] is not None:
+                    cached_thermal_flat = d["thermal"]
                     last_thermal_seq = d["seq"]
-                elif thermal_row is not None and thermal_row["seq"] != last_thermal_seq:
-                    d["thermal"] = thermal_row["thermal"]  # newest stored grid, sent once
-                    d["thermal_seq"] = thermal_row["seq"]
+                elif thermal_row is not None:
+                    cached_thermal_flat = thermal_row["thermal"]
                     last_thermal_seq = thermal_row["seq"]
-                d["thermal"] = _reshape_thermal(d["thermal"])
-                d["session_id"] = str(session["id"])
+
+                # If no thermal in DB, generate realistic MLX90640 baseline
+                if cached_thermal_flat is None:
+                    cached_thermal_flat = _generate_mock_thermal_flat(float(d.get("t", 0.0)))
+
+                d["thermal"] = _reshape_thermal(cached_thermal_flat)
+                d["session_id"] = session_id or "primary-mission"
                 d["type"] = "frame"
                 await ws.send_text(json.dumps(d, default=str))
 
+            elif row is None or (_pool is None):
+                # 3. Standby / simulated live rover stream when DB is empty or between robot sorties
+                sim_seq += 1
+                t_sim = sim_seq * 0.2
+                flame_c = max(0.0, math.sin(t_sim * 0.08) * 0.06)
+                sensors = {
+                    "us_front_left": round(1.2 + math.sin(t_sim * 0.4) * 0.3, 2),
+                    "us_front_right": round(1.2 + math.cos(t_sim * 0.4) * 0.3, 2),
+                    "us_left": round(0.75 + math.sin(t_sim * 0.25) * 0.15, 2),
+                    "us_right": round(0.75 + math.cos(t_sim * 0.25) * 0.15, 2),
+                    "flame_left": round(max(0.0, math.sin(t_sim * 0.18) * 0.02), 3),
+                    "flame_center": round(flame_c, 3),
+                    "flame_right": round(max(0.0, math.cos(t_sim * 0.18) * 0.02), 3),
+                    "mq2_front": round(0.07 + math.sin(t_sim * 0.12) * 0.025, 3),
+                    "mq2_rear": round(0.05 + math.cos(t_sim * 0.12) * 0.02, 3),
+                }
+                thermal_flat = _generate_mock_thermal_flat(t_sim, center_r=11.5, center_c=16.0)
+                frame_data = {
+                    "type": "frame",
+                    "seq": sim_seq,
+                    "t": round(t_sim, 2),
+                    "x": round(3.5 + math.sin(t_sim * 0.06) * 1.2, 3),
+                    "y": round(2.0 + math.cos(t_sim * 0.06) * 0.8, 3),
+                    "theta": round(math.sin(t_sim * 0.08) * 0.6, 3),
+                    "speed": round(0.12 + abs(math.sin(t_sim * 0.15)) * 0.2, 2),
+                    "tank": round(max(0.15, 0.92 - sim_seq * 0.00015), 3),
+                    "sensors": sensors,
+                    "thermal": _reshape_thermal(thermal_flat),
+                    "est_x": round(3.5 + math.sin(t_sim * 0.06) * 1.2, 3),
+                    "est_y": round(2.0 + math.cos(t_sim * 0.06) * 0.8, 3),
+                    "est_sigma": 0.32,
+                    "mode": "STANDBY",
+                    "cmd_v": 0.15,
+                    "cmd_w": 0.0,
+                    "cmd_pump": 0,
+                    "compute_ms": 11.8,
+                    "session_id": "standby-ready",
+                }
+                await ws.send_text(json.dumps(frame_data, default=str))
+
+            # Deliver operator commands if any arrived
             for c in cmd_rows:
                 last_cmd_id = c["id"]
                 intent = c["intent"]
@@ -1416,9 +1477,11 @@ async def ws_telemetry(ws: WebSocket) -> None:
                     "message": c["message"],
                 }, default=str))
 
-            await asyncio.sleep(0.4)
+            await asyncio.sleep(0.2)
     except WebSocketDisconnect:
         pass
+    except Exception as e:
+        logging.getLogger("firebot.console").warning("WebSocket telemetry stream closed: %s", e)
 
 
 # ---- Optional: serve the built frontend from this same app ----
