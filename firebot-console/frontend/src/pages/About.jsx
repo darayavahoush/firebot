@@ -482,11 +482,11 @@ export default function About({ onNavigate }) {
             <div className="flex items-center gap-2">
               <span className="h-2 w-2 rounded-full bg-ok" />
               <span className="text-xs font-semibold text-ink">
-                Interactive architecture sandbox & pipelines
+                Interactive architecture sandbox &amp; pipelines
               </span>
             </div>
             {/* Visual Tabs Selector */}
-            <div className="flex items-center gap-1 bg-panel p-1 rounded-xl border border-line text-xs">
+            <div className="flex items-center gap-1 bg-panel p-1 rounded-lg border border-line text-xs">
               {[
                 { id: "pipeline", label: "1. System flowchart" },
                 { id: "eif", label: "2. EIF triangulation" },
@@ -496,9 +496,9 @@ export default function About({ onNavigate }) {
                 <button
                   key={t.id}
                   onClick={() => { playSound("tab"); setActiveTab(t.id); }}
-                  className={`px-3 py-1.5 rounded-lg transition-colors font-medium ${
+                  className={`px-3 py-1.5 rounded transition-colors font-medium ${
                     activeTab === t.id
-                      ? "bg-telemetry text-white shadow-sm"
+                      ? "bg-telemetry text-onaccent font-semibold"
                       : "text-muted hover:text-ink"
                   }`}
                 >
@@ -510,12 +510,13 @@ export default function About({ onNavigate }) {
 
           {/* TAB 1: 4-STAGE PIPELINE FLOWCHART */}
           {activeTab === "pipeline" && (
-            <div className="panel p-6 space-y-6">
-              <div className="text-center max-w-xl mx-auto space-y-1">
-                <h3 className="font-display font-semibold text-lg text-ink">
-                  End-to-end robotics autonomous pipeline
-                </h3>
-                <p className="text-xs text-muted">
+            <Panel
+              title="End-to-end robotics autonomous pipeline"
+              eyebrow="System flowchart"
+              bodyClassName="p-6 space-y-6"
+            >
+              <div className="text-left max-w-2xl space-y-1">
+                <p className="text-xs text-muted leading-relaxed">
                   How real-time sensory inputs transform through Bayesian estimation and cognitive SLM parsing into physical actuation.
                 </p>
               </div>
@@ -523,7 +524,7 @@ export default function About({ onNavigate }) {
               {/* 4 Interactive Flow Nodes */}
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4 relative">
                 {/* Stage 1: Sensing */}
-                <div className="p-4 rounded-xl bg-panel2/60 border border-line space-y-3 relative group hover:border-telemetry transition-colors">
+                <div className="p-4 rounded bg-panel2/60 border border-line space-y-3 relative group hover:border-telemetry transition-colors">
                   <div className="flex items-center justify-between">
                     <Badge tone="info">Stage 01</Badge>
                     <span className="text-base">🛰️</span>
@@ -541,12 +542,12 @@ export default function About({ onNavigate }) {
                 </div>
 
                 {/* Stage 2: Estimation */}
-                <div className="p-4 rounded-xl bg-panel2/60 border border-line space-y-3 relative group hover:border-warn transition-colors">
+                <div className="p-4 rounded bg-panel2/60 border border-line space-y-3 relative group hover:border-warn transition-colors">
                   <div className="flex items-center justify-between">
                     <Badge tone="warn">Stage 02</Badge>
                     <span className="text-base">📡</span>
                   </div>
-                  <h4 className="font-semibold text-sm text-ink">Belief & SLAM</h4>
+                  <h4 className="font-semibold text-sm text-ink">Belief &amp; SLAM</h4>
                   <ul className="text-[12px] text-muted space-y-1">
                     <li>• Bearing-only EIF Filter</li>
                     <li>• 2σ Covariance Ellipse (x̂, ŷ)</li>
@@ -559,12 +560,12 @@ export default function About({ onNavigate }) {
                 </div>
 
                 {/* Stage 3: Cognitive AI */}
-                <div className="p-4 rounded-xl bg-panel2/60 border border-line space-y-3 relative group hover:border-ok transition-colors">
+                <div className="p-4 rounded bg-panel2/60 border border-line space-y-3 relative group hover:border-ok transition-colors">
                   <div className="flex items-center justify-between">
                     <Badge tone="ok">Stage 03</Badge>
                     <span className="text-base">🧠</span>
                   </div>
-                  <h4 className="font-semibold text-sm text-ink">AI intent & policy</h4>
+                  <h4 className="font-semibold text-sm text-ink">AI intent &amp; policy</h4>
                   <ul className="text-[12px] text-muted space-y-1">
                     <li>• Groq Hosted SLM (Allam/Qwen)</li>
                     <li>• ECAPA-TDNN Speaker ID</li>
@@ -577,12 +578,12 @@ export default function About({ onNavigate }) {
                 </div>
 
                 {/* Stage 4: Motion */}
-                <div className="p-4 rounded-xl bg-panel2/60 border border-line space-y-3 relative group hover:border-flame transition-colors">
+                <div className="p-4 rounded bg-panel2/60 border border-line space-y-3 relative group hover:border-flame transition-colors">
                   <div className="flex items-center justify-between">
                     <Badge tone="flame">Stage 04</Badge>
                     <span className="text-base">🚀</span>
                   </div>
-                  <h4 className="font-semibold text-sm text-ink">Actuation & water</h4>
+                  <h4 className="font-semibold text-sm text-ink">Actuation &amp; water</h4>
                   <ul className="text-[12px] text-muted space-y-1">
                     <li>• Informed RRT* Motion Paths</li>
                     <li>• Pure Pursuit Steering</li>
@@ -597,32 +598,31 @@ export default function About({ onNavigate }) {
 
               {/* Direct Jump Button */}
               <div className="flex items-center justify-end gap-3 pt-2">
-                <Button
-                  variant="primary"
+                <button
+                  type="button"
                   onClick={() => onNavigate?.("sim")}
-                  className="text-[12px] !py-2 !px-4"
+                  className="btn-primary"
                 >
-                  <span>Launch 2D Simulator to test pipeline</span>
+                  <span>Launch 2D simulator to test pipeline</span>
                   <span>→</span>
-                </Button>
+                </button>
               </div>
-            </div>
+            </Panel>
           )}
 
           {/* TAB 2: INTERACTIVE EIF TRIANGULATION DEMO */}
           {activeTab === "eif" && (
-            <div className="panel p-6 space-y-5">
+            <Panel
+              title="Bearing-only Extended Information Filter (EIF)"
+              eyebrow="Sensor triangulation"
+              bodyClassName="p-6 space-y-5"
+            >
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div>
-                  <h3 className="font-display font-semibold text-base text-ink">
-                    Bearing-only Extended Information Filter (EIF)
-                  </h3>
-                  <p className="text-xs text-muted">
-                    Watch the 2-sigma uncertainty ellipse shrink as multiple bearing observations are fused.
-                  </p>
-                </div>
+                <p className="text-xs text-muted max-w-xl">
+                  Watch the 2-sigma uncertainty ellipse shrink as multiple bearing observations are fused over the rover trajectory.
+                </p>
                 {/* Slider Control */}
-                <div className="flex items-center gap-3 bg-panel2 px-3 py-2 rounded-xl border border-line">
+                <div className="flex items-center gap-3 bg-panel2 px-3 py-1.5 rounded border border-line">
                   <span className="text-xs text-muted">Sightings:</span>
                   <input
                     type="range"
@@ -632,36 +632,35 @@ export default function About({ onNavigate }) {
                     onChange={(e) => setEifReadings(Number(e.target.value))}
                     className="accent-telemetry cursor-pointer w-28"
                   />
-                  <span className="text-xs font-semibold text-telemetry">{eifReadings} views</span>
+                  <span className="text-xs font-semibold text-telemetry data">{eifReadings} views</span>
                 </div>
               </div>
 
               {/* Canvas Viewport */}
-              <div className="relative rounded-xl overflow-hidden border border-line bg-panel2">
+              <div className="relative rounded overflow-hidden border border-line bg-scope">
                 <canvas ref={eifCanvasRef} width={640} height={320} className="w-full h-72 block" />
               </div>
 
               {/* Explanation Footnote */}
-              <div className="p-3.5 rounded-xl bg-panel2 border border-line text-xs text-muted space-y-1">
+              <div className="p-3.5 rounded bg-panel2 border border-line text-xs text-muted space-y-1">
                 <span className="font-semibold text-ink">How it works mathematically:</span>
                 <p>
                   Photodiodes measure fire azimuth but cannot detect depth. FireBot maintains an information matrix <code className="text-telemetry font-mono">Y = P⁻¹</code> and vector <code className="text-telemetry font-mono">y = P⁻¹x̂</code>. As the robot traverses its trajectory, each bearing observation adds a rank-1 outer product <code className="text-telemetry font-mono">Hᵢᵀ R⁻¹ Hᵢ</code>. Collinear uncertainty collapses rapidly into a tight spatial lock without expensive lidar depth hardware.
                 </p>
               </div>
-            </div>
+            </Panel>
           )}
 
           {/* TAB 3: GROQ SLM INTENT SANDBOX */}
           {activeTab === "slm" && (
-            <div className="panel p-6 space-y-5">
-              <div>
-                <h3 className="font-display font-semibold text-base text-ink">
-                  Groq hosted SLM intent engine sandbox
-                </h3>
-                <p className="text-xs text-muted">
-                  Click any tactical phrase to test the sub-185ms JSON translation and schema enforcement.
-                </p>
-              </div>
+            <Panel
+              title="Groq hosted SLM intent engine sandbox"
+              eyebrow="Natural language reasoning"
+              bodyClassName="p-6 space-y-5"
+            >
+              <p className="text-xs text-muted">
+                Click any tactical phrase to test the sub-185ms JSON translation and schema enforcement.
+              </p>
 
               {/* Sample Commands Grid */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
@@ -669,29 +668,29 @@ export default function About({ onNavigate }) {
                   <button
                     key={cmd.intent}
                     onClick={() => { playSound("click"); setActiveSampleCmd(cmd); }}
-                    className={`p-3 rounded-xl border text-left transition-all flex flex-col justify-between gap-1.5 ${
+                    className={`p-3 rounded border text-left transition-colors flex flex-col justify-between gap-1.5 ${
                       activeSampleCmd.intent === cmd.intent
-                        ? "bg-panel2 border-telemetry shadow-sm"
+                        ? "bg-panel2 border-telemetry"
                         : "bg-panel2/50 border-line hover:border-line2"
                     }`}
                   >
                     <span className="text-xs text-ink font-medium">"{cmd.text}"</span>
-                    <div className="flex items-center justify-between text-[11px] font-mono text-muted">
+                    <div className="flex items-center justify-between text-[11px] text-muted">
                       <span className="text-telemetry font-medium">Intent: {cmd.intent}</span>
-                      <span>⚡ {cmd.latency}</span>
+                      <span className="data">⚡ {cmd.latency}</span>
                     </div>
                   </button>
                 ))}
               </div>
 
               {/* Live Parsed Output View */}
-              <div className="p-4 rounded-xl bg-panel2 border border-line space-y-2">
+              <div className="p-4 rounded bg-panel2 border border-line space-y-2">
                 <div className="flex items-center justify-between text-[11px] text-muted pb-2 border-b border-line">
                   <span className="font-semibold text-ink flex items-center gap-1.5">
                     <span className="h-1.5 w-1.5 rounded-full bg-ok" />
                     Structured robotics JSON payload
                   </span>
-                  <span className="text-telemetry font-medium">Latency: {activeSampleCmd.latency}</span>
+                  <span className="text-telemetry font-medium data">Latency: {activeSampleCmd.latency}</span>
                 </div>
                 <pre className="text-xs text-ok font-mono overflow-x-auto p-2">
                   {JSON.stringify(activeSampleCmd.json, null, 2)}
@@ -700,34 +699,33 @@ export default function About({ onNavigate }) {
 
               {/* Direct Link to Voice Calibration Studio */}
               <div className="flex items-center justify-end gap-3">
-                <Button
-                  variant="primary"
+                <button
+                  type="button"
                   onClick={() => onNavigate?.("voice")}
-                  className="text-[12px] !py-2 !px-4"
+                  className="btn-primary"
                 >
-                  <span>Open Voice Studio to calibrate operator model</span>
+                  <span>Open voice studio to calibrate operator model</span>
                   <span>→</span>
-                </Button>
+                </button>
               </div>
-            </div>
+            </Panel>
           )}
 
           {/* TAB 4: DUAL-COMPUTE HARDWARE BUS SCHEMATIC */}
           {activeTab === "hardware" && (
-            <div className="panel p-6 space-y-5">
-              <div>
-                <h3 className="font-display font-semibold text-base text-ink">
-                  Decoupled dual-compute hardware architecture
-                </h3>
-                <p className="text-xs text-muted">
-                  Physical isolation between hard real-time actuators (ESP32) and high-level perception (Raspberry Pi 5).
-                </p>
-              </div>
+            <Panel
+              title="Decoupled dual-compute hardware architecture"
+              eyebrow="Compute topology"
+              bodyClassName="p-6 space-y-5"
+            >
+              <p className="text-xs text-muted">
+                Physical isolation between hard real-time actuators (ESP32) and high-level perception (Raspberry Pi 5).
+              </p>
 
               {/* Visual Hardware Topology Diagram */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* Raspberry Pi 5 Node */}
-                <div className="p-5 rounded-xl bg-panel2 border border-line space-y-3">
+                <div className="p-5 rounded bg-panel2 border border-line space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="font-semibold text-sm text-ink">Raspberry Pi 5 (8GB)</span>
                     <Badge tone="info">High-level</Badge>
@@ -744,7 +742,7 @@ export default function About({ onNavigate }) {
                 </div>
 
                 {/* ESP32 Real-Time Node */}
-                <div className="p-5 rounded-xl bg-panel2 border border-line space-y-3">
+                <div className="p-5 rounded bg-panel2 border border-line space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="font-semibold text-sm text-ink">ESP32 DevKit V1 (Dual-Core)</span>
                     <Badge tone="ok">Real-time MCU</Badge>
@@ -762,9 +760,9 @@ export default function About({ onNavigate }) {
               </div>
 
               {/* Interconnect & Safety Bus */}
-              <div className="p-4 rounded-xl bg-panel2 border border-line flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+              <div className="p-4 rounded bg-panel2 border border-line flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
                 <div className="flex items-center gap-2">
-                  <span className="h-2 w-2 rounded-full bg-telemetry animate-pulse" />
+                  <span className="h-1.5 w-1.5 rounded-full bg-telemetry animate-pulse" />
                   <span className="text-ink font-semibold">Inter-MCU bus:</span>
                   <span className="text-muted">UART 115,200 baud (/dev/ttyUSB0) with newline-delimited JSON framing</span>
                 </div>
@@ -777,7 +775,7 @@ export default function About({ onNavigate }) {
                   <span>↓</span>
                 </a>
               </div>
-            </div>
+            </Panel>
           )}
         </section>
 
@@ -790,9 +788,9 @@ export default function About({ onNavigate }) {
                 <button
                   key={cat.id}
                   onClick={() => { playSound("click"); setActiveCategory(cat.id); }}
-                  className={`px-3 py-1.5 rounded-xl whitespace-nowrap transition-colors font-medium border ${
+                  className={`px-3 py-1.5 rounded whitespace-nowrap transition-colors font-medium border ${
                     activeCategory === cat.id
-                      ? "bg-telemetry text-white border-telemetry shadow-sm"
+                      ? "bg-telemetry text-onaccent border-telemetry"
                       : "bg-panel border-line text-muted hover:text-ink hover:border-line2"
                   }`}
                 >
@@ -835,17 +833,17 @@ export default function About({ onNavigate }) {
                 {/* Subsystem Header */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-4 border-b border-line">
                   <div className="flex items-center gap-3">
-                    <span className="text-2xl p-2 rounded-xl bg-panel2 border border-line">{g.icon}</span>
+                    <span className="text-2xl p-2 rounded bg-panel2 border border-line">{g.icon}</span>
                     <div>
                       <div className="flex items-center gap-2">
                         <Badge tone="info">{g.badge}</Badge>
                       </div>
-                      <h2 className="font-display font-semibold text-lg sm:text-xl text-ink tracking-tight mt-1">
+                      <h2 className="display text-lg sm:text-xl text-ink font-semibold tracking-tight mt-1">
                         {g.title}
                       </h2>
                     </div>
                   </div>
-                  <span className="text-[11px] font-mono px-2.5 py-1 rounded-lg bg-panel2 text-muted border border-line self-start sm:self-auto">
+                  <span className="data text-[11px] px-2.5 py-1 rounded bg-panel2 text-muted border border-line self-start sm:self-auto">
                     {g.items.length} production modules
                   </span>
                 </div>
@@ -859,10 +857,10 @@ export default function About({ onNavigate }) {
                   {g.items.map((it) => (
                     <div key={it.name} className="py-5 first:pt-0 last:pb-0 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)]">
                       <div>
-                        <h3 className="font-display font-semibold text-sm sm:text-base text-ink">
+                        <h3 className="display text-sm sm:text-base text-ink font-semibold">
                           {it.name}
                         </h3>
-                        <code className="data inline-block mt-2 px-2.5 py-1 rounded-md bg-panel2 text-[11px] font-mono text-telemetry border border-line">
+                        <code className="data inline-block mt-2 px-2.5 py-1 rounded bg-panel2 text-[11px] text-telemetry border border-line">
                           {it.where}
                         </code>
                         <p className="mt-2.5 text-xs text-muted leading-relaxed font-sans">

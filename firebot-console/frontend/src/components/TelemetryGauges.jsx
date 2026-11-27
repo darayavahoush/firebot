@@ -55,7 +55,7 @@ function Metric({ label, value, unit, bar, alarm }) {
       <div className="text-[11px] text-muted mb-1.5">{label}</div>
       <div className="flex items-baseline gap-1">
         <span
-          className={`data text-[22px] leading-none ${
+          className={`readout text-[22px] ${
             alarm ? "text-warn" : "text-ink"
           }`}
         >
@@ -64,7 +64,7 @@ function Metric({ label, value, unit, bar, alarm }) {
         <span className="text-[11px] text-faint">{unit}</span>
       </div>
       {typeof bar === "number" && (
-        <div className="mt-2 h-[3px] bg-line w-full">
+        <div className="mt-2 h-[3px] bg-line w-full rounded overflow-hidden">
           <div
             className={`h-full ${bar < 25 ? "bg-warn" : "bg-telemetry"}`}
             style={{ width: `${bar}%` }}
@@ -78,7 +78,7 @@ function Metric({ label, value, unit, bar, alarm }) {
 export function PanelHeader({ label, right }) {
   return (
     <div className="flex items-center justify-between px-4 py-2.5">
-      <span className="text-[11px] tracking-wide text-muted">{label}</span>
+      <span className="panel-eyebrow">{label}</span>
       {right}
     </div>
   );
@@ -87,7 +87,7 @@ export function PanelHeader({ label, right }) {
 function PanelSkeleton() {
   return (
     <div className="panel h-[186px] flex items-center justify-center">
-      <span className="text-[12px] text-faint font-mono">connecting…</span>
+      <span className="text-[12px] text-faint">Connecting…</span>
     </div>
   );
 }

@@ -99,13 +99,13 @@ export default function RunHistoryTable({ runs, selectedId, onSelect }) {
 function ResultBadge({ pumped }) {
   return (
     <span
-      className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] border ${
+      className={`inline-block px-2 py-0.5 rounded text-[11px] font-medium border ${
         pumped
-          ? "border-ok/40 text-ok"
-          : "border-line text-faint"
+          ? "border-ok/30 text-ok bg-ok/10"
+          : "border-line text-muted bg-panel2"
       }`}
     >
-      {pumped ? "PUMPED" : "NO PUMP"}
+      {pumped ? "Pumped" : "No pump"}
     </span>
   );
 }

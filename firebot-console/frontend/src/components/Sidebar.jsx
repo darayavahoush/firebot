@@ -106,8 +106,8 @@ export default function Sidebar({
         {/* Brand */}
         <div className="h-16 px-4 flex items-center justify-between gap-2 border-b border-line">
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className="h-8 w-8 rounded-lg bg-flame flex items-center justify-center shrink-0">
-              <svg width="17" height="17" viewBox="0 0 24 24" fill="#fff">
+            <div className="h-8 w-8 rounded-lg bg-flame flex items-center justify-center shrink-0 text-white">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M12 2c.6 3.2 2.7 4.6 4.2 6.5C17.6 10.2 18 11.6 18 13a6 6 0 1 1-12 0c0-1.7.7-3 1.6-4 .3 1.2 1 2 2 2.3-.4-3 .2-6 2.4-9.3Z" />
               </svg>
             </div>

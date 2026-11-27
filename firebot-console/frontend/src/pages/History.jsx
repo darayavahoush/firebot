@@ -180,9 +180,9 @@ export default function History() {
                   key={k}
                   type="button"
                   onClick={() => { playSound("click"); setFilter(k); }}
-                  className={`flex-1 py-1 text-[11.5px] rounded-md transition-colors ${
+                  className={`flex-1 py-1 text-[11.5px] rounded transition-colors ${
                     filter === k
-                      ? "bg-panel text-ink font-semibold shadow-sm"
+                      ? "bg-panel text-ink font-semibold"
                       : "text-muted hover:text-ink"
                   }`}
                 >
@@ -197,7 +197,7 @@ export default function History() {
                   key={k}
                   type="button"
                   onClick={() => { playSound("click"); setSort(k); }}
-                  className={`flex-1 py-1 text-[11px] rounded-md transition-colors ${
+                  className={`flex-1 py-1 text-[11px] rounded transition-colors ${
                     sort === k
                       ? "bg-panel2 text-ink font-semibold"
                       : "text-muted hover:text-ink"
@@ -253,9 +253,9 @@ export default function History() {
                   </div>
 
                   {/* Duration Heatbar */}
-                  <div className="mt-2.5 h-1 rounded-full bg-panel2 overflow-hidden border border-line">
+                  <div className="mt-2.5 h-1 rounded bg-panel2 overflow-hidden border border-line">
                     <div
-                      className="heatbar h-full rounded-full transition-all duration-300"
+                      className="heatbar h-full rounded transition-all duration-300"
                       style={{
                         width: `${Math.max(6, (r.duration_s / maxDur) * 100)}%`,
                         "--full": `${(maxDur / r.duration_s) * 100}%`,
@@ -278,44 +278,41 @@ export default function History() {
           {run ? (
             <div className="space-y-5">
               {/* Run Header Banner */}
-              <div className="panel p-5">
-                <div className="flex items-center justify-between flex-wrap gap-2 pb-3 mb-3 border-b border-line">
-                  <div className="flex items-center gap-2">
-                    <span className="h-2 w-2 rounded-full bg-ok" />
-                    <h2 className="text-[17px] font-semibold text-ink">
-                      Sortie on {run.robot}
-                    </h2>
-                  </div>
-                  <div className="data text-[11px] text-faint bg-panel2 px-2.5 py-1 rounded-md border border-line">
+              <Panel
+                title={`Sortie on ${run.robot}`}
+                state={run.pumped ? "hot" : "ok"}
+                actions={
+                  <div className="data text-[11px] text-faint bg-panel2 px-2.5 py-1 rounded border border-line">
                     Session #{run.id}
                   </div>
-                </div>
-
+                }
+                bodyClassName="p-5"
+              >
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-[12px]">
-                  <div className="p-2.5 rounded-lg bg-panel2/60 border border-line">
-                    <span className="text-faint text-[10.5px] uppercase block">Start time</span>
+                  <div className="p-2.5 rounded bg-panel2/60 border border-line">
+                    <span className="panel-eyebrow text-faint block">Start time</span>
                     <span className="data text-ink font-semibold">
                       {new Date(run.started_at).toLocaleTimeString()}
                     </span>
                   </div>
-                  <div className="p-2.5 rounded-lg bg-panel2/60 border border-line">
-                    <span className="text-faint text-[10.5px] uppercase block">Duration</span>
+                  <div className="p-2.5 rounded bg-panel2/60 border border-line">
+                    <span className="panel-eyebrow text-faint block">Duration</span>
                     <span className="data text-ink font-semibold">{dur(run.duration_s)}</span>
                   </div>
-                  <div className="p-2.5 rounded-lg bg-panel2/60 border border-line">
-                    <span className="text-faint text-[10.5px] uppercase block">Final tank</span>
+                  <div className="p-2.5 rounded bg-panel2/60 border border-line">
+                    <span className="panel-eyebrow text-faint block">Final tank</span>
                     <span className="data text-telemetry font-semibold">
                       {run.min_tank != null ? `${(run.min_tank * 100).toFixed(0)}%` : "Unknown"}
                     </span>
                   </div>
-                  <div className="p-2.5 rounded-lg bg-panel2/60 border border-line">
-                    <span className="text-faint text-[10.5px] uppercase block">Water delivery</span>
+                  <div className="p-2.5 rounded bg-panel2/60 border border-line">
+                    <span className="panel-eyebrow text-faint block">Water delivery</span>
                     <span className={`data font-semibold ${run.pumped ? "text-ok" : "text-muted"}`}>
                       {run.pumped ? "Dispensed (fire out)" : "None"}
                     </span>
                   </div>
                 </div>
-              </div>
+              </Panel>
 
               {detail ? (
                 <div className="space-y-5">

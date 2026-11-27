@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import MujocoScene from "../components/mujoco/MujocoScene.js";
 import { playSound } from "../lib/sound.js";
-import { PageHeader, Button, Badge } from "../components/ui";
+import { PageHeader, Button, Badge, Panel } from "../components/ui";
 
 const CONTROLLERS = [
   {
@@ -243,34 +243,25 @@ export default function MuJoCo() {
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px] items-start">
         {/* 3D Viewport Station */}
-        <div className="panel flex flex-col min-h-[560px] h-[calc(100vh-160px)] relative overflow-hidden">
-          {/* Viewport Top Bar */}
-          <div className="px-4 py-3 bg-panel2/70 border-b border-line flex items-center justify-between z-10 gap-2 flex-wrap">
-            <div className="flex items-center gap-2.5">
-              <span className="h-2 w-2 rounded-full bg-telemetry animate-pulse" />
-              <span className="font-display font-semibold text-[14px] text-ink">
-                MuJoCo 3D rigid-body physics
-              </span>
-              <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-panel border border-line text-faint">
-                Multimodal sensors • 60Hz
-              </span>
-            </div>
-
-            {/* Quick HUD Camera Controls */}
-            <div className="flex items-center gap-1 bg-panel/90 backdrop-blur p-1 rounded-xl border border-line flex-wrap">
+        <Panel
+          title="MuJoCo 3D rigid-body physics"
+          state={phase === "running" ? (hud?.fire_p > 0 ? "hot" : "live") : undefined}
+          className="flex flex-col min-h-[560px] h-[calc(100vh-160px)] relative overflow-hidden"
+          actions={
+            <div className="flex items-center gap-1 bg-panel2 p-0.5 rounded-lg border border-line">
               {[
                 { id: "orbit", label: "Orbit 3D" },
-                { id: "top", label: "Top-Down" },
-                { id: "follow", label: "Chase Cam" },
-                { id: "fpv", label: "FPV Mast" },
-                { id: "turret", label: "Turret Cam" },
+                { id: "top", label: "Top-down" },
+                { id: "follow", label: "Chase cam" },
+                { id: "fpv", label: "FPV mast" },
+                { id: "turret", label: "Turret cam" },
               ].map((c) => (
                 <button
                   key={c.id}
                   onClick={() => { playSound("click"); setCamMode(c.id); }}
-                  className={`px-2.5 py-1 text-[11px] font-mono rounded-lg transition-all cursor-pointer ${
+                  className={`px-2 py-1 text-[11px] rounded transition-colors ${
                     camMode === c.id
-                      ? "bg-telemetry text-white font-medium"
+                      ? "bg-telemetry text-onaccent font-medium"
                       : "text-muted hover:text-ink"
                   }`}
                 >
@@ -278,24 +269,24 @@ export default function MuJoCo() {
                 </button>
               ))}
             </div>
-          </div>
-
+          }
+        >
           {/* 3D Canvas Host Container */}
-          <div className="relative flex-1 min-h-[480px] bg-[#0A0D14]">
+          <div className="relative flex-1 min-h-[480px] bg-scope">
             <div ref={hostRef} className="absolute inset-0 w-full h-full" />
 
             {/* Idle Prompt */}
             {phase === "idle" && !unavailable && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center text-muted gap-3 bg-base/50 backdrop-blur-sm pointer-events-none">
-                <div className="h-12 w-12 rounded-2xl bg-panel2 border border-line flex items-center justify-center text-telemetry shadow-sm">
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <div className="absolute inset-0 flex flex-col items-start justify-center text-muted gap-2 bg-base/60 backdrop-blur-sm p-8 pointer-events-none">
+                <div className="h-10 w-10 rounded-lg bg-panel border border-line flex items-center justify-center text-telemetry">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <polygon points="5 3 19 12 5 21 5 3" />
                   </svg>
                 </div>
-                <p className="text-[13px] font-mono text-ink">
+                <p className="text-[13px] text-ink font-medium">
                   Configure parameters and press <b className="text-telemetry font-semibold">Start simulation</b>
                 </p>
-                <p className="text-[12px] font-mono text-faint">
+                <p className="text-[12px] text-muted">
                   Use mouse/trackpad to orbit, right-click to pan, scroll to zoom.
                 </p>
               </div>
@@ -303,10 +294,10 @@ export default function MuJoCo() {
 
             {/* Unavailable / Error Message */}
             {(unavailable || phase === "error") && (
-              <div className="absolute inset-x-6 top-6 rounded-2xl border border-warn/40 bg-panel/95 backdrop-blur-md p-5 text-[13px] text-warn shadow-lg flex items-start gap-3">
-                <span className="text-[20px] leading-none">⚠</span>
+              <div className="absolute inset-x-6 top-6 rounded-lg border border-warn/40 bg-panel p-4 text-[13px] text-warn flex items-start gap-3">
+                <span className="text-[18px] leading-none">⚠</span>
                 <div className="space-y-1">
-                  <div className="font-semibold text-[11px] font-mono">
+                  <div className="font-semibold text-[11px] uppercase tracking-wide">
                     Simulation backend offline
                   </div>
                   <div className="text-ink">
@@ -318,15 +309,15 @@ export default function MuJoCo() {
 
             {/* Episode Complete Banner */}
             {phase === "done" && result && (
-              <div className="absolute top-4 left-1/2 -translate-x-1/2 rounded-2xl border px-6 py-2.5 shadow-lg backdrop-blur-xl flex items-center gap-3 bg-panel/90 border-line animate-fadeIn">
-                <span className={`text-[18px] leading-none ${result.success ? "text-ok" : "text-alarm"}`}>
+              <div className="absolute top-4 left-6 rounded-lg border px-4 py-2 flex items-center gap-3 bg-panel border-line animate-fadeIn">
+                <span className={`text-[16px] leading-none ${result.success ? "text-ok" : "text-alarm"}`}>
                   {result.success ? "✓" : "⚠"}
                 </span>
                 <div>
-                  <div className={`text-[13px] font-display font-semibold ${result.success ? "text-ok" : "text-alarm"}`}>
-                    {result.success ? `Fire extinguished in ${result.t.toFixed(1)}s` : `Time out (${result.t.toFixed(0)}s)`}
+                  <div className={`text-[13px] font-semibold ${result.success ? "text-ok" : "text-alarm"}`}>
+                    {result.success ? `Fire extinguished in ${result.t.toFixed(1)}s` : `Timed out (${result.t.toFixed(0)}s)`}
                   </div>
-                  <div className="text-[11px] font-mono text-faint">
+                  <div className="text-[11px] text-muted">
                     {result.collisions} collisions recorded • Water pump completed
                   </div>
                 </div>
@@ -337,86 +328,81 @@ export default function MuJoCo() {
             <div className="absolute bottom-3 left-3 flex flex-wrap gap-1.5 z-10">
               <button
                 onClick={() => { playSound("click"); setLidar((v) => !v); }}
-                className={`px-2.5 py-1.5 rounded-xl text-[11px] font-mono border backdrop-blur-md transition-all cursor-pointer ${
+                className={`px-2.5 py-1 rounded text-[11px] border backdrop-blur-md transition-colors ${
                   lidar
-                    ? "border-telemetry/50 bg-telemetry/15 text-telemetry"
+                    ? "border-telemetry/50 bg-telemetry/15 text-telemetry font-medium"
                     : "border-line bg-panel/80 text-muted hover:text-ink"
                 }`}
               >
-                Lidar ({lidar ? "ON" : "OFF"})
+                Lidar ({lidar ? "on" : "off"})
               </button>
               <button
                 onClick={() => { playSound("click"); setPathOn((v) => !v); }}
-                className={`px-2.5 py-1.5 rounded-xl text-[11px] font-mono border backdrop-blur-md transition-all cursor-pointer ${
+                className={`px-2.5 py-1 rounded text-[11px] border backdrop-blur-md transition-colors ${
                   pathOn
-                    ? "border-ok/50 bg-ok/15 text-ok"
+                    ? "border-ok/50 bg-ok/15 text-ok font-medium"
                     : "border-line bg-panel/80 text-muted hover:text-ink"
                 }`}
               >
-                Path ({pathOn ? "ON" : "OFF"})
+                Path ({pathOn ? "on" : "off"})
               </button>
               <button
                 onClick={() => { playSound("click"); setParticles((v) => !v); }}
-                className={`px-2.5 py-1.5 rounded-xl text-[11px] font-mono border backdrop-blur-md transition-all cursor-pointer ${
+                className={`px-2.5 py-1 rounded text-[11px] border backdrop-blur-md transition-colors ${
                   particles
-                    ? "border-warn/50 bg-warn/15 text-warn"
+                    ? "border-warn/50 bg-warn/15 text-warn font-medium"
                     : "border-line bg-panel/80 text-muted hover:text-ink"
                 }`}
               >
-                FX Particles ({particles ? "ON" : "OFF"})
+                Particles ({particles ? "on" : "off"})
               </button>
               <button
                 onClick={() => { playSound("click"); setSensors((v) => !v); }}
-                className={`px-2.5 py-1.5 rounded-xl text-[11px] font-mono border backdrop-blur-md transition-all cursor-pointer ${
+                className={`px-2.5 py-1 rounded text-[11px] border backdrop-blur-md transition-colors ${
                   sensors
-                    ? "border-telemetry/50 bg-telemetry/15 text-telemetry"
+                    ? "border-telemetry/50 bg-telemetry/15 text-telemetry font-medium"
                     : "border-line bg-panel/80 text-muted hover:text-ink"
                 }`}
               >
-                Sonar / EIF ({sensors ? "ON" : "OFF"})
+                Sonar / EIF ({sensors ? "on" : "off"})
               </button>
               <button
                 onClick={() => { playSound("click"); setHeatmap((v) => !v); }}
-                className={`px-2.5 py-1.5 rounded-xl text-[11px] font-mono border backdrop-blur-md transition-all cursor-pointer ${
+                className={`px-2.5 py-1 rounded text-[11px] border backdrop-blur-md transition-colors ${
                   heatmap
-                    ? "border-flame/50 bg-flame/15 text-flame"
+                    ? "border-flame/50 bg-flame/15 text-flame font-medium"
                     : "border-line bg-panel/80 text-muted hover:text-ink"
                 }`}
               >
-                Heatmap ({heatmap ? "ON" : "OFF"})
+                Heatmap ({heatmap ? "on" : "off"})
               </button>
             </div>
           </div>
-        </div>
+        </Panel>
 
       {/* Control Station & Telemetry Column */}
       <div className="flex flex-col gap-4">
         {/* Simulation Configuration Card */}
-        <div className="panel space-y-4 p-5">
-          <div className="flex items-center justify-between border-b border-line pb-3">
-            <span className="font-display font-semibold text-[14px] text-ink">
-              Mission controls
-            </span>
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-panel2 border border-line text-telemetry">
-              Episode setup
-            </span>
-          </div>
-
+        <Panel
+          title="Mission controls"
+          eyebrow="Episode setup"
+          bodyClassName="p-5 space-y-4"
+        >
           {/* Seed Input with Randomize */}
           <div className="flex items-center justify-between gap-3 text-[12px]">
-            <span className="text-muted font-medium">Procedural Map Seed</span>
+            <span className="text-muted font-medium">Procedural map seed</span>
             <div className="flex items-center gap-1.5">
               <input
                 type="number"
                 value={seed}
                 min={0}
                 onChange={(e) => setSeed(Math.max(0, parseInt(e.target.value || "0", 10)))}
-                className="data w-20 bg-panel2 border border-line rounded-lg px-2.5 py-1 text-ink text-right font-mono"
+                className="data w-20 bg-panel2 border border-line rounded px-2.5 py-1 text-ink text-right"
               />
               <button
                 onClick={handleRandomSeed}
                 title="Generate random seed"
-                className="h-8 w-8 rounded-lg border border-line bg-panel2 text-faint hover:text-ink flex items-center justify-center transition-colors cursor-pointer"
+                className="h-8 w-8 rounded border border-line bg-panel2 text-faint hover:text-ink flex items-center justify-center transition-colors cursor-pointer"
               >
                 🎲
               </button>
@@ -425,8 +411,8 @@ export default function MuJoCo() {
 
           {/* Controller Selector */}
           <div className="space-y-2">
-            <div className="text-[11px] font-mono uppercase tracking-wider text-muted">
-              Select navigation agent
+            <div className="panel-eyebrow text-faint">
+              Navigation agent
             </div>
             <div className="space-y-2">
               {CONTROLLERS.map((c) => {
@@ -435,18 +421,18 @@ export default function MuJoCo() {
                   <button
                     key={c.id}
                     onClick={() => { playSound("click"); setController(c.id); }}
-                    className={`w-full text-left rounded-xl p-3 border transition-all duration-150 cursor-pointer ${
+                    className={`w-full text-left rounded p-3 border transition-colors cursor-pointer ${
                       active
-                        ? "border-telemetry/50 bg-telemetry/10 ring-1 ring-telemetry/20"
-                        : "border-line bg-panel2/50 hover:bg-panel2 hover:border-line/90"
+                        ? "border-telemetry/50 bg-telemetry/10"
+                        : "border-line bg-panel2/50 hover:bg-panel2"
                     }`}
                   >
                     <div className="flex items-center justify-between">
-                      <span className="text-[13px] font-display font-semibold text-ink">
+                      <span className="text-[13px] font-semibold text-ink">
                         {c.label}
                       </span>
                       <span
-                        className={`text-[9px] font-mono px-1.5 py-0.2 rounded font-medium ${
+                        className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
                           active
                             ? "bg-telemetry/15 text-telemetry border border-telemetry/30"
                             : "bg-panel text-faint border border-line"
@@ -455,10 +441,10 @@ export default function MuJoCo() {
                         {c.tag}
                       </span>
                     </div>
-                    <div className="text-[11px] text-faint mt-1 leading-snug">
+                    <div className="text-[11px] text-muted mt-1 leading-snug">
                       {c.desc}
                     </div>
-                    <div className="text-[10px] font-mono text-muted mt-1.5 flex items-center gap-1.5">
+                    <div className="text-[11px] text-faint mt-1.5 flex items-center gap-1.5">
                       <span className="h-1 w-1 rounded-full bg-telemetry" />
                       <span>{c.sensor}</span>
                     </div>
@@ -470,18 +456,18 @@ export default function MuJoCo() {
 
           {/* Speed Multipliers */}
           <div className="pt-2 border-t border-line space-y-2">
-            <div className="flex items-center justify-between text-[11px] font-mono text-muted">
+            <div className="flex items-center justify-between text-[11px] text-muted">
               <span>Physics stepping rate</span>
-              <span className="text-telemetry font-semibold">{speed}× realtime</span>
+              <span className="text-telemetry font-semibold data">{speed}× realtime</span>
             </div>
-            <div className="flex items-center gap-1.5 bg-panel2 p-1 rounded-xl border border-line">
+            <div className="flex items-center gap-1 bg-panel2 p-0.5 rounded border border-line">
               {SPEEDS.map((v) => (
                 <button
                   key={v}
                   onClick={() => changeSpeed(v)}
-                  className={`flex-1 py-1.5 text-[12px] font-mono rounded-lg transition-all cursor-pointer ${
+                  className={`flex-1 py-1 text-[11px] data rounded transition-colors ${
                     speed === v
-                      ? "bg-panel text-ink font-semibold shadow-sm border border-line"
+                      ? "bg-panel text-ink font-semibold border border-line"
                       : "text-muted hover:text-ink"
                   }`}
                 >
@@ -505,7 +491,7 @@ export default function MuJoCo() {
                 <span className="text-[12px] font-medium text-ink group-hover:text-telemetry transition-colors">
                   Log sortie to database
                 </span>
-                <span className="text-[10px] text-faint">
+                <span className="text-[11px] text-faint">
                   Stores 36-beam scan, sensors and pose into Postgres run history
                 </span>
               </div>
@@ -513,112 +499,107 @@ export default function MuJoCo() {
           </div>
 
           {warn && (
-            <div className="text-[11px] font-mono text-warn bg-warn/10 p-2.5 rounded-lg border border-warn/30">
+            <div className="text-[11px] text-warn bg-warn/10 p-2.5 rounded border border-warn/30">
               {warn}
             </div>
           )}
 
           {sessionId && (
-            <div className="text-[10px] font-mono text-faint data break-all bg-panel2 px-2.5 py-1.5 rounded-lg border border-line">
-              LOGGING SESSION: {sessionId}
+            <div className="text-[10px] text-faint data break-all bg-panel2 px-2.5 py-1.5 rounded border border-line">
+              Logging session: {sessionId}
             </div>
           )}
 
           {/* Primary Action Buttons */}
-          <div className="pt-2 flex gap-2.5">
+          <div className="pt-2 flex gap-2">
             <Button
               variant="primary"
               onClick={start}
               disabled={unavailable || busy}
-              className="flex-1 !h-11 font-medium text-[13px]"
+              className="flex-1 !h-10 text-[13px]"
             >
-              {busy ? "Generating world..." : phase === "idle" ? "Start simulation" : "Restart episode"}
+              {busy ? "Generating world…" : phase === "idle" ? "Start simulation" : "Restart episode"}
             </Button>
             {phase === "running" && (
               <Button
                 onClick={togglePause}
-                className="px-4 !h-11 font-mono text-[12px]"
+                className="px-4 !h-10 text-[12px]"
               >
                 {paused ? "Resume" : "Pause"}
               </Button>
             )}
           </div>
-        </div>
+        </Panel>
 
         {/* Live Episode Telemetry HUD Card */}
-        <div className="panel p-5 space-y-4">
-          <div className="flex items-center justify-between border-b border-line pb-3">
-            <span className="font-display font-semibold text-[14px] text-ink">
-              Episode telemetry
-            </span>
-            <span className={`text-[10px] font-mono px-2 py-0.5 rounded font-medium border ${stateStyle.cls}`}>
+        <Panel
+          title="Episode telemetry"
+          state={phase === "running" ? (hud?.fire_p > 0 ? "hot" : "live") : undefined}
+          bodyClassName="p-5 space-y-4"
+          actions={
+            <span className={`text-[10px] px-2 py-0.5 rounded font-medium border ${stateStyle.cls}`}>
               {stateStyle.label}
             </span>
-          </div>
-
+          }
+        >
           <div className="grid grid-cols-2 gap-3">
             {/* Simulation Time */}
-            <div className="p-3 rounded-xl bg-panel2/60 border border-line space-y-1">
-              <div className="text-[10px] font-mono uppercase tracking-wider text-faint">Sim time</div>
-              <div className="data text-[22px] font-bold text-ink">
-                {hud ? hud.t.toFixed(1) : "0.0"}<span className="text-[11px] font-mono text-faint ml-1">s</span>
+            <div className="p-3 rounded bg-panel2/60 border border-line space-y-1">
+              <div className="panel-eyebrow text-faint">Sim time</div>
+              <div className="readout text-[22px] text-ink">
+                {hud ? hud.t.toFixed(1) : "0.0"}<span className="text-[11px] text-faint ml-1 font-sans">s</span>
               </div>
             </div>
 
             {/* Fire Intensity */}
-            <div className="p-3 rounded-xl bg-panel2/60 border border-line space-y-1">
-              <div className="text-[10px] font-mono uppercase tracking-wider text-faint">Flame intensity</div>
-              <div className={`data text-[22px] font-bold ${hud && hud.fire_p > 0 ? "text-alarm" : "text-ok"}`}>
-                {hud ? Math.round(hud.fire_p * 100) : "100"}<span className="text-[11px] font-mono text-faint ml-1">%</span>
+            <div className="p-3 rounded bg-panel2/60 border border-line space-y-1">
+              <div className="panel-eyebrow text-faint">Flame intensity</div>
+              <div className={`readout text-[22px] ${hud && hud.fire_p > 0 ? "text-alarm" : "text-ok"}`}>
+                {hud ? Math.round(hud.fire_p * 100) : "100"}<span className="text-[11px] text-faint ml-1 font-sans">%</span>
               </div>
             </div>
 
             {/* Water Tank */}
-            <div className="p-3 rounded-xl bg-panel2/60 border border-line space-y-1">
-              <div className="text-[10px] font-mono uppercase tracking-wider text-faint">Water tank</div>
-              <div className="data text-[22px] font-bold text-telemetry">
-                {hud ? Math.round(hud.tank * 100) : "100"}<span className="text-[11px] font-mono text-faint ml-1">%</span>
+            <div className="p-3 rounded bg-panel2/60 border border-line space-y-1">
+              <div className="panel-eyebrow text-faint">Water tank</div>
+              <div className="readout text-[22px] text-telemetry">
+                {hud ? Math.round(hud.tank * 100) : "100"}<span className="text-[11px] text-faint ml-1 font-sans">%</span>
               </div>
             </div>
 
             {/* Collisions */}
-            <div className="p-3 rounded-xl bg-panel2/60 border border-line space-y-1">
-              <div className="text-[10px] font-mono uppercase tracking-wider text-faint">Impacts</div>
-              <div className={`data text-[22px] font-bold ${hud?.collisions ? "text-warn" : "text-ink"}`}>
+            <div className="p-3 rounded bg-panel2/60 border border-line space-y-1">
+              <div className="panel-eyebrow text-faint">Impacts</div>
+              <div className={`readout text-[22px] ${hud?.collisions ? "text-warn" : "text-ink"}`}>
                 {hud?.collisions ?? 0}
               </div>
             </div>
           </div>
 
           {/* Pump Status Strip */}
-          <div className="p-3 rounded-xl bg-panel2/40 border border-line flex items-center justify-between">
-            <span className="text-[11px] font-mono uppercase text-muted">Water cannon</span>
-            <span className={`text-[11px] font-mono font-medium px-2 py-0.5 rounded ${
+          <div className="p-3 rounded bg-panel2/40 border border-line flex items-center justify-between">
+            <span className="text-[12px] text-muted">Water cannon</span>
+            <span className={`text-[11px] font-medium px-2 py-0.5 rounded ${
               hud?.pump
-                ? "bg-telemetry text-white animate-pulse"
+                ? "bg-telemetry text-onaccent"
                 : "bg-panel text-faint border border-line"
             }`}>
               {hud?.pump ? "Dispensing jet" : "Standby"}
             </span>
           </div>
-        </div>
+        </Panel>
 
         {/* Environmental & Bayesian Sensor Diagnostics Card */}
-        <div className="panel p-5 space-y-3">
-          <div className="flex items-center justify-between border-b border-line pb-2.5">
-            <span className="font-display font-semibold text-[14px] text-ink flex items-center gap-2">
-              <span className="h-2 w-2 rounded-full bg-telemetry animate-ping" />
-              Environmental diagnostics
-            </span>
-            <span className="text-[10px] font-mono text-faint">
-              EIF fusion
-            </span>
-          </div>
-
+        <Panel
+          title="Environmental diagnostics"
+          eyebrow="EIF fusion"
+          state={hud?.peak > 0.4 ? "hot" : undefined}
+          bodyClassName="p-5 space-y-3"
+        >
           {/* Sector Location */}
-          <div className="p-3 rounded-xl bg-panel2/60 border border-line space-y-1">
-            <div className="text-[10px] font-mono uppercase tracking-wider text-faint">Rover sector location</div>
-            <div className="text-[13px] font-display font-medium text-ink flex items-center gap-2">
+          <div className="p-3 rounded bg-panel2/60 border border-line space-y-1">
+            <div className="panel-eyebrow text-faint">Rover sector location</div>
+            <div className="text-[13px] font-medium text-ink flex items-center gap-2">
               <span className="text-telemetry">◈</span>
               <span>{roomTitle}</span>
             </div>
@@ -626,42 +607,42 @@ export default function MuJoCo() {
 
           <div className="grid grid-cols-2 gap-2.5">
             {/* Gas Sensor */}
-            <div className="p-2.5 rounded-xl bg-panel2/60 border border-line space-y-1">
+            <div className="p-2.5 rounded bg-panel2/60 border border-line space-y-1">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-mono uppercase tracking-wider text-faint">Gas sensor</span>
-                <span className={`text-[9px] font-mono px-1 py-0.2 rounded font-medium border ${gasCls}`}>
+                <span className="panel-eyebrow text-faint">Gas sensor</span>
+                <span className={`text-[10px] px-1 py-0.2 rounded font-medium border ${gasCls}`}>
                   {gasLevel}
                 </span>
               </div>
-              <div className="data text-[18px] font-bold text-ink">
-                {(gasVal * 100).toFixed(1)}<span className="text-[10px] font-mono text-faint ml-1">%</span>
+              <div className="readout text-[18px] text-ink">
+                {(gasVal * 100).toFixed(1)}<span className="text-[10px] text-faint ml-1 font-sans">%</span>
               </div>
             </div>
 
             {/* Thermal Peak */}
-            <div className="p-2.5 rounded-xl bg-panel2/60 border border-line space-y-1">
+            <div className="p-2.5 rounded bg-panel2/60 border border-line space-y-1">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-mono uppercase tracking-wider text-faint">Peak heat</span>
-                <span className="text-[9px] font-mono text-faint">Thermal</span>
+                <span className="panel-eyebrow text-faint">Peak heat</span>
+                <span className="text-[10px] text-faint">Thermal</span>
               </div>
-              <div className={`data text-[18px] font-bold ${hud?.peak > 0.4 ? "text-warn" : "text-ink"}`}>
-                {((hud?.peak ?? 0) * 100).toFixed(0)}<span className="text-[10px] font-mono text-faint ml-1">%</span>
+              <div className={`readout text-[18px] ${hud?.peak > 0.4 ? "text-warn" : "text-ink"}`}>
+                {((hud?.peak ?? 0) * 100).toFixed(0)}<span className="text-[10px] text-faint ml-1 font-sans">%</span>
               </div>
             </div>
           </div>
 
           {/* Bayesian EIF Belief Target */}
-          <div className="p-2.5 rounded-xl bg-panel2/40 border border-line text-[11px] font-mono text-faint flex items-center justify-between">
+          <div className="p-2.5 rounded bg-panel2/40 border border-line text-[12px] text-muted flex items-center justify-between">
             <span>EIF target belief:</span>
-            <span className="text-ink font-bold">
+            <span className="data text-ink font-semibold">
               {hud?.est
-                ? `(${hud.est.x.toFixed(1)}, ${hud.est.y.toFixed(1)}) ±${hud.est.sigma.toFixed(1)}m`
-                : "Acquiring..."}
+                ? `(${hud.est.x.toFixed(1)}, ${hud.est.y.toFixed(1)}) ±${hud.est.sigma.toFixed(1)} m`
+                : "Acquiring…"}
             </span>
           </div>
-        </div>
+        </Panel>
       </div>
     </div>
-    </div>
+  </div>
   );
 }

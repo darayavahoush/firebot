@@ -4,19 +4,25 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
-    <meta name="theme-color" content="#0B0F17" />
-    <meta name="description" content="Firebot Tactical Command & Autonomous Firefighting Operations Console" />
+    <meta name="description" content="Firebot — autonomous firefighting rover operations console" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;500;700;800&family=Martian+Mono:wght@400;500&display=swap"
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Instrument+Sans:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <title>FIREBOT // Autonomous Firefighting & Tactical Command</title>
-    <script type="module" crossorigin src="./assets/index-zFKw3ZA0.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-DNO9LKVD.css">
+    <title>Firebot — Operations Console</title>
+    <!-- Apply the saved theme before first paint to avoid a light/dark flash. -->
+    <script>
+      try {
+        var t = localStorage.getItem("firebot-theme");
+        if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t);
+      } catch (e) {}
+    </script>
+    <script type="module" crossorigin src="./assets/index-DVMWiyD1.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-DJ9H5Cun.css">
   </head>
-  <body class="bg-base">
+  <body>
     <div id="root"></div>
   </body>
 </html>

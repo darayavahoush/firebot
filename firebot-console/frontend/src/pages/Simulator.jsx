@@ -12,7 +12,7 @@ import { playSound } from "../lib/sound.js";
 import CalibratePanel from "../components/sim/CalibratePanel.jsx";
 import { getOperator } from "../lib/operator.js";
 import { parseAndExecuteVoiceIntent } from "../api/client.js";
-import { PageHeader, Button } from "../components/ui";
+import { PageHeader, Button, Panel } from "../components/ui";
 
 const SPEEDS = [0.5, 1, 2, 4];
 
@@ -256,21 +256,32 @@ export default function Simulator() {
 
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-5 bg-base overflow-hidden px-4 sm:px-6 pb-6 pt-4 items-start">
         {/* Main Canvas Viewport Panel */}
-        <div className="panel flex flex-col relative overflow-hidden">
-          <div className="absolute top-3 left-3 z-10 flex flex-wrap gap-2 pointer-events-none">
-            <span className="rounded-lg bg-panel/90 backdrop-blur-sm border border-line px-2.5 py-1 text-[11px] flex items-center gap-1.5 shadow-sm">
-              <span className={`h-1.5 w-1.5 rounded-full ${t.mode === "STOPPED" ? "bg-alarm" : t.state === "SAFE" ? "bg-ok" : "bg-telemetry"}`} />
-              <b className="text-ink font-semibold">{t.mode === "STOPPED" ? "STOPPED" : t.state}</b>
+        <Panel
+          title="2D simulation viewport"
+          state={t.mode === "STOPPED" ? "alert" : t.fire.p > 0 ? "hot" : "live"}
+          className="flex flex-col relative overflow-hidden"
+          headerRight={
+            <span className="data text-[11px] text-faint">
+              {t.world.width.toFixed(1)} × {t.world.height.toFixed(1)} m
             </span>
-            <span className="rounded-lg bg-panel/90 backdrop-blur-sm border border-line px-2.5 py-1 text-[11px] data shadow-sm">
-              Tank <b className="text-telemetry font-semibold">{(t.tank * 100).toFixed(0)}%</b>
-            </span>
-            <span className="rounded-lg bg-panel/90 backdrop-blur-sm border border-line px-2.5 py-1 text-[11px] data shadow-sm">
-              Fire <b className={t.fire.p > 0 ? "text-flame font-semibold" : "text-ok font-semibold"}>{t.fire.p > 0 ? `${(t.fire.p * 100).toFixed(0)}%` : "Suppressed"}</b>
-            </span>
-          </div>
+          }
+        >
+          <div className="relative">
+            <div className="absolute top-3 left-3 z-10 flex flex-wrap gap-2 pointer-events-none">
+              <span className="rounded bg-panel/90 backdrop-blur-sm border border-line px-2.5 py-1 text-[11px] flex items-center gap-1.5">
+                <span className={`h-1.5 w-1.5 rounded-full ${t.mode === "STOPPED" ? "bg-alarm" : t.state === "SAFE" ? "bg-ok" : "bg-telemetry"}`} />
+                <span className="text-ink font-semibold">{t.mode === "STOPPED" ? "Stopped" : t.state}</span>
+              </span>
+              <span className="rounded bg-panel/90 backdrop-blur-sm border border-line px-2.5 py-1 text-[11px] data">
+                Tank <span className="text-telemetry font-semibold">{(t.tank * 100).toFixed(0)}%</span>
+              </span>
+              <span className="rounded bg-panel/90 backdrop-blur-sm border border-line px-2.5 py-1 text-[11px] data">
+                Fire <span className={t.fire.p > 0 ? "text-flame font-semibold" : "text-ok font-semibold"}>{t.fire.p > 0 ? `${(t.fire.p * 100).toFixed(0)}%` : "Suppressed"}</span>
+              </span>
+            </div>
 
-          <SimCanvas engineRef={engineRef} showTree={showTree} showSensors={showSensors} showSlam={showSlam} height={600} />
+            <SimCanvas engineRef={engineRef} showTree={showTree} showSensors={showSensors} showSlam={showSlam} height={600} />
+          </div>
 
           {/* Canvas Footer Legend */}
           <div className="border-t border-line bg-panel2/40 px-4 py-2.5 flex items-center gap-4 text-[11px] text-muted flex-wrap">
@@ -280,13 +291,17 @@ export default function Simulator() {
             <Legend swatch="rgb(var(--c-ok))" label="Planned path" />
             <Legend swatch="rgba(14, 124, 123, 0.4)" label="RRT* tree" />
             <span className="ml-auto text-faint data">
-              {t.world.width.toFixed(1)} m × {t.world.height.toFixed(1)} m • Seed {engineRef.current.seed}
+              Seed {engineRef.current.seed}
             </span>
           </div>
-        </div>
+        </Panel>
 
         {/* Right Telemetry / Inspector Tabs Panel */}
-        <div className="panel flex flex-col overflow-hidden">
+        <Panel
+          title="Telemetry & control"
+          state="live"
+          className="flex flex-col overflow-hidden"
+        >
           <div className="flex bg-panel2/60 border-b border-line p-1 gap-1">
             {[
               { id: "telemetry", label: "Telemetry" },
@@ -298,9 +313,9 @@ export default function Simulator() {
                 key={k}
                 type="button"
                 onClick={() => { playSound("tab"); setTab(k); }}
-                className={`flex-1 py-1.5 text-[12px] font-medium rounded-md transition-colors ${
+                className={`flex-1 py-1.5 text-[12px] font-medium rounded transition-colors ${
                   tab === k
-                    ? "bg-panel text-ink shadow-sm font-semibold border border-line"
+                    ? "bg-panel text-ink font-semibold border border-line"
                     : "text-muted hover:text-ink border border-transparent"
                 }`}
               >
@@ -348,7 +363,7 @@ export default function Simulator() {
               />
             )}
           </div>
-        </div>
+        </Panel>
       </div>
     </main>
   );
@@ -368,7 +383,7 @@ function Metric({ label, value, unit, alarm, ok }) {
     <div className="px-4 py-3">
       <div className="text-[11px] text-muted mb-1">{label}</div>
       <div className="flex items-baseline gap-1">
-        <span className={`data text-[20px] leading-none font-semibold ${alarm ? "text-warn" : ok ? "text-ok" : "text-ink"}`}>
+        <span className={`readout text-[20px] ${alarm ? "text-warn" : ok ? "text-ok" : "text-ink"}`}>
           {value}
         </span>
         {unit && <span className="data text-[11px] text-faint">{unit}</span>}

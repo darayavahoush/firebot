@@ -449,9 +449,9 @@ function ChassisInspectionView({ onEnterConsole }) {
                   title={h.title}
                 >
                   <span
-                    className={`flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold shadow-md transition-colors ${
+                    className={`flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold transition-colors ${
                       active
-                        ? "bg-flame text-white ring-4 ring-flame/30"
+                        ? "bg-flame text-onaccent ring-2 ring-flame/40"
                         : "bg-panel text-ink border border-line2 hover:border-flame"
                     }`}
                   >
@@ -551,7 +551,7 @@ function HeroVideoBanner({ onEnterConsole, online }) {
   };
 
   return (
-    <div className="relative w-full rounded-2xl md:rounded-3xl overflow-hidden border border-line bg-[#0A0C10] text-white shadow-2xl">
+    <div className="relative w-full rounded-xl overflow-hidden border border-line bg-scope text-white">
       {/* Background Media Layer */}
       {viewMode === "video" ? (
         <div className="absolute inset-0 overflow-hidden">
@@ -565,12 +565,12 @@ function HeroVideoBanner({ onEnterConsole, online }) {
             playsInline
             onPlay={() => setIsPlaying(true)}
             onPause={() => setIsPlaying(false)}
-            className="w-full h-full object-cover scale-[1.03] opacity-80 transition-opacity duration-700"
+            className="w-full h-full object-cover opacity-75 transition-opacity duration-700"
           />
         </div>
       ) : (
-        <div className="absolute inset-0 bg-[#0F1218] flex items-center justify-center p-8">
-          <Illustration name="hero-rover" className="w-full max-h-[360px] opacity-90" />
+        <div className="absolute inset-0 bg-scope flex items-center justify-center p-8">
+          <Illustration name="hero-rover" className="w-full max-h-[360px]" />
         </div>
       )}
 
@@ -579,40 +579,24 @@ function HeroVideoBanner({ onEnterConsole, online }) {
         className="absolute inset-0 pointer-events-none"
         style={{
           background:
-            "linear-gradient(180deg, rgba(10, 12, 16, 0.75) 0%, rgba(10, 12, 16, 0.4) 40%, rgba(10, 12, 16, 0.85) 80%, rgba(10, 12, 16, 0.98) 100%)",
-        }}
-      />
-      <div
-        className="absolute inset-0 pointer-events-none hidden md:block"
-        style={{
-          background:
-            "radial-gradient(circle at 75% 35%, rgba(232, 89, 12, 0.12) 0%, transparent 60%)",
-        }}
-      />
-      {/* Subtle Engineering Grid Overlay */}
-      <div
-        className="absolute inset-0 pointer-events-none opacity-20"
-        style={{
-          backgroundImage:
-            "linear-gradient(to right, rgba(255, 255, 255, 0.08) 1px, transparent 1px), linear-gradient(to bottom, rgba(255, 255, 255, 0.08) 1px, transparent 1px)",
-          backgroundSize: "48px 48px",
+            "linear-gradient(180deg, rgba(8, 9, 11, 0.8) 0%, rgba(8, 9, 11, 0.45) 40%, rgba(8, 9, 11, 0.88) 80%, rgba(8, 9, 11, 0.98) 100%)",
         }}
       />
 
       {/* Interactive Hero Content Container */}
-      <div className="relative z-10 flex flex-col justify-between min-h-[500px] md:min-h-[560px] p-6 sm:p-8 md:p-12 pb-0 sm:pb-0 md:pb-0">
+      <div className="relative z-10 flex flex-col justify-between min-h-[480px] md:min-h-[520px] p-6 sm:p-8 md:p-10 pb-0 sm:pb-0 md:pb-0">
         {/* Top HUD Bar */}
-        <div className="flex flex-wrap items-center justify-between gap-3 text-[11px] font-mono tracking-wider">
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 backdrop-blur-md border border-white/15 text-white/90">
-            <span className={`w-2 h-2 rounded-full ${online ? "bg-emerald-400" : "bg-flame"} animate-pulse`} />
-            <span className="font-semibold text-orange-400">FB-01</span>
-            <span className="text-white/40">/</span>
-            <span>AUTONOMOUS FIREFIGHTING ROVER</span>
+        <div className="flex flex-wrap items-center justify-between gap-3 text-[11px]">
+          <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded bg-panel/20 backdrop-blur-md border border-line/40 text-white">
+            <span className={`w-1.5 h-1.5 rounded-full ${online ? "bg-ok" : "bg-flame"}`} />
+            <span className="font-semibold text-flame">FB-01</span>
+            <span className="text-faint">/</span>
+            <span className="text-white/80">Autonomous firefighting rover</span>
           </div>
 
           <div className="flex items-center gap-2">
             {/* View Mode Switcher */}
-            <div className="flex items-center bg-black/50 backdrop-blur-md rounded-lg p-0.5 border border-white/15">
+            <div className="flex items-center bg-panel/30 backdrop-blur-md rounded-lg p-0.5 border border-line/40">
               <button
                 type="button"
                 onClick={() => {
@@ -620,10 +604,10 @@ function HeroVideoBanner({ onEnterConsole, online }) {
                   setViewMode("video");
                 }}
                 className={`px-2.5 py-1 rounded text-[11px] font-medium transition-colors ${
-                  viewMode === "video" ? "bg-white/20 text-white" : "text-white/60 hover:text-white"
+                  viewMode === "video" ? "bg-panel text-ink" : "text-white/70 hover:text-white"
                 }`}
               >
-                Sortie Video
+                Sortie video
               </button>
               <button
                 type="button"
@@ -632,7 +616,7 @@ function HeroVideoBanner({ onEnterConsole, online }) {
                   setViewMode("blueprint");
                 }}
                 className={`px-2.5 py-1 rounded text-[11px] font-medium transition-colors ${
-                  viewMode === "blueprint" ? "bg-white/20 text-white" : "text-white/60 hover:text-white"
+                  viewMode === "blueprint" ? "bg-panel text-ink" : "text-white/70 hover:text-white"
                 }`}
               >
                 Schematic
@@ -644,18 +628,18 @@ function HeroVideoBanner({ onEnterConsole, online }) {
               <button
                 type="button"
                 onClick={togglePlay}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/50 backdrop-blur-md border border-white/15 text-white/80 hover:text-white transition-colors"
-                title={isPlaying ? "Pause Video" : "Play Video"}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-panel/30 backdrop-blur-md border border-line/40 text-white/80 hover:text-white transition-colors"
+                title={isPlaying ? "Pause video" : "Play video"}
               >
                 {isPlaying ? (
                   <>
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-                    <span>REC 1080P</span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-ok" />
+                    <span className="data text-[10px]">REC</span>
                   </>
                 ) : (
                   <>
-                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-                    <span>PAUSED</span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-warn" />
+                    <span className="data text-[10px]">PAUSED</span>
                   </>
                 )}
               </button>
@@ -664,46 +648,43 @@ function HeroVideoBanner({ onEnterConsole, online }) {
         </div>
 
         {/* Center Typography & CTAs */}
-        <div className="my-8 md:my-10 max-w-[760px] space-y-4">
-          <div className="inline-flex items-center gap-2 text-xs font-mono uppercase tracking-widest text-teal-300">
-            <span>FLIR LWIR Perception</span>
-            <span className="text-white/40">•</span>
-            <span>Bearing-Only EIF</span>
-            <span className="text-white/40">•</span>
-            <span>4.5 L/min Suppression</span>
+        <div className="my-6 md:my-8 max-w-[720px] space-y-3">
+          <div className="panel-eyebrow text-faint">
+            FLIR LWIR perception • Bearing-only EIF • 4.5 L/min suppression
           </div>
 
-          <h1 className="text-3xl sm:text-5xl md:text-6xl font-semibold tracking-tight leading-[1.08] text-white">
+          <h1 className="display text-3xl sm:text-5xl md:text-6xl font-semibold tracking-tight leading-[1.08] text-white">
             Find the fire.{" "}
-            <span className="block text-transparent bg-clip-text bg-gradient-to-r from-orange-400 via-amber-300 to-teal-200">
+            <span className="block text-flame">
               Put it out.
             </span>
           </h1>
 
-          <p className="text-sm sm:text-base md:text-[17px] text-white/80 leading-relaxed font-normal max-w-[62ch]">
+          <p className="text-sm sm:text-base text-white/80 leading-relaxed max-w-[60ch]">
             Firebot pierces dense zero-visibility smoke using 32×24 radiometric thermal computer vision, triangulates fire bearings autonomously, and deploys high-pressure suppression with real-time teleoperation fallback.
           </p>
 
           <div className="flex flex-wrap items-center gap-3 pt-2">
-            <Button
-              variant="primary"
+            <button
+              type="button"
               onClick={() => {
                 playSound("tab");
                 onEnterConsole("live");
               }}
-              className="!py-2.5 !px-5 text-[14px] !bg-flame hover:!bg-flame/90 text-white font-medium shadow-lg shadow-orange-500/25 border-0"
+              className="btn-primary"
             >
-              Launch Live Ops →
-            </Button>
-            <Button
+              Launch live ops →
+            </button>
+            <button
+              type="button"
               onClick={() => {
                 playSound("tab");
                 onEnterConsole("sim");
               }}
-              className="!py-2.5 !px-5 text-[14px] !bg-white/10 hover:!bg-white/20 !text-white !border-white/20 backdrop-blur-md font-medium"
+              className="btn bg-panel/20 text-white border-line/40 hover:bg-panel/40"
             >
-              Open 2D Simulator
-            </Button>
+              Try the simulator
+            </button>
             <button
               type="button"
               onClick={() => {
@@ -713,18 +694,18 @@ function HeroVideoBanner({ onEnterConsole, online }) {
               }}
               className="inline-flex items-center gap-1.5 px-3 py-2 text-[13px] text-white/70 hover:text-white transition-colors"
             >
-              <span>Explore Architecture ↓</span>
+              <span>Explore architecture ↓</span>
             </button>
           </div>
         </div>
 
         {/* Bottom Dock: Integrated Live Telemetry Specs Strip */}
-        <div className="border-t border-white/10 bg-black/60 backdrop-blur-md -mx-6 sm:-mx-8 md:-mx-12 p-4 sm:p-6 grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+        <div className="border-t border-line bg-scope/90 backdrop-blur-md -mx-6 sm:-mx-8 md:-mx-10 p-4 sm:p-5 grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
           {FACTS.map((f) => (
             <div key={f.label} className="space-y-0.5">
-              <div className="text-[11px] font-mono uppercase tracking-wider text-white/50">{f.label}</div>
-              <div className="text-xl sm:text-2xl font-bold font-mono text-white tracking-tight">{f.value}</div>
-              <div className="text-[12px] text-white/40">{f.hint}</div>
+              <div className="panel-eyebrow text-faint">{f.label}</div>
+              <div className="readout text-xl sm:text-2xl text-white">{f.value}</div>
+              <div className="text-[12px] text-muted">{f.hint}</div>
             </div>
           ))}
         </div>
