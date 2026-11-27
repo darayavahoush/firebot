@@ -11,7 +11,7 @@ const TITLES = {
   about: { title: "System Architecture", sub: "State estimation, planning algorithms & hardware specifications" },
 };
 
-export default function TopBar({ page, mode, onEstop, activeOperator }) {
+export default function TopBar({ page, mode, onEstop, activeOperator, onExitToHome }) {
   const { title, sub } = TITLES[page] || TITLES.live;
   const [clock, setClock] = useState("");
 
@@ -48,6 +48,23 @@ export default function TopBar({ page, mode, onEstop, activeOperator }) {
 
         {/* Telemetry quick status chips and Emergency Stop button */}
         <div className="flex items-center gap-3 shrink-0">
+          {onExitToHome && (
+            <button
+              onClick={() => {
+                playSound("tab");
+                onExitToHome();
+              }}
+              className="px-3 py-1.5 rounded-lg bg-panel hover:bg-panel2 border border-line hover:border-line2 text-[11px] font-mono text-muted hover:text-ink transition-all flex items-center gap-1.5"
+              title="Return to Public Homepage"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-telemetry">
+                <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                <polyline points="9 22 9 12 15 12 15 22" />
+              </svg>
+              <span className="hidden sm:inline">Overview</span>
+            </button>
+          )}
+
           {/* Clock */}
           <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-panel border border-line text-[11px] font-mono text-faint">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

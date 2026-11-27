@@ -168,12 +168,34 @@ export default function App() {
     p.pump = !!frame.cmd_pump;
   }, [frame, linkOk]);
 
+  if (page === "home") {
+    return (
+      <Home
+        onEnterConsole={(target = "live") => setPage(target)}
+        frame={frame}
+        linkOk={linkOk}
+      />
+    );
+  }
+
   return (
     <div className="min-h-full flex">
-      <Sidebar page={page} setPage={setPage} linkOk={frame ? linkOk : true} notifOn={notifOn} onToggleNotif={notifySupported() ? toggleNotif : null} />
+      <Sidebar
+        page={page}
+        setPage={setPage}
+        linkOk={frame ? linkOk : true}
+        notifOn={notifOn}
+        onToggleNotif={notifySupported() ? toggleNotif : null}
+      />
 
       <div className="flex-1 flex flex-col min-w-0 relative">
-        <TopBar page={page} mode={mode} onEstop={onEstop} activeOperator={activeOperator} />
+        <TopBar
+          page={page}
+          mode={mode}
+          onEstop={onEstop}
+          activeOperator={activeOperator}
+          onExitToHome={() => setPage("home")}
+        />
 
         {ack && (
           <div
@@ -198,9 +220,6 @@ export default function App() {
 
         {/* All pages stay mounted once visited, toggled with display rather than
             conditional rendering, so engine states survive switching tabs. */}
-        <div className={page === "home" ? "contents" : "hidden"}>
-          <Home setPage={setPage} frame={frame} linkOk={linkOk} />
-        </div>
         <div className={page === "live" ? "contents" : "hidden"}>
           <LiveOps
             frame={frame}
