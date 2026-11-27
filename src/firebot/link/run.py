@@ -174,6 +174,8 @@ def pi_main() -> None:
     p.add_argument("--rate", type=float, default=10.0, help="frames per second")
     p.add_argument("--watchdog", type=float, default=0.5,
                    help="stop motors+pump if no command arrives for this many seconds")
+    p.add_argument("--serial-port", default="auto", help="serial port connected to ESP32 (or 'auto')")
+    p.add_argument("--baud", type=int, default=115200, help="serial baud rate to ESP32")
     p.add_argument("--sim", action="store_true", help="use the simulated robot (no hardware)")
     p.add_argument("--realtime", action="store_true", help="with --sim: run at --rate, not lock-step")
     p.add_argument("--seed", type=int, default=0, help="with --sim")
@@ -183,14 +185,18 @@ def pi_main() -> None:
                    help="with --sim: don't end the episode early just because the fire is out")
     a = p.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s: %(message)s")
-    if not a.sim:
-        sys.exit("real hardware drivers are not implemented yet (roadmap item 8); use --sim")
-    from .simhw import SimHardware
-    max_steps = sys.maxsize if a.max_steps == 0 else a.max_steps
-    agent = PiAgent(SimHardware(seed=a.seed, max_steps=max_steps,
-                                stop_on_fire_out=not a.no_stop_on_fire_out),
-                    a.host, a.port, a.token, a.robot, a.rate, a.watchdog,
-                    lockstep=not a.realtime)
+    if a.sim:
+        from .simhw import SimHardware
+        max_steps = sys.maxsize if a.max_steps == 0 else a.max_steps
+        hw = SimHardware(seed=a.seed, max_steps=max_steps,
+                         stop_on_fire_out=not a.no_stop_on_fire_out)
+        lockstep = not a.realtime
+    else:
+        from .realhw import RealHardware
+        hw = RealHardware(port=a.serial_port, baud=a.baud)
+        lockstep = False  # Real hardware runs asynchronously at --rate
+    agent = PiAgent(hw, a.host, a.port, a.token, a.robot, a.rate, a.watchdog,
+                    lockstep=lockstep)
     try:
         asyncio.run(agent.run())
     except KeyboardInterrupt:

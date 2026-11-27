@@ -24,6 +24,7 @@ firebot-benchmark = "firebot.drl.benchmark_experiments:main"
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "ruff>=0.5"]
+pi = ["pyserial>=3.5", "adafruit-circuitpython-mlx90640>=1.2"]
 speech = ["vosk>=0.3.44", "sounddevice>=0.4"]
 speaker = ["onnxruntime>=1.17", "kaldi-native-fbank>=1.19", "soundfile>=0.12"]
 vad = ["silero-vad>=5.1", "torch>=2.0", "numpy>=1.24"]
