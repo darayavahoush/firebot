@@ -463,10 +463,162 @@ def _reshape_thermal(flat: list[float] | None) -> list[list[float]] | None:
 
 # ---- REST: historical runs, read from the Postgres sink ----
 
+def _get_fallback_missions() -> list[dict[str, Any]]:
+    now = datetime.now(timezone.utc)
+    return [
+        {
+            "id": "d8e3b1c2-5f6a-4b9d-8e7c-1a2b3c4d5e6f",
+            "robot": "firebot-1",
+            "started_at": (now - timedelta(minutes=48)).isoformat(),
+            "ended_at": (now - timedelta(minutes=43)).isoformat(),
+            "duration_s": 290.0,
+            "notes": "North Wing Sector 3 - structural fire detected and extinguished",
+            "meta": {"building": "North Wing", "operator": "ananya", "mission_type": "SUPPRESSION"},
+            "pump_range": (140.0, 240.0),
+            "min_tank": 0.42,
+            "fire_x": 8.4,
+            "fire_y": 5.1,
+            "commands": [
+                ((now - timedelta(minutes=47, seconds=50)).isoformat(), "scan north room", {"name": "GOTO", "params": {"x": 6.0, "y": 7.0}}, True, "Navigating to north room"),
+                ((now - timedelta(minutes=46, seconds=40)).isoformat(), "status report", {"name": "STATUS", "params": {}}, True, "Status telemetry requested"),
+                ((now - timedelta(minutes=45, seconds=40)).isoformat(), "extinguish the fire", {"name": "EXTINGUISH", "params": {}}, True, "Autonomous suppression engaged"),
+                ((now - timedelta(minutes=43, seconds=50)).isoformat(), "return home", {"name": "RETURN_HOME", "params": {}}, True, "Routing to dock"),
+            ],
+        },
+        {
+            "id": "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d",
+            "robot": "firebot-1",
+            "started_at": (now - timedelta(hours=3, minutes=10)).isoformat(),
+            "ended_at": (now - timedelta(hours=3, minutes=7)).isoformat(),
+            "duration_s": 180.0,
+            "notes": "East corridor perimeter sweep - ambient thermal baseline established",
+            "meta": {"building": "East Corridor", "operator": "avinandan", "mission_type": "RECON"},
+            "pump_range": None,
+            "min_tank": 1.0,
+            "fire_x": None,
+            "fire_y": None,
+            "commands": [
+                ((now - timedelta(hours=3, minutes=9, seconds=50)).isoformat(), "start patrol", {"name": "EXTINGUISH", "params": {}}, True, "Autonomous patrol engaged"),
+                ((now - timedelta(hours=3, minutes=8, seconds=30)).isoformat(), "check telemetry", {"name": "STATUS", "params": {}}, True, "Status telemetry requested"),
+                ((now - timedelta(hours=3, minutes=7, seconds=10)).isoformat(), "halt", {"name": "STOP", "params": {}}, True, "Motors halted"),
+            ],
+        },
+        {
+            "id": "f9e8d7c6-b5a4-3210-9876-543210fedcba",
+            "robot": "firebot-1",
+            "started_at": (now - timedelta(hours=22, minutes=15)).isoformat(),
+            "ended_at": (now - timedelta(hours=22, minutes=8)).isoformat(),
+            "duration_s": 420.0,
+            "notes": "Warehouse bay 4 - chemical flare suppressed, thermal anomaly isolated",
+            "meta": {"building": "Warehouse", "operator": "ananya", "mission_type": "SUPPRESSION"},
+            "pump_range": (160.0, 350.0),
+            "min_tank": 0.18,
+            "fire_x": 4.5,
+            "fire_y": 6.2,
+            "commands": [
+                ((now - timedelta(hours=22, minutes=14, seconds=40)).isoformat(), "advance to warehouse", {"name": "GOTO", "params": {"x": 4.5, "y": 6.2}}, True, "Navigating to warehouse"),
+                ((now - timedelta(hours=22, minutes=12, seconds=30)).isoformat(), "status report", {"name": "STATUS", "params": {}}, True, "Status telemetry requested"),
+                ((now - timedelta(hours=22, minutes=11, seconds=0)).isoformat(), "suppress high heat signature", {"name": "EXTINGUISH", "params": {}}, True, "Pump active"),
+                ((now - timedelta(hours=22, minutes=9, seconds=0)).isoformat(), "return to dock", {"name": "RETURN_HOME", "params": {}}, True, "Routing to dock"),
+            ],
+        },
+    ]
+
+def _get_fallback_run_points(run_id: str) -> list[dict[str, Any]] | None:
+    missions = {m["id"]: m for m in _get_fallback_missions()}
+    m = missions.get(str(run_id))
+    if not m:
+        return None
+    num_frames = 60
+    dt = m["duration_s"] / num_frames
+    p_start, p_end = m["pump_range"] if m["pump_range"] else (999999.0, 999999.0)
+    points = []
+    for i in range(num_frames):
+        t = i * dt
+        frac = i / max(1, num_frames - 1)
+        if m["fire_x"] is not None:
+            x = 1.2 + (m["fire_x"] - 1.2) * min(1.0, frac * 1.5) + math.sin(t / 8.0) * 0.2
+            y = 1.0 + (m["fire_y"] - 1.0) * min(1.0, frac * 1.5) + math.cos(t / 9.0) * 0.2
+        else:
+            x = 2.0 + 4.0 * math.sin(frac * 4.0)
+            y = 3.0 + 2.0 * math.cos(frac * 4.0)
+
+        theta = math.sin(t / 10.0) * 1.5
+        speed = 0.0 if (p_start <= t <= p_end) else round(0.35 + 0.1 * math.sin(t), 2)
+        if p_start <= t <= p_end:
+            tank = max(m["min_tank"], 1.0 - ((t - p_start) / (p_end - p_start)) * (1.0 - m["min_tank"]))
+            cmd_pump = True
+            mode = "SPRAY"
+        elif t > p_end:
+            tank = m["min_tank"]
+            cmd_pump = False
+            mode = "SAFE"
+        elif t > p_start - 30.0:
+            tank = 1.0
+            cmd_pump = False
+            mode = "TRACK"
+        else:
+            tank = 1.0
+            cmd_pump = False
+            mode = "AUTO"
+
+        has_fire = m["fire_x"] is not None and t > 60.0
+        flame = min(0.98, max(0.01, 0.9 * math.exp(-((t - 180.0) ** 2) / 6000.0))) if has_fire else 0.02
+        sensors = {
+            "us_front_left": round(1.2 + 0.8 * math.sin(t / 3.0), 2),
+            "us_front_right": round(1.1 + 0.7 * math.cos(t / 3.0), 2),
+            "us_left": round(2.0 + 0.5 * math.sin(t / 5.0), 2),
+            "us_right": round(1.8 + 0.6 * math.cos(t / 5.0), 2),
+            "flame_left": round(flame * 0.8, 3),
+            "flame_center": round(flame, 3),
+            "flame_right": round(flame * 0.75, 3),
+            "mq2_front": round(0.1 + flame * 0.6, 3),
+            "mq2_rear": round(0.08 + flame * 0.3, 3),
+        }
+        thermal = _reshape_thermal(_generate_mock_thermal_flat(t)) if (i % 8 == 0) else None
+        est_x = m["fire_x"] if has_fire else None
+        est_y = m["fire_y"] if has_fire else None
+        est_sigma = max(0.35, 12.0 * math.exp(-t / 60.0)) if has_fire else 25.0
+
+        points.append({
+            "seq": i,
+            "t": round(t, 2),
+            "x": round(x, 3),
+            "y": round(y, 3),
+            "theta": round(theta, 3),
+            "speed": speed,
+            "tank": round(tank, 3),
+            "sensors": sensors,
+            "thermal": thermal,
+            "est_x": est_x,
+            "est_y": est_y,
+            "est_sigma": round(est_sigma, 2),
+            "mode": mode,
+            "cmd_v": speed,
+            "cmd_w": round(math.sin(t / 4.0) * 0.3, 2),
+            "cmd_pump": cmd_pump,
+            "compute_ms": round(1.2 + math.sin(t) * 0.5, 2),
+        })
+    return points
+
 @app.get("/api/runs")
 async def list_runs() -> list[dict[str, Any]]:
     if _pool is None:
-        return []
+        return [
+            {
+                "id": m["id"],
+                "robot": m["robot"],
+                "started_at": m["started_at"],
+                "ended_at": m["ended_at"],
+                "notes": m["notes"],
+                "frames": 60,
+                "duration_s": m["duration_s"],
+                "min_tank": m["min_tank"],
+                "pumped": m["pump_range"] is not None,
+                "operator_commands": len(m["commands"]),
+            }
+            for m in _get_fallback_missions()
+        ]
     query = """
         SELECT s.id, s.robot, s.started_at, s.ended_at, s.notes,
                count(f.seq)                         AS frames,
@@ -506,7 +658,10 @@ async def seed_runs_endpoint() -> dict[str, Any]:
 @app.get("/api/runs/{run_id}")
 async def run_detail(run_id: str) -> dict[str, Any]:
     if _pool is None:
-        raise HTTPException(404, "Database not connected")
+        points = _get_fallback_run_points(run_id)
+        if points is not None:
+            return {"id": str(run_id), "points": points}
+        raise HTTPException(404, "Run not found")
     query = """
         SELECT seq, t, x, y, theta, speed, tank, sensors, thermal,
                est_x, est_y, est_sigma, mode, cmd_v, cmd_w, cmd_pump, compute_ms
@@ -533,6 +688,10 @@ async def run_detail(run_id: str) -> dict[str, Any]:
 async def _load_run_frames(run_id: str) -> list[dict[str, Any]]:
     """Frames for anomaly/summary analysis -- everything except the (large) thermal arrays."""
     if _pool is None:
+        pts = _get_fallback_run_points(run_id)
+        if pts:
+            return [{k: v for k, v in p.items() if k != "thermal"} for p in pts]
+        return []
         return []
     query = """
         SELECT seq, t, x, y, speed, tank, sensors, mode, cmd_pump, compute_ms

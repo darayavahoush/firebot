@@ -152,54 +152,110 @@ function mockTelemetryStream(onFrame) {
 
 function mockRuns() {
   const now = Date.now();
-  return Array.from({ length: 8 }).map((_, i) => {
-    const started = now - (i + 1) * 1000 * 60 * 60 * (3 + i);
-    const durationS = 90 + Math.floor(Math.random() * 600);
-    return {
-      id: `run-${8 - i}`,
+  return [
+    {
+      id: "d8e3b1c2-5f6a-4b9d-8e7c-1a2b3c4d5e6f",
       robot: "firebot-1",
-      started_at: new Date(started).toISOString(),
-      ended_at: new Date(started + durationS * 1000).toISOString(),
-      notes: "brain session",
-      frames: 50 + Math.floor(Math.random() * 600),
-      duration_s: durationS,
-      min_tank: +(Math.random() * 0.6).toFixed(2),
-      pumped: Math.random() > 0.4,
-      operator_commands: Math.floor(Math.random() * 10),
-    };
-  });
+      started_at: new Date(now - 48 * 60 * 1000).toISOString(),
+      ended_at: new Date(now - 43 * 60 * 1000).toISOString(),
+      notes: "North Wing Sector 3 - structural fire detected and extinguished",
+      frames: 60,
+      duration_s: 290.0,
+      min_tank: 0.42,
+      pumped: true,
+      operator_commands: 4,
+    },
+    {
+      id: "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d",
+      robot: "firebot-1",
+      started_at: new Date(now - 190 * 60 * 1000).toISOString(),
+      ended_at: new Date(now - 187 * 60 * 1000).toISOString(),
+      notes: "East corridor perimeter sweep - ambient thermal baseline established",
+      frames: 60,
+      duration_s: 180.0,
+      min_tank: 1.0,
+      pumped: false,
+      operator_commands: 3,
+    },
+    {
+      id: "f9e8d7c6-b5a4-3210-9876-543210fedcba",
+      robot: "firebot-1",
+      started_at: new Date(now - 1335 * 60 * 1000).toISOString(),
+      ended_at: new Date(now - 1328 * 60 * 1000).toISOString(),
+      notes: "Warehouse bay 4 - chemical flare suppressed, thermal anomaly isolated",
+      frames: 60,
+      duration_s: 420.0,
+      min_tank: 0.18,
+      pumped: true,
+      operator_commands: 4,
+    },
+  ];
 }
 
 function mockRunDetail(runId) {
-  const points = Array.from({ length: 60 }).map((_, i) => ({
-    seq: i,
-    t: +(i * 0.1).toFixed(2),
-    x: +(3 + Math.sin(i / 8)).toFixed(2),
-    y: +(1.8 + Math.cos(i / 8)).toFixed(2),
-    theta: +(i * 0.03).toFixed(2),
-    speed: +(Math.random() * 0.4).toFixed(2),
-    tank: +Math.max(0, 1 - i * 0.01).toFixed(2),
-    sensors: {
-      us_front_left: +(0.5 + Math.random() * 3).toFixed(2),
-      us_front_right: +(0.5 + Math.random() * 3).toFixed(2),
-      us_left: +(0.5 + Math.random() * 3).toFixed(2),
-      us_right: +(0.5 + Math.random() * 3).toFixed(2),
-      flame_left: +(Math.random() * 0.05).toFixed(3),
-      flame_center: +(Math.random() * 0.05).toFixed(3),
-      flame_right: +(Math.random() * 0.05).toFixed(3),
-      mq2_front: +(Math.random() * 0.3).toFixed(3),
-      mq2_rear: +(Math.random() * 0.3).toFixed(3),
-    },
-    thermal: i % 10 === 0 ? mockThermalGrid(i) : null,
-    est_x: +(3 + Math.random() * 0.3).toFixed(2),
-    est_y: +(1.8 + Math.random() * 0.3).toFixed(2),
-    est_sigma: +Math.max(0.2, 10 - i * 0.15).toFixed(2),
-    mode: "AUTO",
-    cmd_v: +(Math.random() * 0.4).toFixed(2),
-    cmd_w: +((Math.random() - 0.5) * 0.6).toFixed(2),
-    cmd_pump: Math.random() > 0.9,
-    compute_ms: +(Math.random() * 2).toFixed(2),
-  }));
+  const missions = {
+    "d8e3b1c2-5f6a-4b9d-8e7c-1a2b3c4d5e6f": { dur: 290.0, pumpStart: 140.0, pumpEnd: 240.0, fireX: 8.4, fireY: 5.1, minTank: 0.42 },
+    "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d": { dur: 180.0, pumpStart: 999999, pumpEnd: 999999, fireX: null, fireY: null, minTank: 1.0 },
+    "f9e8d7c6-b5a4-3210-9876-543210fedcba": { dur: 420.0, pumpStart: 160.0, pumpEnd: 350.0, fireX: 4.5, fireY: 6.2, minTank: 0.18 },
+  };
+  const cfg = missions[runId] || { dur: 300.0, pumpStart: 120.0, pumpEnd: 220.0, fireX: 6.0, fireY: 4.0, minTank: 0.3 };
+  const numFrames = 60;
+  const dt = cfg.dur / numFrames;
+
+  const points = Array.from({ length: numFrames }).map((_, i) => {
+    const t = +(i * dt).toFixed(2);
+    const frac = i / (numFrames - 1);
+    const hasFire = cfg.fireX != null && t > 60.0;
+    const isPumping = t >= cfg.pumpStart && t <= cfg.pumpEnd;
+
+    let x = cfg.fireX != null
+      ? +(1.2 + (cfg.fireX - 1.2) * Math.min(1.0, frac * 1.5) + Math.sin(t / 8.0) * 0.2).toFixed(2)
+      : +(2.0 + 4.0 * Math.sin(frac * 4.0)).toFixed(2);
+    let y = cfg.fireY != null
+      ? +(1.0 + (cfg.fireY - 1.0) * Math.min(1.0, frac * 1.5) + Math.cos(t / 9.0) * 0.2).toFixed(2)
+      : +(3.0 + 2.0 * Math.cos(frac * 4.0)).toFixed(2);
+
+    const speed = isPumping ? 0.0 : +(0.35 + 0.1 * Math.sin(t)).toFixed(2);
+    let tank = 1.0;
+    if (isPumping) {
+      tank = +Math.max(cfg.minTank, 1.0 - ((t - cfg.pumpStart) / (cfg.pumpEnd - cfg.pumpStart)) * (1.0 - cfg.minTank)).toFixed(2);
+    } else if (t > cfg.pumpEnd) {
+      tank = cfg.minTank;
+    }
+
+    const flame = hasFire ? +Math.min(0.98, Math.max(0.01, 0.9 * Math.exp(-Math.pow(t - 180.0, 2) / 6000.0))).toFixed(3) : 0.02;
+
+    return {
+      seq: i,
+      t,
+      x,
+      y,
+      theta: +(Math.sin(t / 10.0) * 1.5).toFixed(2),
+      speed,
+      tank,
+      sensors: {
+        us_front_left: +(1.2 + 0.8 * Math.sin(t / 3.0)).toFixed(2),
+        us_front_right: +(1.1 + 0.7 * Math.cos(t / 3.0)).toFixed(2),
+        us_left: +(2.0 + 0.5 * Math.sin(t / 5.0)).toFixed(2),
+        us_right: +(1.8 + 0.6 * Math.cos(t / 5.0)).toFixed(2),
+        flame_left: +(flame * 0.8).toFixed(3),
+        flame_center: flame,
+        flame_right: +(flame * 0.75).toFixed(3),
+        mq2_front: +(0.1 + flame * 0.6).toFixed(3),
+        mq2_rear: +(0.08 + flame * 0.3).toFixed(3),
+      },
+      thermal: i % 8 === 0 ? mockThermalGrid(t) : null,
+      est_x: hasFire ? cfg.fireX : null,
+      est_y: hasFire ? cfg.fireY : null,
+      est_sigma: hasFire ? +Math.max(0.35, 12.0 * Math.exp(-t / 60.0)).toFixed(2) : 25.0,
+      mode: isPumping ? "SPRAY" : (t > cfg.pumpEnd ? "SAFE" : "AUTO"),
+      cmd_v: speed,
+      cmd_w: +(Math.sin(t / 4.0) * 0.3).toFixed(2),
+      cmd_pump: isPumping,
+      compute_ms: +(1.2 + Math.sin(t) * 0.5).toFixed(2),
+    };
+  });
+
   return { id: runId, points };
 }
 

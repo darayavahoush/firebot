@@ -11,8 +11,21 @@ services:
       - key: PYTHON_VERSION
         value: 3.11.9
       - key: FIREBOT_CORS_ORIGINS
-        value: "https://darayavahoush.github.io,https://anabaena-firebot-console.hf.space,http://localhost:5173,https://firebot-api.onrender.com"
+        value: "https://darayavahoush.github.io,https://anabaena-firebot-console.hf.space,http://localhost:5173,http://localhost:5174,https://firebot-api.onrender.com,https://firebot-console.onrender.com"
       - key: FIREBOT_VOICE_INTENT_CHECKPOINT
         value: checkpoints/intent_head.pt
       - key: MUJOCO_GL
         value: disabled
+
+  - type: web
+    name: firebot-console
+    runtime: static
+    region: oregon
+    plan: free
+    branch: main
+    buildCommand: cd firebot-console/frontend && npm install && npm run build
+    staticPublishPath: firebot-console/frontend/dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

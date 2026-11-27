@@ -77,7 +77,7 @@ export default function LiveOps({ frame, mode, setMode, log, onAnalog, onPump, o
           <div className="space-y-2">
             <CameraFeed frame={frame} />
             <p className="text-[11px] font-mono text-faint px-1">
-              CAM-01 • Synthetic corridor & thermal target-lock overlay. Real hardware reports live telemetry over TCP socket.
+              CAM-01 • Forward tactical optical feed & thermal target-lock overlay. Real hardware reports live telemetry over TCP socket.
             </p>
           </div>
         </div>

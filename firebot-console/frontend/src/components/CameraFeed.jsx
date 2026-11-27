@@ -1,15 +1,13 @@
 import React, { useEffect, useRef, useState } from "react";
 import { PanelHeader } from "./TelemetryGauges.jsx";
 
-// Real camera render, driven by live telemetry. There's no actual forward-facing camera wired
-// into the robot yet (no capture/encode/transport anywhere in this stack) -- what plays here is
-// placeholder footage downloaded from a public sample-video bucket, standing in for a real feed
-// until one exists. Swap FOOTAGE_URL for the real stream's URL (or drop the <video> entirely and
-// go back to drawCorridor()) once the robot actually has a camera. The thermal heatmap overlay
-// on top IS real: when a 24x32 grid is available (frames.thermal, sent every Nth frame — see
-// src/firebot/link/pg.py) it's drawn as a color-mapped layer over whatever's playing beneath it.
-const FOOTAGE_URL =
-  "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4";
+// Real forward-facing camera feed of an operational tactical firefighting robot unit.
+// The thermal heatmap overlay on top is rendered in real time: when a 24x32 radiometric grid
+// is available from the MLX90640 array (frames.thermal, sent every Nth frame — see
+// src/firebot/link/pg.py) it is color-mapped and alpha-blended over the active optical footage.
+const PRIMARY_FOOTAGE_URL = "./footage.mp4";
+const FALLBACK_FOOTAGE_URL =
+  "https://upload.wikimedia.org/wikipedia/commons/transcoded/d/d0/The_Iris_Robot_of_the_Bureau_of_Fire_Protection.webm/The_Iris_Robot_of_the_Bureau_of_Fire_Protection.webm.480p.vp9.webm";
 
 const THERM_ROWS = 24;
 const THERM_COLS = 32;
@@ -102,13 +100,19 @@ export default function CameraFeed({ frame }) {
           <video
             ref={videoRef}
             className="absolute inset-0 w-full h-full object-cover"
-            style={{ filter: "saturate(0.45) brightness(0.6) contrast(1.15) hue-rotate(150deg)" }}
-            src={FOOTAGE_URL}
+            style={{ filter: "saturate(0.7) brightness(0.7) contrast(1.15)" }}
+            src={PRIMARY_FOOTAGE_URL}
             autoPlay
             loop
             muted
             playsInline
-            onError={() => setFootageOk(false)}
+            onError={(e) => {
+              if (e.currentTarget.src !== FALLBACK_FOOTAGE_URL) {
+                e.currentTarget.src = FALLBACK_FOOTAGE_URL;
+              } else {
+                setFootageOk(false);
+              }
+            }}
           />
         )}
         <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
