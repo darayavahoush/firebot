@@ -32,6 +32,9 @@ Install the following libraries in the **Arduino IDE** (or `platformio.ini`):
 1. **ArduinoJson** (v6.x or v7.x) by Benoit Blanchon
 2. **ESP32Servo** by Kevin Harrington
 
+3. **esp32 by Espressif Systems, core 3.x** (Boards Manager) — the sketch uses the 3.x `ledcAttach(pin, freq, res)` API and
+   will not compile on core 2.x. ESP32Servo must be 3.x too.
+
 ### Board Settings (Arduino IDE)
 - **Board:** `ESP32 Dev Module` (or `DOIT ESP32 DEVKIT V1`)
 - **CPU Frequency:** `240MHz (WiFi/BT)`
@@ -105,6 +108,10 @@ Install the following libraries in the **Arduino IDE** (or `platformio.ini`):
   "ack": 104
 }
 ```
+
+Units (see `src/firebot/link/protocol.py`): command `turret` is a **normalised pan rate** in [-1, 1]
+(× 2.5 rad/s, integrated on the ESP32 and clamped to ±π/2); telemetry `turret` is the resulting
+pan **angle in radians**. If the nozzle pans the wrong way, set `TURRET_SERVO_SIGN` to `-1`.
 
 ---
 

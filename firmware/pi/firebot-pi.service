@@ -1,0 +1,17 @@
+[Unit]
+Description=Firebot Pi agent (ESP32 + thermal camera -> PC brain)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__USER__
+SupplementaryGroups=dialout i2c gpio
+WorkingDirectory=__REPO__
+EnvironmentFile=/etc/firebot-pi.env
+ExecStart=__REPO__/.venv/bin/firebot-pi --host ${FIREBOT_PC_HOST} --port 8765 --robot firebot-1
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

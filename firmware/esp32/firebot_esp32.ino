@@ -12,7 +12,7 @@
  *  4. Sample Water Tank Level & Battery Voltage via ADC
  *  5. Drive 2x DC Motors (Differential Drive) via H-Bridge (TB6612FNG / L298N)
  *  6. Switch 12V Diaphragm Water Pump via Logic-Level N-MOSFET
- *  7. Position Extinguisher Pan-Tilt Servo (SG90)
+ *  7. Pan the extinguisher nozzle (SG90): brain sends a normalised pan RATE, we integrate to an angle
  *  8. Enforce Hardware Safety Watchdog (kill pump & motors if serial link lost for >500ms)
  *  9. Stream JSON telemetry frames to Pi at 10 Hz (matching firebot.link.agent protocol)
  * =========================================================================================
@@ -95,7 +95,9 @@ bool failsafeTriggered = false;
 float cmd_v = 0.0f;       // Linear velocity demand: [0.0, 1.0]
 float cmd_w = 0.0f;       // Angular velocity demand: [-1.0, 1.0]
 bool  cmd_pump = false;   // Water pump demand: on/off
-float cmd_turret = 0.0f;  // Turret pan angle demand: [-1.0, 1.0] -> [-90 deg, +90 deg]
+float cmd_turret = 0.0f;  // Turret pan RATE demand from the brain: [-1.0, 1.0] (normalised, see protocol.py)
+float turret_angle = 0.0f; // Integrated pan angle in RADIANS, chassis-relative (reported in telemetry)
+unsigned long lastTurretTime = 0;
 int   last_ack = -1;
 
 // Odometry state (simple dead-reckoning estimator based on velocity commands)
@@ -109,6 +111,12 @@ unsigned long lastOdomTime = 0;
 const float MAX_LINEAR_SPEED = 0.60f;  // m/s (~0.6 m/s top speed)
 const float MAX_ANGULAR_SPEED = 2.50f; // rad/s
 const float WHEEL_BASE = 0.22f;        // 22 cm between left and right wheels
+
+// Turret: must match firebot/sim/env.py (TURRET_WMAX, TURRET_LIMIT) so the brain's model of the
+// nozzle agrees with the real one. The brain sends a normalised RATE; we integrate it to an angle.
+const float TURRET_WMAX  = 2.5f;                 // rad/s at cmd_turret = +/-1
+const float TURRET_LIMIT = 1.57079632679f;       // +/- 90 deg usable servo range
+const int   TURRET_SERVO_SIGN = 1;               // set to -1 if the nozzle pans the wrong way
 
 // -----------------------------------------------------------------------------------------
 // ACTUATOR FUNCTIONS
@@ -131,7 +139,7 @@ void initActuators() {
 
   // Servo Turret
   servoPan.attach(PIN_SERVO_PAN, 500, 2500);
-  servoPan.write(90); // Center position (0 radians)
+  servoPan.write(90); // Center position (0 radians); turret_angle starts at 0
 
   // Safe halt immediately on boot
   haltActuators();
@@ -154,6 +162,7 @@ void haltActuators() {
   cmd_v = 0.0f;
   cmd_w = 0.0f;
   cmd_pump = false;
+  cmd_turret = 0.0f;   // rate 0 = hold current angle
   measured_speed = 0.0f;
 }
 
@@ -205,12 +214,25 @@ void applyPumpCommand(bool pumpOn) {
   digitalWrite(PIN_PUMP_GATE, pumpOn ? HIGH : LOW);
 }
 
-void applyTurretCommand(float turretNorm) {
-  // turretNorm is in [-1.0, 1.0], representing [-pi/2, +pi/2] radians
-  // SG90 servo expects 0 to 180 degrees (90 is center)
-  float angleDeg = 90.0f + (turretNorm * 90.0f);
-  angleDeg = constrain(angleDeg, 0.0f, 180.0f);
-  servoPan.write((int)angleDeg);
+void updateTurret() {
+  // Integrate the rate command into an angle, clamp, and drive the SG90 (90 deg = centred).
+  // Runs every loop(). cmd_turret is forced to 0 by haltActuators(), so the nozzle simply holds
+  // its last angle on failsafe/E-stop (it does not snap back).
+  unsigned long now = millis();
+  float dt = (now - lastTurretTime) / 1000.0f;
+  lastTurretTime = now;
+  if (dt <= 0.0f || dt > 1.0f) return;
+
+  turret_angle += cmd_turret * TURRET_WMAX * dt;
+  turret_angle = constrain(turret_angle, -TURRET_LIMIT, TURRET_LIMIT);
+
+  static int lastDeg = -1;
+  int deg = (int)(90.0f + TURRET_SERVO_SIGN * turret_angle * (180.0f / PI));
+  deg = constrain(deg, 0, 180);
+  if (deg != lastDeg) {   // only touch the servo when the target actually moves (avoids jitter)
+    servoPan.write(deg);
+    lastDeg = deg;
+  }
 }
 
 // -----------------------------------------------------------------------------------------
@@ -335,7 +357,7 @@ void sendTelemetryFrame() {
   float mq2_r = readMq2Normalized(PIN_MQ2_REAR);
 
   float tank = readWaterTankNormalized();
-  float current_turret = cmd_turret; // Current pan angle normalized [-1.0, 1.0]
+  float current_turret = turret_angle; // Current pan angle in radians (protocol.py: Frame.turret)
 
   // Construct JSON document matching firebot protocol
   StaticJsonDocument<512> doc;
@@ -348,7 +370,7 @@ void sendTelemetryFrame() {
 
   doc["speed"] = round(measured_speed * 100.0f) / 100.0f;
   doc["tank"]  = round(tank * 100.0f) / 100.0f;
-  doc["turret"] = round(current_turret * 100.0f) / 100.0f;
+  doc["turret"] = round(current_turret * 1000.0f) / 1000.0f;
 
   JsonObject sensors = doc.createNestedObject("sensors");
   sensors["us_front_left"]  = round(us_fl * 100.0f) / 100.0f;
@@ -400,7 +422,6 @@ void processIncomingCommands() {
       // Apply to hardware actuators
       applyMotorCommands(cmd_v, cmd_w);
       applyPumpCommand(cmd_pump);
-      applyTurretCommand(cmd_turret);
     }
   }
 }
@@ -419,6 +440,9 @@ void checkWatchdog() {
 
 void setup() {
   Serial.begin(SERIAL_BAUD);
+  // Default readStringUntil timeout is 1000 ms: a half-received line would block loop() (and the
+  // watchdog) for a full second with the motors still running. Keep it short.
+  Serial.setTimeout(20);
   // Wait up to 1 second for serial connection (non-blocking if headless)
   unsigned long start = millis();
   while (!Serial && (millis() - start < 1000));
@@ -429,6 +453,7 @@ void setup() {
   lastCommandTime = millis();
   lastTelemetryTime = millis();
   lastOdomTime = millis();
+  lastTurretTime = millis();
 }
 
 void loop() {
@@ -438,8 +463,9 @@ void loop() {
   // 2. Enforce hardware watchdog
   checkWatchdog();
 
-  // 3. Update estimated odometry
+  // 3. Update estimated odometry and nozzle pan angle
   updateOdometry();
+  updateTurret();
 
   // 4. Send telemetry frame at configured rate (10 Hz = every 100ms)
   unsigned long now = millis();
