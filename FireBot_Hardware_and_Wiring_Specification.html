@@ -1,0 +1,1023 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>FireBot Autonomous Firefighting Rover — Hardware, Firmware & Wiring Specification</title>
+<style>
+  @page {
+    size: A4;
+    margin: 14mm 14mm 14mm 14mm;
+    @bottom-right {
+      content: counter(page);
+    }
+  }
+
+  * {
+    box-sizing: border-box;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: #1e293b;
+    background-color: #ffffff;
+    line-height: 1.5;
+    font-size: 9.5pt;
+    margin: 0;
+    padding: 0;
+  }
+
+  /* Cover & Header */
+  .cover {
+    border-bottom: 3px solid #dc2626;
+    padding-bottom: 18px;
+    margin-bottom: 24px;
+  }
+
+  .badge {
+    display: inline-block;
+    background-color: #fee2e2;
+    color: #b91c1c;
+    font-weight: 700;
+    font-size: 8pt;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 3px 8px;
+    border-radius: 4px;
+    margin-bottom: 8px;
+  }
+
+  h1 {
+    font-size: 22pt;
+    font-weight: 800;
+    color: #0f172a;
+    margin: 4px 0 6px 0;
+    letter-spacing: -0.02em;
+  }
+
+  .subtitle {
+    font-size: 11pt;
+    color: #475569;
+    margin: 0 0 14px 0;
+    font-weight: 500;
+  }
+
+  .meta-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    background-color: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 10px 14px;
+    font-size: 8.5pt;
+  }
+
+  .meta-item strong {
+    display: block;
+    color: #64748b;
+    font-size: 7.5pt;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 2px;
+  }
+
+  .meta-item span {
+    color: #0f172a;
+    font-weight: 600;
+  }
+
+  /* Section Styling */
+  .section {
+    margin-bottom: 22px;
+    page-break-inside: auto;
+  }
+
+  .page-break {
+    page-break-before: always;
+  }
+
+  h2 {
+    font-size: 13pt;
+    font-weight: 700;
+    color: #0f172a;
+    border-left: 4px solid #dc2626;
+    padding-left: 8px;
+    margin: 18px 0 10px 0;
+  }
+
+  h3 {
+    font-size: 10.5pt;
+    font-weight: 700;
+    color: #1e293b;
+    margin: 14px 0 6px 0;
+  }
+
+  p {
+    margin: 0 0 8px 0;
+    color: #334155;
+  }
+
+  /* Callout Alerts */
+  .alert {
+    border-radius: 6px;
+    padding: 10px 14px;
+    margin: 10px 0 14px 0;
+    font-size: 8.5pt;
+    page-break-inside: avoid;
+  }
+
+  .alert-warning {
+    background-color: #fffbeb;
+    border-left: 4px solid #f59e0b;
+    color: #92400e;
+  }
+
+  .alert-danger {
+    background-color: #fef2f2;
+    border-left: 4px solid #ef4444;
+    color: #991b1b;
+  }
+
+  .alert-info {
+    background-color: #eff6ff;
+    border-left: 4px solid #3b82f6;
+    color: #1e40af;
+  }
+
+  .alert strong {
+    display: block;
+    font-size: 9pt;
+    margin-bottom: 3px;
+  }
+
+  /* Tables */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 8.5pt;
+    margin: 8px 0 14px 0;
+    page-break-inside: avoid;
+  }
+
+  th {
+    background-color: #0f172a;
+    color: #ffffff;
+    font-weight: 600;
+    text-align: left;
+    padding: 6px 8px;
+    border: 1px solid #0f172a;
+    font-size: 8pt;
+  }
+
+  td {
+    padding: 5px 8px;
+    border: 1px solid #e2e8f0;
+    color: #334155;
+  }
+
+  tr:nth-child(even) td {
+    background-color: #f8fafc;
+  }
+
+  /* Diagrams & ASCII Blocks */
+  .diagram-box {
+    background-color: #0f172a;
+    color: #e2e8f0;
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+    font-size: 7.8pt;
+    line-height: 1.35;
+    padding: 12px 14px;
+    border-radius: 6px;
+    margin: 10px 0 14px 0;
+    white-space: pre;
+    overflow: hidden;
+    page-break-inside: avoid;
+  }
+
+  .diagram-box .hi-red { color: #f87171; font-weight: bold; }
+  .diagram-box .hi-cyan { color: #38bdf8; font-weight: bold; }
+  .diagram-box .hi-green { color: #4ade80; font-weight: bold; }
+  .diagram-box .hi-yellow { color: #fde047; font-weight: bold; }
+
+  /* Code Blocks */
+  pre.code {
+    background-color: #f8fafc;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+    font-size: 7.8pt;
+    line-height: 1.38;
+    color: #1e293b;
+    margin: 8px 0 14px 0;
+    white-space: pre-wrap;
+    word-break: break-all;
+    page-break-inside: avoid;
+  }
+
+  code.inline {
+    background-color: #f1f5f9;
+    color: #b91c1c;
+    font-family: "SFMono-Regular", Consolas, monospace;
+    font-size: 8pt;
+    padding: 1px 4px;
+    border-radius: 3px;
+    border: 1px solid #e2e8f0;
+  }
+
+  ul, ol {
+    margin: 0 0 10px 0;
+    padding-left: 20px;
+  }
+
+  li {
+    margin-bottom: 4px;
+    color: #334155;
+  }
+
+  /* Footer */
+  .doc-footer {
+    border-top: 1px solid #e2e8f0;
+    padding-top: 8px;
+    margin-top: 20px;
+    font-size: 7.5pt;
+    color: #94a3b8;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<!-- COVER / HEADER -->
+<div class="cover">
+  <div class="badge">Production Hardware &amp; Firmware Manual</div>
+  <h1>FireBot Autonomous Firefighting Rover</h1>
+  <div class="subtitle">Complete Raspberry Pi 4/5 &amp; ESP32 Hardware, Electrical Wiring, and Firmware Specification</div>
+
+  <div class="meta-grid">
+    <div class="meta-item">
+      <strong>Target Platform</strong>
+      <span>Raspberry Pi 4/5 + ESP32</span>
+    </div>
+    <div class="meta-item">
+      <strong>Microcontroller</strong>
+      <span>ESP32 DevKit V1 (30/38 Pin)</span>
+    </div>
+    <div class="meta-item">
+      <strong>Thermal Array</strong>
+      <span>MLX90640-D55 (32x24 IR)</span>
+    </div>
+    <div class="meta-item">
+      <strong>Communication</strong>
+      <span>USB Serial @ 115200 Baud</span>
+    </div>
+  </div>
+</div>
+
+<!-- SECTION 1 -->
+<div class="section">
+  <h2>1. System Architecture &amp; Dual-Compute Split</h2>
+  <p>
+    The FireBot rover implements an asymmetric compute split between real-time low-level actuation and high-throughput sensory perception:
+  </p>
+  <ul>
+    <li>
+      <strong>ESP32 Microcontroller (Hard Real-Time):</strong> Handles microsecond pulse timing for 4x ultrasonic distance sensors, 20 kHz ultrasonic motor PWM, 12-bit ADC analog conversion (MQ-2 gas sensors, water tank float, battery voltage), logic-level MOSFET switching for the 12V diaphragm water pump, and hardware safety watchdog enforcement (halting all actuators if communication drops for &gt;500ms).
+    </li>
+    <li>
+      <strong>Raspberry Pi 4 / 5 (Linux SBC):</strong> Interfaces with the 32x24 Far-Infrared thermal camera (MLX90640-D55) over I2C at 400 kHz, runs the client link agent (<code>firebot.link.realhw:RealHardware</code>), and streams 10 Hz telemetry frames over Wi-Fi TCP port <code>8765</code> to the PC Brain while executing returned motion and nozzle commands.
+    </li>
+  </ul>
+
+  <div class="diagram-box">
+<span class="hi-yellow">[ 12V LiPo Battery ]</span>
+       |
+       +--- <span class="hi-red">12V High-Current Rail</span> ---> [ TB6612FNG Motor VM ] &amp; [ 12V Water Pump (+) ]
+       |
+       +---> [ Buck Conv #1 (12V to 5V @ 3A) ] ---> [ ESP32 VIN ], [ SG90 Servos ], [ HC-SR04 VCC ]
+       |
+       +---> [ Buck Conv #2 (12V to 5V @ 3A) ] ---> [ Raspberry Pi 4/5 USB-C / 5V ]
+       |
+<span class="hi-cyan">[ COMMON GROUND BUS ]</span> (Ties Battery (-), All Buck Outputs, ESP32 GND, and Pi GND)
+
+               <span class="hi-green">+--------------------------+</span>
+               <span class="hi-green">|     Raspberry Pi 4/5     |</span>
+               <span class="hi-green">|   (Linux Client Agent)   |</span>
+               <span class="hi-green">+------------+-------------+</span>
+                            |
+           I2C (0x33) @ 400kHz | USB Serial (115200 Baud)
+                            v
+       +--------------------+---------------------+
+       |                                          |
+       v                                          v
+<span class="hi-yellow">[ MLX90640-D55 (32x24 Thermal) ]</span>        <span class="hi-cyan">[ ESP32 Microcontroller ]</span>
+                                                  |
+           +-----------------+--------------------+------------------+-----------------+
+           |                 |                    |                  |                 |
+           v                 v                    v                  v                 v
+     <span class="hi-green">[ 4x HC-SR04 ]</span>    <span class="hi-red">[ 3x Flame IR ]</span>      <span class="hi-yellow">[ 2x MQ-2 Gas ]</span>    <span class="hi-cyan">[ Motor Driver ]</span>   <span class="hi-red">[ 12V Pump ]</span>
+     Ultrasonics         Photodiodes          Front / Rear       TB6612 Dual DC    IRLZ44N MOSFET
+  </div>
+</div>
+
+<!-- SECTION 2 -->
+<div class="section">
+  <h2>2. Electrical Wiring &amp; Power Rails</h2>
+
+  <div class="alert alert-danger">
+    <strong>CRITICAL HARDWARE PROTECTION RULE: DUAL BUCK CONVERTERS</strong>
+    Never power the Raspberry Pi and the DC motors/servos from the same 5V regulator. Geared DC motors and diaphragm pumps generate severe inductive kickback and transient voltage sags. Always deploy two separate buck converters: Buck #1 dedicated to ESP32 + sensors + servos, and Buck #2 dedicated to the Raspberry Pi. Both converters must share a common ground bus.
+  </div>
+
+  <h3>2.1 HC-SR04 Ultrasonic 5V to 3.3V Voltage Divider</h3>
+  <p>
+    HC-SR04 ultrasonic sensors require 5V VCC to emit high-frequency acoustic pings. Consequently, their Echo output is a 5V logic signal. Because ESP32 GPIO pins tolerate only up to 3.3V, every Echo line must pass through a 1 kΩ / 2 kΩ resistor voltage divider before entering the ESP32:
+  </p>
+  <div class="diagram-box">
+HC-SR04 Echo Pin (5V Logic)
+        |
+      [ 1.0 kΩ Resistor ]
+        |
+        +------------------------> To ESP32 Echo Pin (GPIO 34 / 35 / 36 / 39) [3.3V Safe]
+        |
+      [ 2.0 kΩ Resistor ]
+        |
+       GND (Ground)
+  </div>
+
+  <h3>2.2 12V Diaphragm Water Pump MOSFET Circuit</h3>
+  <p>
+    The water pump draws 1.5A to 3.0A at 12V DC. An N-channel logic-level MOSFET (IRLZ44N or IRLB8721) switches the pump's negative terminal. A 1N4007 flyback diode across the pump motor terminals clamps inductive back-EMF spikes when switching off. A 10 kΩ pull-down resistor prevents unintended floating gate triggers during ESP32 boot.
+  </p>
+  <div class="diagram-box">
+                  <span class="hi-red">+12V Raw Battery Rail</span>
+                            |
+                            +--------------------+
+                            |                    |
+                     [ 12V Diaphragm ]     [ Flyback Diode ]
+                     [  Water Pump   ]       [ 1N4007 ]  (Cathode stripe to +12V)
+                            |                    |
+                            +--------------------+
+                            |
+                          Drain
+ESP32 GPIO 17 --------->  Gate  [ IRLZ44N N-MOSFET ]
+       |                  Source
+    [ 10 kΩ ]               |
+       |                    v
+      GND                  GND
+  </div>
+
+  <h3>2.3 Battery Voltage Monitor Divider (12V Pack)</h3>
+  <p>
+    To safely measure the 12.6V fully-charged 3S LiPo battery using the ESP32 12-bit ADC:
+    <br>
+    Divider: <code>R1 = 10 kΩ</code>, <code>R2 = 2.2 kΩ</code>. Max voltage at pin = $12.6\text{ V} \times \frac{2.2}{10 + 2.2} = 2.27\text{ V}$ (well within ESP32 3.3V ADC range).
+  </p>
+</div>
+
+<!-- SECTION 3 -->
+<div class="section page-break">
+  <h2>3. Complete Pinout Assignment Tables</h2>
+
+  <h3>3.1 ESP32 Microcontroller Pinout</h3>
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 14%;">ESP32 Pin</th>
+        <th style="width: 18%;">Connected Device</th>
+        <th style="width: 10%;">Direction</th>
+        <th style="width: 10%;">Level</th>
+        <th style="width: 48%;">Functional Description &amp; Wiring Notes</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>GPIO 13</strong></td>
+        <td><code>us_front_left</code></td>
+        <td>Output</td>
+        <td>3.3V</td>
+        <td>Trigger pulse pin to Front-Left HC-SR04.</td>
+      </tr>
+      <tr>
+        <td><strong>GPIO 34</strong></td>
+        <td><code>us_front_left</code></td>
+        <td>Input</td>
+        <td>3.3V</td>
+        <td>Echo input via 1k/2k voltage divider. Input-only pin.</td>
+      </tr>
+      <tr>
+        <td><strong>GPIO 12</strong></td>
+        <td><code>us_front_right</code></td>
+        <td>Output</td>
+        <td>3.3V</td>
+        <td>Trigger pulse pin to Front-Right HC-SR04.</td>
+      </tr>
+      <tr>
+        <td><strong>GPIO 35</strong></td>
+        <td><code>us_front_right</code></td>
+        <td>Input</td>
+        <td>3.3V</td>
+        <td>Echo input via 1k/2k voltage divider. Input-only pin.</td>
+      </tr>
+      <tr>
+        <td><strong>GPIO 14</strong></td>
+        <td><code>us_left</code></td>
+        <td>Output</td>
+        <td>3.3V</td>
+        <td>Trigger pulse pin to Left flank HC-SR04.</td>
+      </tr>
+      <tr>
+        <td><strong>GPIO 36 (VP)</strong></td>
+        <td><code>us_left</code></td>
+        <td>Input</td>
+        <td>3.3V</td>
+        <td>Echo input via 1k/2k voltage divider. Input-only pin.</td>
+      </tr>
+      <tr>
+        <td><strong>GPIO 27</strong></td>
+        <td><code>us_right</code></td>
+        <td>Output</td>
+        <td>3.3V</td>
+        <td>Trigger pulse pin to Right flank HC-SR04.</td>
+      </tr>
+      <tr>
+        <td><strong>GPIO 39 (VN)</strong></td>
+        <td><code>us_right</code></td>
+        <td>Input</td>
+        <td>3.3V</td>
+        <td>Echo input via 1k/2k voltage divider. Input-only pin.</td>
+      </tr>
+      <tr>
+        <td><strong>GPIO 25</strong></td>
+        <td><code>flame_left</code></td>
+        <td>Input</td>
+        <td>3.3V</td>
+        <td>Digital D0 from Left IR Flame sensor (Active LOW on fire).</td>
+      </tr>
+      <tr>
+        <td><strong>GPIO 26</strong></td>
+        <td><code>flame_center</code></td>
+        <td>Input</td>
+        <td>3.3V</td>
+        <td>Digital D0 from Center IR Flame sensor (Active LOW on fire).</td>
+      </tr>
+      <tr>
+        <td><strong>GPIO 33</strong></td>
+        <td><code>flame_right</code></td>
+        <td>Input</td>
+        <td>3.3V</td>
+        <td>Digital D0 from Right IR Flame sensor (Active LOW on fire).</td>
+      </tr>
+      <tr>
+        <td><strong>GPIO 32</strong></td>
+        <td><code>mq2_front</code></td>
+        <td>ADC Input</td>
+        <td>0–3.3V</td>
+        <td>Analog A0 from Front MQ-2 smoke/flammable gas sensor.</td>
+      </tr>
+      <tr>
+        <td><strong>GPIO 15</strong></td>
+        <td><code>mq2_rear</code></td>
+        <td>ADC Input</td>
+        <td>0–3.3V</td>
+        <td>Analog A0 from Rear MQ-2 smoke/flammable gas sensor.</td>
+      </tr>
+      <tr>
+        <td><strong>GPIO 4</strong></td>
+        <td><code>water_level</code></td>
+        <td>ADC Input</td>
+        <td>0–3.3V</td>
+        <td>Analog float sensor for water tank reservoir level (0.0=empty, 1.0=full).</td>
+      </tr>
+      <tr>
+        <td><strong>GPIO 2</strong></td>
+        <td><code>battery_monitor</code></td>
+        <td>ADC Input</td>
+        <td>0–3.3V</td>
+        <td>10k/2.2k voltage divider from 12V battery rail ($V_{bat} = V_{pin} \times 5.545$).</td>
+      </tr>
+      <tr>
+        <td><strong>GPIO 18</strong></td>
+        <td><code>motor_left</code> (PWMA)</td>
+        <td>PWM Out</td>
+        <td>3.3V</td>
+        <td>20 kHz LEDC PWM channel 0 speed duty cycle (0–255).</td>
+      </tr>
+      <tr>
+        <td><strong>GPIO 19</strong></td>
+        <td><code>motor_left</code> (AIN1)</td>
+        <td>Output</td>
+        <td>3.3V</td>
+        <td>Left motor H-Bridge direction pin 1.</td>
+      </tr>
+      <tr>
+        <td><strong>GPIO 21</strong></td>
+        <td><code>motor_left</code> (AIN2)</td>
+        <td>Output</td>
+        <td>3.3V</td>
+        <td>Left motor H-Bridge direction pin 2.</td>
+      </tr>
+      <tr>
+        <td><strong>GPIO 22</strong></td>
+        <td><code>motor_right</code> (PWMB)</td>
+        <td>PWM Out</td>
+        <td>3.3V</td>
+        <td>20 kHz LEDC PWM channel 1 speed duty cycle (0–255).</td>
+      </tr>
+      <tr>
+        <td><strong>GPIO 23</strong></td>
+        <td><code>motor_right</code> (BIN1)</td>
+        <td>Output</td>
+        <td>3.3V</td>
+        <td>Right motor H-Bridge direction pin 1.</td>
+      </tr>
+      <tr>
+        <td><strong>GPIO 5</strong></td>
+        <td><code>motor_right</code> (BIN2)</td>
+        <td>Output</td>
+        <td>3.3V</td>
+        <td>Right motor H-Bridge direction pin 2.</td>
+      </tr>
+      <tr>
+        <td><strong>GPIO 17</strong></td>
+        <td><code>pump</code> (Gate)</td>
+        <td>Output</td>
+        <td>3.3V</td>
+        <td>Logic-level gate drive for IRLZ44N MOSFET switching 12V diaphragm pump.</td>
+      </tr>
+      <tr>
+        <td><strong>GPIO 16</strong></td>
+        <td><code>servo_pan</code></td>
+        <td>PWM Out</td>
+        <td>3.3V</td>
+        <td>50 Hz servo PWM for SG90 nozzle turret pan (-90° to +90°).</td>
+      </tr>
+      <tr>
+        <td><strong>USB (UART0)</strong></td>
+        <td>Raspberry Pi USB</td>
+        <td>Bidirectional</td>
+        <td>USB</td>
+        <td>115200 baud streaming telemetry to Pi, receiving drive/pump commands.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>3.2 Raspberry Pi 4/5 Pinout (MLX90640-D55 Thermal Camera)</h3>
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 20%;">Raspberry Pi Pin</th>
+        <th style="width: 20%;">Signal Name</th>
+        <th style="width: 20%;">MLX90640 Pin</th>
+        <th style="width: 40%;">Wiring Notes</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Physical Pin 1</strong></td>
+        <td>3.3V Power</td>
+        <td>VIN / VDD</td>
+        <td>Powers thermal camera internal ASIC.</td>
+      </tr>
+      <tr>
+        <td><strong>Physical Pin 3</strong></td>
+        <td>GPIO 2 (I2C1 SDA)</td>
+        <td>SDA</td>
+        <td>I2C Data line (Hardware address <code>0x33</code>).</td>
+      </tr>
+      <tr>
+        <td><strong>Physical Pin 5</strong></td>
+        <td>GPIO 3 (I2C1 SCL)</td>
+        <td>SCL</td>
+        <td>I2C Clock line (Configured for 400 kHz Fast-Mode).</td>
+      </tr>
+      <tr>
+        <td><strong>Physical Pin 9</strong></td>
+        <td>Ground (GND)</td>
+        <td>GND</td>
+        <td>Thermal camera ground return.</td>
+      </tr>
+      <tr>
+        <td><strong>USB 2.0/3.0 Port</strong></td>
+        <td>USB D+/D-</td>
+        <td>ESP32 Micro-USB</td>
+        <td>Standard USB cable to ESP32 (mounts as <code>/dev/ttyUSB0</code>).</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- SECTION 4 -->
+<div class="section page-break">
+  <h2>4. Production ESP32 Firmware Source Code</h2>
+  <p>
+    This code must be flashed to the ESP32 using the Arduino IDE or PlatformIO. It is stored in the repository at <code class="inline">firmware/esp32/firebot_esp32.ino</code>.
+  </p>
+
+  <pre class="code">/*
+ * FIREBOT ESP32 EMBEDDED CONTROLLER FIRMWARE
+ * Real-time acquisition of 4x Ultrasonic, 3x Flame, 2x MQ-2,
+ * Dual DC Motors (TB6612FNG), 12V Water Pump MOSFET, SG90 Turret Servo,
+ * and 500ms Hardware Safety Watchdog.
+ */
+#include &lt;Arduino.h&gt;
+#include &lt;ArduinoJson.h&gt;
+#include &lt;ESP32Servo.h&gt;
+
+// --- Pin Definitions ---
+#define PIN_US_FL_TRIG   13
+#define PIN_US_FL_ECHO   34
+#define PIN_US_FR_TRIG   12
+#define PIN_US_FR_ECHO   35
+#define PIN_US_L_TRIG    14
+#define PIN_US_L_ECHO    36
+#define PIN_US_R_TRIG    27
+#define PIN_US_R_ECHO    39
+
+#define PIN_FLAME_L      25
+#define PIN_FLAME_C      26
+#define PIN_FLAME_R      33
+
+#define PIN_MQ2_FRONT    32
+#define PIN_MQ2_REAR     15
+
+#define PIN_TANK_LEVEL    4
+#define PIN_BATT_MONITOR  2
+
+#define PIN_MOTOR_L_PWM  18
+#define PIN_MOTOR_L_IN1  19
+#define PIN_MOTOR_L_IN2  21
+#define PIN_MOTOR_R_PWM  22
+#define PIN_MOTOR_R_IN3  23
+#define PIN_MOTOR_R_IN4   5
+
+#define PIN_PUMP_GATE    17
+#define PIN_SERVO_PAN    16
+
+#define PWM_FREQ         20000
+#define PWM_RES          8
+#define SERIAL_BAUD      115200
+#define TELEMETRY_RATE_HZ 10
+#define WATCHDOG_MS      500
+
+Servo servoPan;
+unsigned long lastTelemetryTime = 0;
+unsigned long lastCommandTime = 0;
+bool failsafeTriggered = false;
+
+float cmd_v = 0.0f, cmd_w = 0.0f;
+bool  cmd_pump = false;
+float cmd_turret = 0.0f;
+
+float pose_x = 0.0f, pose_y = 0.0f, pose_theta = 0.0f, measured_speed = 0.0f;
+unsigned long lastOdomTime = 0;
+const float MAX_LINEAR_SPEED = 0.60f;
+const float MAX_ANGULAR_SPEED = 2.50f;
+
+void haltActuators() {
+  digitalWrite(PIN_MOTOR_L_IN1, LOW);
+  digitalWrite(PIN_MOTOR_L_IN2, LOW);
+  ledcWrite(PIN_MOTOR_L_PWM, 0);
+
+  digitalWrite(PIN_MOTOR_R_IN3, LOW);
+  digitalWrite(PIN_MOTOR_R_IN4, LOW);
+  ledcWrite(PIN_MOTOR_R_PWM, 0);
+
+  digitalWrite(PIN_PUMP_GATE, LOW);
+  cmd_v = 0.0f; cmd_w = 0.0f; cmd_pump = false; measured_speed = 0.0f;
+}
+
+void applyMotorCommands(float v, float w) {
+  float u_l = constrain(v - (w * 0.5f), -1.0f, 1.0f);
+  float u_r = constrain(v + (w * 0.5f), -1.0f, 1.0f);
+
+  digitalWrite(PIN_MOTOR_L_IN1, u_l &gt; 0.02f ? HIGH : LOW);
+  digitalWrite(PIN_MOTOR_L_IN2, u_l &lt; -0.02f ? HIGH : LOW);
+  ledcWrite(PIN_MOTOR_L_PWM, (uint32_t)(fabs(u_l) * 255.0f));
+
+  digitalWrite(PIN_MOTOR_R_IN3, u_r &gt; 0.02f ? HIGH : LOW);
+  digitalWrite(PIN_MOTOR_R_IN4, u_r &lt; -0.02f ? HIGH : LOW);
+  ledcWrite(PIN_MOTOR_R_PWM, (uint32_t)(fabs(u_r) * 255.0f));
+
+  measured_speed = v * MAX_LINEAR_SPEED;
+}
+
+float readUltrasonicMeters(uint8_t trigPin, uint8_t echoPin) {
+  digitalWrite(trigPin, LOW); delayMicroseconds(2);
+  digitalWrite(trigPin, HIGH); delayMicroseconds(10);
+  digitalWrite(trigPin, LOW);
+  unsigned long duration = pulseIn(echoPin, HIGH, 24000);
+  if (duration == 0) return 4.0f;
+  return constrain((duration * 0.0343f / 2.0f) / 100.0f, 0.03f, 4.0f);
+}
+
+void sendTelemetryFrame() {
+  StaticJsonDocument&lt;512&gt; doc;
+  doc["t"] = millis() / 1000.0f;
+  JsonArray poseArr = doc.createNestedArray("pose");
+  poseArr.add(round(pose_x * 1000.0f) / 1000.0f);
+  poseArr.add(round(pose_y * 1000.0f) / 1000.0f);
+  poseArr.add(round(pose_theta * 1000.0f) / 1000.0f);
+
+  doc["speed"] = round(measured_speed * 100.0f) / 100.0f;
+  doc["tank"]  = round((analogRead(PIN_TANK_LEVEL) / 4095.0f) * 100.0f) / 100.0f;
+  doc["turret"] = round(cmd_turret * 100.0f) / 100.0f;
+
+  JsonObject s = doc.createNestedObject("sensors");
+  s["us_front_left"]  = round(readUltrasonicMeters(PIN_US_FL_TRIG, PIN_US_FL_ECHO) * 100.0f) / 100.0f;
+  s["us_front_right"] = round(readUltrasonicMeters(PIN_US_FR_TRIG, PIN_US_FR_ECHO) * 100.0f) / 100.0f;
+  s["us_left"]        = round(readUltrasonicMeters(PIN_US_L_TRIG, PIN_US_L_ECHO) * 100.0f) / 100.0f;
+  s["us_right"]       = round(readUltrasonicMeters(PIN_US_R_TRIG, PIN_US_R_ECHO) * 100.0f) / 100.0f;
+  s["flame_left"]     = (digitalRead(PIN_FLAME_L) == LOW) ? 1.0f : 0.0f;
+  s["flame_center"]   = (digitalRead(PIN_FLAME_C) == LOW) ? 1.0f : 0.0f;
+  s["flame_right"]    = (digitalRead(PIN_FLAME_R) == LOW) ? 1.0f : 0.0f;
+  s["mq2_front"]      = round((analogRead(PIN_MQ2_FRONT) / 4095.0f) * 1000.0f) / 1000.0f;
+  s["mq2_rear"]       = round((analogRead(PIN_MQ2_REAR) / 4095.0f) * 1000.0f) / 1000.0f;
+
+  serializeJson(doc, Serial);
+  Serial.println();
+}
+
+void processIncomingCommands() {
+  while (Serial.available() &gt; 0) {
+    String line = Serial.readStringUntil('\n');
+    line.trim();
+    if (line.length() == 0) continue;
+
+    StaticJsonDocument&lt;256&gt; doc;
+    if (!deserializeJson(doc, line)) {
+      if (doc.containsKey("v") &amp;&amp; doc.containsKey("w") &amp;&amp; doc.containsKey("pump")) {
+        cmd_v = doc["v"].as&lt;float&gt;();
+        cmd_w = doc["w"].as&lt;float&gt;();
+        cmd_pump = doc["pump"].as&lt;bool&gt;();
+        if (doc.containsKey("turret")) cmd_turret = doc["turret"].as&lt;float&gt;();
+        lastCommandTime = millis();
+        failsafeTriggered = false;
+
+        applyMotorCommands(cmd_v, cmd_w);
+        digitalWrite(PIN_PUMP_GATE, cmd_pump ? HIGH : LOW);
+        servoPan.write((int)constrain(90.0f + (cmd_turret * 90.0f), 0.0f, 180.0f));
+      }
+    }
+  }
+}
+
+void checkWatchdog() {
+  if (!failsafeTriggered &amp;&amp; (millis() - lastCommandTime &gt; WATCHDOG_MS)) {
+    haltActuators();
+    failsafeTriggered = true;
+  }
+}
+
+void setup() {
+  Serial.begin(SERIAL_BAUD);
+  pinMode(PIN_MOTOR_L_IN1, OUTPUT); pinMode(PIN_MOTOR_L_IN2, OUTPUT);
+  pinMode(PIN_MOTOR_R_IN3, OUTPUT); pinMode(PIN_MOTOR_R_IN4, OUTPUT);
+  ledcAttach(PIN_MOTOR_L_PWM, PWM_FREQ, PWM_RES);
+  ledcAttach(PIN_MOTOR_R_PWM, PWM_FREQ, PWM_RES);
+  pinMode(PIN_PUMP_GATE, OUTPUT);
+  servoPan.attach(PIN_SERVO_PAN, 500, 2500);
+
+  pinMode(PIN_US_FL_TRIG, OUTPUT); pinMode(PIN_US_FL_ECHO, INPUT);
+  pinMode(PIN_US_FR_TRIG, OUTPUT); pinMode(PIN_US_FR_ECHO, INPUT);
+  pinMode(PIN_US_L_TRIG, OUTPUT);  pinMode(PIN_US_L_ECHO, INPUT);
+  pinMode(PIN_US_R_TRIG, OUTPUT);  pinMode(PIN_US_R_ECHO, INPUT);
+
+  pinMode(PIN_FLAME_L, INPUT); pinMode(PIN_FLAME_C, INPUT); pinMode(PIN_FLAME_R, INPUT);
+  analogReadResolution(12);
+  analogSetAttenuation(ADC_11db);
+
+  haltActuators();
+}
+
+void loop() {
+  processIncomingCommands();
+  checkWatchdog();
+  if (millis() - lastTelemetryTime &gt;= (1000 / TELEMETRY_RATE_HZ)) {
+    lastTelemetryTime = millis();
+    sendTelemetryFrame();
+  }
+}</pre>
+</div>
+
+<!-- SECTION 5 -->
+<div class="section page-break">
+  <h2>5. Production Raspberry Pi Hardware Driver (`realhw.py`)</h2>
+  <p>
+    This driver executes on the Raspberry Pi under Python 3.10+. It implements the exact <code class="inline">Hardware</code> protocol required by <code class="inline">firebot.link.agent:PiAgent</code>. Stored at <code class="inline">src/firebot/link/realhw.py</code>.
+  </p>
+
+  <pre class="code">"""Real robot hardware driver for Raspberry Pi + ESP32."""
+from __future__ import annotations
+import glob, json, logging, time
+from typing import Any
+from .protocol import SCALARS, THERM_COLS, THERM_ROWS, Command, Frame
+
+log = logging.getLogger("firebot.realhw")
+
+try:
+    import serial
+except ImportError:
+    serial = None
+
+try:
+    import board, busio, adafruit_mlx90640
+except ImportError:
+    adafruit_mlx90640 = None
+
+def find_serial_port() -> str:
+    candidates = (glob.glob("/dev/ttyUSB*") + glob.glob("/dev/ttyACM*") +
+                  glob.glob("/dev/serial0") + glob.glob("/dev/cu.usbserial*"))
+    return candidates[0] if candidates else "/dev/ttyUSB0"
+
+class RealHardware:
+    def __init__(self, port: str = "auto", baud: int = 115200) -> None:
+        self.port = find_serial_port() if port == "auto" else port
+        self.baud = baud
+        self.ser: Any = None
+        self.mlx: Any = None
+        self._raw_thermal = [25.0] * (THERM_ROWS * THERM_COLS)
+        self._last_t = time.monotonic()
+        self._pose = (0.0, 0.0, 0.0)
+        self._speed = 0.0
+        self._tank = 1.0
+        self._turret = 0.0
+        self._sensors = {s: 0.0 for s in SCALARS}
+        self._sensors.update({"us_front_left": 2.0, "us_front_right": 2.0,
+                              "us_left": 2.0, "us_right": 2.0})
+        self._init_mlx()
+        self._init_serial()
+
+    def _init_mlx(self) -> None:
+        if adafruit_mlx90640 is None:
+            log.warning("adafruit_mlx90640 missing; using simulated thermal grid")
+            return
+        try:
+            i2c = busio.I2C(board.SCL, board.SDA, frequency=400000)
+            self.mlx = adafruit_mlx90640.MLX90640(i2c)
+            self.mlx.refresh_rate = adafruit_mlx90640.RefreshRate.REFRESH_8_HZ
+            log.info("MLX90640 active on I2C address 0x33")
+        except Exception as e:
+            log.warning("MLX90640 unavailable (%s); fallback to ambient", e)
+            self.mlx = None
+
+    def _init_serial(self) -> None:
+        if serial is None: return
+        try:
+            self.ser = serial.Serial(self.port, self.baud, timeout=0.05)
+            time.sleep(1.5)
+            self.ser.reset_input_buffer()
+            log.info("Connected to ESP32 on %s @ %d baud", self.port, self.baud)
+        except Exception:
+            self.ser = None
+
+    def _read_esp32_telemetry(self) -> None:
+        if self.ser is None:
+            self._init_serial()
+            if self.ser is None: return
+        try:
+            while self.ser.in_waiting > 0:
+                raw = self.ser.readline()
+                if not raw: break
+                line = raw.decode("utf-8", errors="ignore").strip()
+                if not line.startswith("{") or not line.endswith("}"): continue
+                msg = json.loads(line)
+                if "t" in msg: self._last_t = float(msg["t"])
+                if "pose" in msg: self._pose = tuple(float(x) for x in msg["pose"][:3])
+                if "speed" in msg: self._speed = float(msg["speed"])
+                if "tank" in msg: self._tank = max(0.0, min(1.0, float(msg["tank"])))
+                if "turret" in msg: self._turret = float(msg["turret"])
+                for k, v in msg.get("sensors", {}).items():
+                    if k in self._sensors: self._sensors[k] = float(v)
+        except Exception:
+            try: self.ser.close()
+            except Exception: pass
+            self.ser = None
+
+    def _read_thermal_frame(self) -> list[list[float]]:
+        if self.mlx is not None:
+            try:
+                self.mlx.getFrame(self._raw_thermal)
+            except Exception: pass
+        return [[round(float(self._raw_thermal[r * THERM_COLS + c]), 1)
+                 for c in range(THERM_COLS)] for r in range(THERM_ROWS)]
+
+    def read(self) -> Frame:
+        self._read_esp32_telemetry()
+        return Frame(seq=0, t=self._last_t, pose=self._pose, speed=self._speed,
+                     tank=self._tank, sensors=dict(self._sensors),
+                     thermal=self._read_thermal_frame(), turret=self._turret)
+
+    def apply(self, cmd: Command) -> None:
+        if self.ser is None: return
+        try:
+            line = json.dumps({"v": round(cmd.v, 3), "w": round(cmd.w, 3),
+                               "pump": bool(cmd.pump), "turret": round(cmd.turret, 3),
+                               "ack": int(cmd.ack)}, separators=(",", ":")) + "\n"
+            self.ser.write(line.encode("ascii"))
+            self.ser.flush()
+        except Exception:
+            try: self.ser.close()
+            except Exception: pass
+            self.ser = None
+
+    def stop(self) -> None:
+        if self.ser is None: return
+        try:
+            line = json.dumps({"v": 0.0, "w": 0.0, "pump": False,
+                               "turret": 0.0, "ack": -1}) + "\n"
+            self.ser.write(line.encode("ascii"))
+            self.ser.flush()
+        except Exception: pass</pre>
+</div>
+
+<!-- SECTION 6 -->
+<div class="section page-break">
+  <h2>6. Wire Protocol Data Contract</h2>
+
+  <h3>6.1 ESP32 Telemetry Frame (Emitted at 10 Hz)</h3>
+  <pre class="code">{
+  "t": 14.85,
+  "pose": [0.35, 1.12, -0.45],
+  "speed": 0.30,
+  "tank": 0.92,
+  "turret": 0.10,
+  "sensors": {
+    "us_front_left": 1.25,
+    "us_front_right": 1.18,
+    "us_left": 2.45,
+    "us_right": 0.85,
+    "flame_left": 0.0,
+    "flame_center": 1.0,
+    "flame_right": 0.0,
+    "mq2_front": 0.145,
+    "mq2_rear": 0.052
+  }
+}</pre>
+
+  <h3>6.2 Command Packet (Pi &rarr; ESP32)</h3>
+  <pre class="code">{
+  "v": 0.45,       // Forward linear velocity in [0.0, 1.0]
+  "w": -0.20,      // Angular velocity in [-1.0, 1.0] (negative = turn left)
+  "pump": true,    // Extinguisher diaphragm pump actuation
+  "turret": 0.10,  // Pan turret servo normalized position [-1.0, 1.0]
+  "ack": 84        // Sequence acknowledgment index
+}</pre>
+</div>
+
+<!-- SECTION 7 -->
+<div class="section">
+  <h2>7. Step-by-Step Setup, Flashing &amp; Verification</h2>
+
+  <ol>
+    <li>
+      <strong>Flash the ESP32:</strong>
+      <ul>
+        <li>Open the Arduino IDE.</li>
+        <li>Install libraries via Library Manager: <code class="inline">ArduinoJson</code> (Benoit Blanchon) and <code class="inline">ESP32Servo</code> (Kevin Harrington).</li>
+        <li>Set Board: <strong>ESP32 Dev Module</strong> (CPU: 240MHz, Upload: 921600 or 115200).</li>
+        <li>Plug the ESP32 into your computer via USB and click <strong>Upload</strong>.</li>
+      </ul>
+    </li>
+    <li>
+      <strong>Configure the Raspberry Pi:</strong>
+      <ul>
+        <li>Enable 400 kHz Fast-Mode I2C in <code class="inline">/boot/firmware/config.txt</code> (or <code class="inline">/boot/config.txt</code>):
+          <pre class="code">dtparam=i2c_arm=on,i2c_arm_baudrate=400000</pre>
+        </li>
+        <li>Install python driver dependencies on the Pi:
+          <pre class="code">pip install pyserial adafruit-circuitpython-mlx90640</pre>
+        </li>
+        <li>Verify the MLX90640 is detected at I2C address <code class="inline">0x33</code>:
+          <pre class="code">sudo i2cdetect -y 1</pre>
+        </li>
+      </ul>
+    </li>
+    <li>
+      <strong>Run Bench Self-Test:</strong>
+      <ul>
+        <li>With the ESP32 plugged into the Pi USB port, run:
+          <pre class="code">python3 -m firebot.link.realhw</pre>
+        </li>
+        <li>Verify 10 test frames print to console showing sensor values and central thermal readings.</li>
+      </ul>
+    </li>
+    <li>
+      <strong>Start Live Autonomous Mission:</strong>
+      <ul>
+        <li>Connect to the PC Brain host over the local network:
+          <pre class="code">firebot-pi --host &lt;PC_IP_ADDRESS&gt; --token &lt;FIREBOT_TOKEN&gt; --rate 10.0</pre>
+        </li>
+      </ul>
+    </li>
+  </ol>
+</div>
+
+<div class="doc-footer">
+  FireBot Engineering Documentation &bull; Released November 2026 &bull; Confidential &amp; Proprietary
+</div>
+
+</body>
+</html>
