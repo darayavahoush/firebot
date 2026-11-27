@@ -201,7 +201,7 @@ export default function App() {
           <div
             className={`absolute top-4 left-1/2 -translate-x-1/2 z-30 rounded-2xl border px-5 py-2.5 text-[12px] font-mono shadow-2xl backdrop-blur-xl flex items-center gap-2.5 transition-all duration-200 animate-fadeIn ${
               ack.valid
-                ? "border-telemetry/40 bg-panel/95 text-ink shadow-[0_0_20px_rgba(240,85,155,0.35)]"
+                ? "border-telemetry/40 bg-panel/95 text-ink shadow-[0_0_20px_rgba(14,165,233,0.3)]"
                 : "border-warn/40 bg-panel/95 text-warn shadow-[0_0_20px_rgba(255,178,56,0.35)]"
             }`}
           >

@@ -20,8 +20,8 @@ function Sonar({ s }) {
         const near = d < 0.6;
         return (
           <g key={k}>
-            <line x1={CX} y1={CY} x2={x} y2={y} stroke={near ? "#FFB238" : "#F0559B"} strokeWidth="2.5" strokeLinecap="round" />
-            <circle cx={x} cy={y} r="4" fill={near ? "#FFB238" : "#F0559B"} />
+            <line x1={CX} y1={CY} x2={x} y2={y} stroke={near ? "#EF4444" : "#0EA5E9"} strokeWidth="2.5" strokeLinecap="round" />
+            <circle cx={x} cy={y} r="4" fill={near ? "#EF4444" : "#0EA5E9"} />
             <text x={lx} y={ly} textAnchor="middle" fontSize="10" className="data" fill="rgba(241,236,250,0.62)">{d.toFixed(1)}</text>
           </g>
         );

@@ -49,7 +49,7 @@ export default function ModeSwitch({ mode, onChange }) {
               onClick={() => request(m.id)}
               className={`p-3 text-left transition-all duration-150 cursor-pointer ${
                 active
-                  ? "bg-telemetry/15 text-telemetry shadow-[inset_0_0_12px_rgba(240,85,155,0.2)]"
+                  ? "bg-telemetry/15 text-telemetry shadow-[inset_0_0_12px_rgba(14,165,233,0.2)]"
                   : isPending
                   ? "bg-warn/15 text-warn"
                   : "text-muted hover:text-ink hover:bg-panel2/70"

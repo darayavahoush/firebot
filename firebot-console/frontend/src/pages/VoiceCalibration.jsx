@@ -63,6 +63,9 @@ export default function VoiceCalibration({ onContinueToLiveOps, activeOperatorId
   const recorderRef = useRef(null);
   const timerRef = useRef(null);
   const audioPlayerRef = useRef(null);
+  const spokenRef = useRef(false);
+  const silenceStartRef = useRef(null);
+  const autoStopTimeoutRef = useRef(null);
   const canvasRef = useRef(null);
   const animFrameRef = useRef(null);
 
@@ -174,7 +177,7 @@ export default function VoiceCalibration({ onContinueToLiveOps, activeOperatorId
           ? Math.max(4, Math.sin(phase + i * 0.4) * volumeLevel * cy * distFromCenter * 1.8 + volumeLevel * cy * 0.5)
           : 3;
 
-        ctx.fillStyle = isRecording ? (i % 2 === 0 ? "#F0559B" : "#00F0FF") : "#3d4554";
+        ctx.fillStyle = isRecording ? (i % 2 === 0 ? "#0EA5E9" : "#38BDF8") : "#334155";
         ctx.fillRect(x, cy - dynamicH / 2, barW, Math.max(3, dynamicH));
       }
 
@@ -188,10 +191,14 @@ export default function VoiceCalibration({ onContinueToLiveOps, activeOperatorId
     };
   }, [isRecording, volumeLevel]);
 
-  // Recording controls
+  // Recording controls with auto-silence stop (VAD)
   const startRecording = async () => {
     try {
       if (playingClip) stopAudio();
+      spokenRef.current = false;
+      silenceStartRef.current = null;
+      if (autoStopTimeoutRef.current) clearTimeout(autoStopTimeoutRef.current);
+
       const rec = new AudioRecorder();
       recorderRef.current = rec;
       setVolumeLevel(0);
@@ -199,7 +206,25 @@ export default function VoiceCalibration({ onContinueToLiveOps, activeOperatorId
       setIsRecording(true);
       playSound("ack");
 
-      await rec.start((vol) => setVolumeLevel(vol));
+      await rec.start((vol) => {
+        setVolumeLevel(vol);
+        if (vol > 0.08) {
+          spokenRef.current = true;
+          silenceStartRef.current = null;
+        } else if (spokenRef.current) {
+          if (!silenceStartRef.current) {
+            silenceStartRef.current = Date.now();
+          } else if (Date.now() - silenceStartRef.current > 750) {
+            // Auto-stop take immediately once command is spoken!
+            stopRecording();
+          }
+        }
+      });
+
+      // 3.2s hard cap per take
+      autoStopTimeoutRef.current = setTimeout(() => {
+        stopRecording();
+      }, 3200);
 
       timerRef.current = setInterval(() => {
         setRecordingSeconds((s) => s + 0.1);
@@ -212,6 +237,7 @@ export default function VoiceCalibration({ onContinueToLiveOps, activeOperatorId
   };
 
   const stopRecording = async () => {
+    if (autoStopTimeoutRef.current) clearTimeout(autoStopTimeoutRef.current);
     if (!recorderRef.current || !isRecording) return;
     if (timerRef.current) clearInterval(timerRef.current);
 
@@ -469,7 +495,7 @@ export default function VoiceCalibration({ onContinueToLiveOps, activeOperatorId
         <div className="flex items-center gap-3 shrink-0">
           <button
             onClick={() => onContinueToLiveOps?.(selectedUser)}
-            className="px-5 py-2.5 rounded-xl font-display font-bold text-xs tracking-wide bg-gradient-to-r from-telemetry to-warn text-base shadow-[0_0_20px_rgba(240,85,155,0.4)] hover:brightness-110 active:scale-95 transition-all flex items-center gap-2"
+            className="px-5 py-2.5 rounded-xl font-display font-bold text-xs tracking-wide bg-telemetry text-base shadow-[0_0_16px_rgba(14,165,233,0.35)] hover:brightness-110 active:scale-95 transition-all flex items-center gap-2"
           >
             <span>Continue to Live Ops</span>
             <span>→</span>
@@ -511,7 +537,7 @@ export default function VoiceCalibration({ onContinueToLiveOps, activeOperatorId
                 }}
                 className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex items-center gap-3.5 relative overflow-hidden ${
                   isSelected
-                    ? "bg-panel/95 border-telemetry shadow-[0_0_24px_rgba(240,85,155,0.25)] ring-1 ring-telemetry/50"
+                    ? "bg-panel/95 border-telemetry shadow-[0_0_24px_rgba(14,165,233,0.2)] ring-1 ring-telemetry/50"
                     : "bg-panel/50 border-line/70 hover:bg-panel hover:border-line hover:scale-[1.01]"
                 }`}
               >
@@ -584,7 +610,7 @@ export default function VoiceCalibration({ onContinueToLiveOps, activeOperatorId
                     }}
                     className={`px-3 py-1.5 rounded-xl text-xs font-mono font-semibold transition-all flex items-center gap-1.5 ${
                       isCurrent
-                        ? "bg-telemetry/20 text-telemetry border border-telemetry/50 shadow-[0_0_12px_rgba(240,85,155,0.25)]"
+                        ? "bg-telemetry/20 text-telemetry border border-telemetry/50 shadow-[0_0_12px_rgba(14,165,233,0.2)]"
                         : "bg-panel2/60 text-muted border border-line hover:text-ink hover:bg-panel2"
                     }`}
                   >
@@ -629,7 +655,7 @@ export default function VoiceCalibration({ onContinueToLiveOps, activeOperatorId
                   className={`w-18 h-18 rounded-full flex items-center justify-center transition-all duration-300 shadow-2xl active:scale-95 ${
                     isRecording
                       ? "bg-rose-500 text-white shadow-[0_0_30px_rgba(244,63,94,0.6)] animate-pulse ring-4 ring-rose-500/30"
-                      : "bg-gradient-to-tr from-telemetry to-warn text-base shadow-[0_0_24px_rgba(240,85,155,0.4)] hover:scale-105"
+                      : "bg-telemetry text-base shadow-[0_0_20px_rgba(14,165,233,0.35)] hover:scale-105"
                   }`}
                 >
                   {isRecording ? (
@@ -689,7 +715,7 @@ export default function VoiceCalibration({ onContinueToLiveOps, activeOperatorId
                             onClick={() => (isPlaying ? stopAudio() : playAudio(audioUrl, clipName))}
                             className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-colors ${
                               isPlaying
-                                ? "bg-telemetry text-base shadow-[0_0_10px_rgba(240,85,155,0.6)]"
+                                ? "bg-telemetry text-base shadow-[0_0_10px_rgba(14,165,233,0.5)]"
                                 : "bg-panel text-muted hover:text-ink hover:bg-line/40"
                             }`}
                           >
@@ -780,7 +806,7 @@ export default function VoiceCalibration({ onContinueToLiveOps, activeOperatorId
                 training
                   ? "bg-telemetry/40 text-ink cursor-wait animate-pulse"
                   : totalClipsRecorded > 0
-                  ? "bg-gradient-to-r from-telemetry via-[#C4286F] to-warn text-base shadow-[0_0_20px_rgba(240,85,155,0.4)] hover:brightness-110 active:scale-95"
+                  ? "bg-telemetry text-base shadow-[0_0_16px_rgba(14,165,233,0.35)] hover:brightness-110 active:scale-95"
                   : "bg-panel2 text-faint cursor-not-allowed border border-line"
               }`}
             >

@@ -170,7 +170,7 @@ export default function History() {
                   onClick={() => { playSound("click"); setFilter(k); }}
                   className={`flex-1 py-1 text-[11px] font-mono rounded-lg transition-all ${
                     filter === k
-                      ? "bg-telemetry text-base font-bold shadow-[0_0_8px_rgba(240,85,155,0.4)]"
+                      ? "bg-telemetry text-base font-bold shadow-[0_0_8px_rgba(14,165,233,0.35)]"
                       : "text-muted hover:text-ink"
                   }`}
                 >
@@ -205,7 +205,7 @@ export default function History() {
                 <button
                   onClick={handleManualSeed}
                   disabled={seeding}
-                  className="px-4 py-2 rounded-xl text-xs font-mono font-bold bg-telemetry text-base shadow-[0_0_12px_rgba(240,85,155,0.4)] hover:brightness-110 active:scale-95 transition-all inline-block"
+                  className="px-4 py-2 rounded-xl text-xs font-mono font-bold bg-telemetry text-base shadow-[0_0_12px_rgba(14,165,233,0.35)] hover:brightness-110 active:scale-95 transition-all inline-block"
                 >
                   {seeding ? "Generating Mission Telemetry…" : "+ Seed Sortie Archive"}
                 </button>
@@ -220,7 +220,7 @@ export default function History() {
                   aria-pressed={active}
                   className={`w-full text-left rounded-xl p-3.5 border transition-all duration-150 cursor-pointer ${
                     active
-                      ? "border-telemetry bg-gradient-to-r from-telemetry/15 to-panel2/80 shadow-[0_0_16px_rgba(240,85,155,0.25)]"
+                      ? "border-telemetry bg-gradient-to-r from-telemetry/15 to-panel2/80 shadow-[0_0_16px_rgba(14,165,233,0.2)]"
                       : "border-line bg-panel hover:bg-panel2/70 hover:border-line/90"
                   }`}
                 >

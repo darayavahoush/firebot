@@ -230,7 +230,7 @@ export default function MuJoCo() {
         {/* Viewport Top Bar */}
         <div className="px-4 py-3 bg-panel2/70 border-b border-line flex items-center justify-between z-10 gap-2 flex-wrap">
           <div className="flex items-center gap-2.5">
-            <span className="h-2.5 w-2.5 rounded-full bg-telemetry animate-pulse shadow-[0_0_8px_#f0559b]" />
+            <span className="h-2.5 w-2.5 rounded-full bg-telemetry animate-pulse shadow-[0_0_8px_rgba(14,165,233,0.5)]" />
             <span className="font-display font-extrabold text-[15px] tracking-tight text-ink">
               MuJoCo 3D Rigid-Body Physics Sim
             </span>
@@ -253,7 +253,7 @@ export default function MuJoCo() {
                 onClick={() => { playSound("click"); setCamMode(c.id); }}
                 className={`px-2.5 py-1 text-[11px] font-mono rounded-lg transition-all cursor-pointer ${
                   camMode === c.id
-                    ? "bg-telemetry text-base font-bold shadow-[0_0_8px_rgba(240,85,155,0.4)]"
+                    ? "bg-telemetry text-base font-bold shadow-[0_0_8px_rgba(14,165,233,0.35)]"
                     : "text-muted hover:text-ink"
                 }`}
               >
@@ -336,7 +336,7 @@ export default function MuJoCo() {
               onClick={() => { playSound("click"); setLidar((v) => !v); }}
               className={`px-2.5 py-1.5 rounded-xl text-[11px] font-mono border backdrop-blur-md transition-all cursor-pointer ${
                 lidar
-                  ? "border-telemetry bg-telemetry/20 text-white shadow-[0_0_10px_rgba(240,85,155,0.35)]"
+                  ? "border-telemetry bg-telemetry/20 text-white shadow-[0_0_10px_rgba(14,165,233,0.3)]"
                   : "border-line bg-panel/80 text-muted hover:text-ink"
               }`}
             >
@@ -434,7 +434,7 @@ export default function MuJoCo() {
                     onClick={() => { playSound("click"); setController(c.id); }}
                     className={`w-full text-left rounded-xl p-3 border transition-all duration-150 cursor-pointer ${
                       active
-                        ? "border-telemetry bg-telemetry/15 shadow-[0_0_16px_rgba(240,85,155,0.25)]"
+                        ? "border-telemetry bg-telemetry/15 shadow-[0_0_16px_rgba(14,165,233,0.2)]"
                         : "border-line bg-panel2/50 hover:bg-panel2 hover:border-line/90"
                     }`}
                   >
@@ -478,7 +478,7 @@ export default function MuJoCo() {
                   onClick={() => changeSpeed(v)}
                   className={`flex-1 py-1.5 text-[12px] font-mono rounded-lg transition-all cursor-pointer ${
                     speed === v
-                      ? "bg-telemetry text-base font-bold shadow-[0_0_8px_rgba(240,85,155,0.4)]"
+                      ? "bg-telemetry text-base font-bold shadow-[0_0_8px_rgba(14,165,233,0.35)]"
                       : "text-muted hover:text-ink"
                   }`}
                 >
@@ -526,7 +526,7 @@ export default function MuJoCo() {
             <button
               onClick={start}
               disabled={unavailable || busy}
-              className="flex-1 h-12 rounded-xl bg-gradient-to-r from-telemetry to-[#c4286f] text-white font-display font-black text-[14px] tracking-wider uppercase disabled:opacity-40 hover:brightness-110 active:scale-95 transition shadow-[0_0_20px_rgba(240,85,155,0.4)] cursor-pointer"
+              className="flex-1 h-12 rounded-xl bg-telemetry text-base font-display font-black text-[14px] tracking-wider uppercase disabled:opacity-40 hover:brightness-110 active:scale-95 transition shadow-[0_0_16px_rgba(14,165,233,0.35)] cursor-pointer"
             >
               {busy ? "GENERATING WORLD..." : phase === "idle" ? "START SIMULATION" : "RESTART EPISODE"}
             </button>

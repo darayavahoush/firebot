@@ -118,6 +118,9 @@ export default function Simulator() {
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
   const micStreamRef = useRef(null);
+  const silenceDispatchTimerRef = useRef(null);
+  const vadContextRef = useRef(null);
+  const vadIntervalRef = useRef(null);
 
   // Brave's "is this Brave" check is async (privacy: it can't be read synchronously off the
   // UA string like Opera's), so it lands a tick after mount.
@@ -211,25 +214,44 @@ export default function Simulator() {
           const t = e.results[i][0].transcript;
           if (e.results[i].isFinal) final += t; else interim += t;
         }
-        if (final) { sendCommand(final); setTranscript(""); } else setTranscript(interim);
+
+        if (silenceDispatchTimerRef.current) {
+          clearTimeout(silenceDispatchTimerRef.current);
+          silenceDispatchTimerRef.current = null;
+        }
+
+        if (final && final.trim()) {
+          sendCommand(final.trim());
+          setTranscript("");
+          return;
+        }
+
+        const cleanedInterim = interim.trim();
+        setTranscript(cleanedInterim);
+
+        if (cleanedInterim) {
+          // Instant silence dispatch: dispatch within 350ms for commands, 650ms for phrases
+          const lower = cleanedInterim.toLowerCase();
+          const isUrgent = ["stop", "halt", "kill", "estop", "status", "extinguish", "water", "spray", "left", "right", "forward", "back", "reverse", "dock"].some(
+            (c) => lower === c || lower.startsWith(c + " ") || lower.endsWith(" " + c)
+          );
+          const delay = isUrgent ? 350 : 650;
+
+          silenceDispatchTimerRef.current = setTimeout(() => {
+            sendCommand(cleanedInterim);
+            setTranscript("");
+            try { r.abort(); } catch {}
+          }, delay);
+        }
       };
       r.onerror = (e) => {
-        // Fatal: the browser has given up on this recognizer for good \u2014 restarting it in
-        // onend would just loop the same error forever. Transient (no-speech, aborted,
-        // occasional network blips) are normal mid-session noise; let onend restart quietly.
         if (FATAL_VOICE_ERRORS.has(e.error)) {
-          recogRef.current = null; // stops onend from restarting it
+          recogRef.current = null;
           setListening(false);
           setVoiceError(VOICE_ERROR_MESSAGES[e.error] || `Speech recognition stopped (${e.error}).`);
         }
       };
       r.onend = () => {
-        // Chrome ends the recognizer on its own after a stretch of silence even in continuous
-        // mode; restart to keep "listening" actually listening. Calling start() again
-        // immediately can throw (the browser's speech service hasn't fully torn down yet), and
-        // that exception used to go uncaught here \u2014 the mic would silently go dead while the
-        // UI still showed LIVE. A short delay plus a capped, backed-off retry with a real error
-        // surfaced fixes both.
         if (recogRef.current !== r) return;
         restartAttemptsRef.current += 1;
         if (restartAttemptsRef.current > 5) {
@@ -263,15 +285,16 @@ export default function Simulator() {
   }, [listening, speechUsable, sendCommand]);
   useEffect(() => () => {
     if (restartTimerRef.current) clearTimeout(restartTimerRef.current);
+    if (silenceDispatchTimerRef.current) clearTimeout(silenceDispatchTimerRef.current);
     const r = recogRef.current; recogRef.current = null; r?.stop();
   }, []);
 
-  // Offline-browser voice fallback (click-to-record, not continuous) for when Web Speech is
-  // missing or broken: record a clip, POST it to our backend, which forwards it to Groq's
-  // hosted Whisper and hands back text. No model ships to the browser at all.
+  // Offline-browser voice fallback with automatic silence detection (VAD)
   const toggleRecording = useCallback(async () => {
     if (asrStatus === "recording") {
-      mediaRecorderRef.current?.stop(); // onstop below does the upload
+      if (vadIntervalRef.current) clearInterval(vadIntervalRef.current);
+      if (vadContextRef.current) { try { vadContextRef.current.close(); } catch {} }
+      mediaRecorderRef.current?.stop();
       return;
     }
     if (asrStatus === "transcribing") return;
@@ -283,7 +306,7 @@ export default function Simulator() {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch {
       setAsrStatus("error");
-      setAsrError("Microphone access was denied \u2014 allow it in your browser's site settings and try again.");
+      setAsrError("Microphone access was denied — allow it in site settings and try again.");
       return;
     }
     micStreamRef.current = stream;
@@ -291,7 +314,56 @@ export default function Simulator() {
     const recorder = new MediaRecorder(stream);
     mediaRecorderRef.current = recorder;
     recorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
+
+    // VAD to auto-stop recording 750ms after speech ends!
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      const actx = new AudioCtx();
+      vadContextRef.current = actx;
+      const src = actx.createMediaStreamSource(stream);
+      const analyser = actx.createAnalyser();
+      analyser.fftSize = 256;
+      src.connect(analyser);
+
+      const data = new Uint8Array(analyser.frequencyBinCount);
+      let speechDetected = false;
+      let silenceStart = null;
+
+      const maxTimer = setTimeout(() => {
+        if (recorder.state === "recording") recorder.stop();
+      }, 3500);
+
+      vadIntervalRef.current = setInterval(() => {
+        if (recorder.state !== "recording") {
+          clearInterval(vadIntervalRef.current);
+          clearTimeout(maxTimer);
+          return;
+        }
+        analyser.getByteFrequencyData(data);
+        let sum = 0;
+        for (let i = 0; i < data.length; i++) sum += data[i];
+        const avg = sum / data.length / 128.0;
+
+        if (avg > 0.07) {
+          speechDetected = true;
+          silenceStart = null;
+        } else if (speechDetected) {
+          if (!silenceStart) {
+            silenceStart = Date.now();
+          } else if (Date.now() - silenceStart > 750) {
+            clearInterval(vadIntervalRef.current);
+            clearTimeout(maxTimer);
+            if (recorder.state === "recording") recorder.stop();
+          }
+        }
+      }, 40);
+    } catch (e) {
+      console.warn("VAD init notice:", e);
+    }
+
     recorder.onstop = async () => {
+      if (vadIntervalRef.current) clearInterval(vadIntervalRef.current);
+      if (vadContextRef.current) { try { vadContextRef.current.close(); } catch {} }
       micStreamRef.current?.getTracks().forEach((tr) => tr.stop());
       micStreamRef.current = null;
       const blob = new Blob(audioChunksRef.current, { type: recorder.mimeType || "audio/webm" });
@@ -299,10 +371,8 @@ export default function Simulator() {
       if (blob.size === 0) { setAsrStatus("idle"); return; }
       setAsrStatus("transcribing");
       try {
-        // Upload 16 kHz mono WAV: the server's decoder handles it without ffmpeg. If the
-        // browser can't decode its own recording, send the raw clip and let the server try.
         let upload = blob, uploadName = "clip.webm";
-        try { upload = await blobToWav16k(blob); uploadName = "clip.wav"; } catch { /* raw fallback */ }
+        try { upload = await blobToWav16k(blob); uploadName = "clip.wav"; } catch {}
         const form = new FormData();
         form.append("file", upload, uploadName);
         if (operator) form.append("user", operator);
@@ -325,7 +395,7 @@ export default function Simulator() {
         }
       } catch (err) {
         setAsrStatus("error");
-        setAsrError(err?.message || "Couldn't reach the transcription service. Try again.");
+        setAsrError(err?.message || "Transcription timeout. Please try speaking again.");
       }
     };
     recorder.start();
@@ -333,6 +403,8 @@ export default function Simulator() {
   }, [asrStatus, operator, sendCommand, onSent, pollVoiceStatus]);
 
   useEffect(() => () => {
+    if (vadIntervalRef.current) clearInterval(vadIntervalRef.current);
+    if (vadContextRef.current) { try { vadContextRef.current.close(); } catch {} }
     mediaRecorderRef.current?.state === "recording" && mediaRecorderRef.current.stop();
     micStreamRef.current?.getTracks().forEach((tr) => tr.stop());
   }, []);
@@ -391,7 +463,7 @@ export default function Simulator() {
               data-on={speed === s}
               className={`px-2.5 py-1 text-[11px] font-mono rounded-lg transition-all ${
                 speed === s
-                  ? "bg-telemetry text-base font-bold shadow-[0_0_8px_rgba(240,85,155,0.4)]"
+                  ? "bg-telemetry text-base font-bold shadow-[0_0_8px_rgba(14,165,233,0.35)]"
                   : "text-muted hover:text-ink"
               }`}
             >
@@ -483,7 +555,7 @@ export default function Simulator() {
                 onClick={() => { playSound("tab"); setTab(k); }}
                 className={`flex-1 py-2 text-[12px] font-mono uppercase tracking-wider rounded-lg transition-all ${
                   tab === k
-                    ? "bg-panel text-ink font-bold shadow-[0_0_8px_rgba(240,85,155,0.3)] border border-telemetry/40 text-telemetry"
+                    ? "bg-panel text-ink font-bold shadow-[0_0_8px_rgba(14,165,233,0.25)] border border-telemetry/40 text-telemetry"
                     : "text-muted hover:text-ink hover:bg-panel/40 border border-transparent"
                 }`}
               >

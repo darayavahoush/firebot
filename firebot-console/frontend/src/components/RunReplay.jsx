@@ -114,7 +114,7 @@ export default function RunReplay({ points, anomalies = [], seek, onT }) {
             ))}
           </div>
           <input type="range" min={0} max={n - 1} value={idx} aria-label="Scrub through the run"
-            onChange={(e) => { setIdx(+e.target.value); setPlaying(false); }} className="w-full accent-[#c4286f]" />
+            onChange={(e) => { setIdx(+e.target.value); setPlaying(false); }} className="w-full accent-telemetry" />
         </div>
         <div className="flex gap-1" role="group" aria-label="Playback speed">
           {RATES.map((r) => <button key={r} className="chip" data-on={rate === r} onClick={() => setRate(r)}>{r}x</button>)}

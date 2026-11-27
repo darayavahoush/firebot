@@ -69,7 +69,7 @@ export default function ControlPanel({ enabled, onAnalog, onPump, onNozzle }) {
             aria-pressed={pumpOn}
             className={`w-full py-3.5 px-4 rounded-xl text-[14px] font-display font-extrabold tracking-wide uppercase transition-all duration-200 flex items-center justify-center gap-3 border cursor-pointer ${
               pumpOn
-                ? "bg-gradient-to-r from-telemetry to-[#c4286f] text-white border-telemetry shadow-[0_0_20px_rgba(240,85,155,0.6)] animate-pulse"
+                ? "bg-alarm text-white border-alarm shadow-[0_0_16px_rgba(239,68,68,0.45)]"
                 : "bg-panel2/80 hover:bg-panel2 border-line text-ink hover:border-telemetry/50"
             }`}
           >

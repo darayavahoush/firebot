@@ -171,9 +171,9 @@ export default function Sidebar({ page, setPage, linkOk, notifOn, onToggleNotif 
                     : "text-muted hover:text-ink hover:bg-panel2/60 border border-transparent"
                 }`}
               >
-                {/* Active Glowing Left Pill */}
+                {/* Active Indicator Bar */}
                 {active && (
-                  <span className="absolute left-0 top-2 bottom-2 w-[3px] rounded-r-full bg-gradient-to-b from-[#ff8a2a] via-telemetry to-[#c4286f] shadow-[0_0_8px_#f0559b]" />
+                  <span className="absolute left-0 top-2 bottom-2 w-[3px] rounded-r-full bg-telemetry shadow-[0_0_8px_rgba(14,165,233,0.6)]" />
                 )}
 
                 <span

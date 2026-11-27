@@ -5,13 +5,13 @@ import { HFOV } from "../lib/simEngine.js";
 // "instrument screen" (matches the camera/thermal viewport's `scope` color), a tactical
 // plot rather than a lit floor plan.
 const COLORS = {
-  bg: "#0E0919", floor: "#1E1533", fog: "#0A0612",
-  border: "rgba(241,236,250,0.5)",
-  wall: "#3A2A5C", wallEdge: "#8E78C2",
-  grid: "rgba(241,236,250,0.045)", gridMajor: "rgba(241,236,250,0.12)", axis: "rgba(241,236,250,0.6)",
-  robot: "#7DE3B0", fireTrue: "#FF6A2B", fireEst: "#F0559B",
-  ellipse: "rgba(240,85,155,0.22)", path: "#7DE3B0",
-  tree: "rgba(196,160,255,0.2)", cone: "rgba(125,227,176,0.10)",
+  bg: "#0A0D14", floor: "#111622", fog: "#06080C",
+  border: "rgba(148,163,184,0.4)",
+  wall: "#1E293B", wallEdge: "#475569",
+  grid: "rgba(148,163,184,0.06)", gridMajor: "rgba(148,163,184,0.12)", axis: "rgba(148,163,184,0.4)",
+  robot: "#10B981", fireTrue: "#EF4444", fireEst: "#0EA5E9",
+  ellipse: "rgba(14,165,233,0.22)", path: "#10B981",
+  tree: "rgba(14,165,233,0.18)", cone: "rgba(16,185,129,0.12)",
 };
 // ironbow ramp shared with the thermal camera view: t in 0..1 -> rgb
 const RAMP = [[27,10,60],[90,26,134],[196,40,111],[255,138,42],[255,242,201]];

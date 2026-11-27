@@ -95,11 +95,11 @@ body {
 }
 
 .btn {
-  @apply rounded-lg border border-line bg-panel2/90 px-3.5 py-1.5 text-[13px] text-ink font-medium transition-all duration-150 hover:border-telemetry/60 hover:text-white hover:bg-panel2 hover:shadow-[0_0_12px_rgba(240,85,155,0.2)] active:scale-95 disabled:opacity-40 disabled:pointer-events-none;
+  @apply rounded-lg border border-line bg-panel2/90 px-3.5 py-1.5 text-[13px] text-ink font-medium transition-all duration-150 hover:border-telemetry/60 hover:text-white hover:bg-panel2 hover:shadow-[0_0_12px_rgba(14,165,233,0.2)] active:scale-95 disabled:opacity-40 disabled:pointer-events-none;
 }
 
 .btn-primary {
-  @apply rounded-lg bg-telemetry text-base font-display font-extrabold text-[13px] px-4 py-2 transition-all duration-150 hover:brightness-110 hover:shadow-[0_0_16px_rgba(240,85,155,0.45)] active:scale-95 disabled:opacity-40 disabled:pointer-events-none;
+  @apply rounded-lg bg-telemetry text-base font-display font-extrabold text-[13px] px-4 py-2 transition-all duration-150 hover:brightness-110 hover:shadow-[0_0_16px_rgba(14,165,233,0.35)] active:scale-95 disabled:opacity-40 disabled:pointer-events-none;
 }
 
 .chip {
@@ -107,7 +107,7 @@ body {
 }
 
 .chip[data-on="true"] {
-  @apply text-ink border-telemetry/80 bg-telemetry/20 shadow-[0_0_10px_rgba(240,85,155,0.25)];
+  @apply text-ink border-telemetry/80 bg-telemetry/20 shadow-[0_0_10px_rgba(14,165,233,0.2)];
 }
 
 .heatbar {

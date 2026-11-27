@@ -73,9 +73,9 @@ export const AVATAR_DEFINITIONS = {
     id: "crosshair",
     name: "Target Lock",
     tagline: "Tactical Navigator",
-    color: "#F0559B",
-    bgGradient: "from-pink-600/30 to-purple-950/40",
-    borderColor: "border-pink-500",
+    color: "#0EA5E9",
+    bgGradient: "from-sky-600/30 to-slate-950/40",
+    borderColor: "border-sky-500",
     renderIcon: (size = 28) => (
       <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <circle cx="12" cy="12" r="10" />
@@ -134,7 +134,7 @@ export function OperatorAvatarBadge({ avatarId = "shield", size = "md", active =
   return (
     <div
       className={`relative shrink-0 flex items-center justify-center transition-all duration-300 ${sizeClasses} bg-gradient-to-br ${def.bgGradient} border ${
-        active ? `${def.borderColor} shadow-[0_0_18px_rgba(240,85,155,0.4)] ring-2 ring-offset-2 ring-offset-base ring-${def.id}` : "border-line/60"
+        active ? `${def.borderColor} shadow-[0_0_18px_rgba(14,165,233,0.35)] ring-2 ring-offset-2 ring-offset-base ring-${def.id}` : "border-line/60"
       }`}
       style={{
         boxShadow: active ? `0 0 20px ${color}55` : "none",
