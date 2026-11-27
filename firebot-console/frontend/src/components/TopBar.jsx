@@ -2,7 +2,8 @@ import React, { useEffect, useState } from "react";
 import { playSound } from "../lib/sound.js";
 
 const TITLES = {
-  live: { title: "Live Operations", sub: "Real-time telemetry, thermal imaging & teleoperation" },
+  home: { title: "Mission Control Overview", sub: "Autonomous firefighting rover & telemetry overview" },
+  live: { title: "Tactical Console", sub: "Real-time telemetry, thermal FLIR imaging & teleoperation" },
   sim: { title: "2D Simulator", sub: "Browser simulation engine: RRT* path planner, SLAM & speech" },
   mujoco: { title: "MuJoCo 3D Physics", sub: "High-fidelity rigid-body dynamics & 36-beam lidar sweep" },
   voice: { title: "Voice Studio & Calibration", sub: "Operator acoustic profiling, avatar selection & custom command enrollment" },

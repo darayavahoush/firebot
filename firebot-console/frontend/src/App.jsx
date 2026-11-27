@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import Sidebar from "./components/Sidebar.jsx";
 import TopBar from "./components/TopBar.jsx";
+import Home from "./pages/Home.jsx";
 import LiveOps from "./pages/LiveOps.jsx";
 import Simulator from "./pages/Simulator.jsx";
 import MuJoCo from "./pages/MuJoCo.jsx";
@@ -12,7 +13,7 @@ import { notify, notifyEnabled, setNotifyEnabled, notifySupported } from "./lib/
 import { playSound } from "./lib/sound.js";
 
 export default function App() {
-  const [page, setPage] = useState("live");
+  const [page, setPage] = useState("home");
   const [activeOperator, setActiveOperator] = useState("ananya");
   const [frame, setFrame] = useState(null);
   const [linkOk, setLinkOk] = useState(true);
@@ -197,6 +198,9 @@ export default function App() {
 
         {/* All pages stay mounted once visited, toggled with display rather than
             conditional rendering, so engine states survive switching tabs. */}
+        <div className={page === "home" ? "contents" : "hidden"}>
+          <Home setPage={setPage} frame={frame} linkOk={linkOk} />
+        </div>
         <div className={page === "live" ? "contents" : "hidden"}>
           <LiveOps
             frame={frame}
