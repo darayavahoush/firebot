@@ -2,9 +2,12 @@ import React, { useEffect, useRef, useState } from "react";
 import { PanelHeader } from "./TelemetryGauges.jsx";
 import { Illustration } from "./ui";
 
-const PRIMARY_FOOTAGE_URL = "./footage.mp4";
-const FALLBACK_FOOTAGE_URL =
-  "https://upload.wikimedia.org/wikipedia/commons/transcoded/d/d0/The_Iris_Robot_of_the_Bureau_of_Fire_Protection.webm/The_Iris_Robot_of_the_Bureau_of_Fire_Protection.webm.480p.vp9.webm";
+const CAM_FEEDS = {
+  "cam-01": { id: "cam-01", label: "CAM-01", name: "Incursion", url: "/sortie-incursion.mp4" },
+  "cam-02": { id: "cam-02", label: "CAM-02", name: "Suppression", url: "/sortie-suppression.mp4" },
+  "cam-03": { id: "cam-03", label: "CAM-03", name: "Tactical Iris", url: "/iris-recon.mp4" },
+  "sim-01": { id: "sim-01", label: "SIM-01", name: "Physics Corridor", url: null },
+};
 
 const THERM_ROWS = 24;
 const THERM_COLS = 32;
@@ -22,15 +25,16 @@ export default function CameraFeed({ frame }) {
   const rafRef = useRef(null);
   const frameRef = useRef(frame);
   const thermalRef = useRef(null);
-  const [selectedFeed, setSelectedFeed] = useState("cam-01"); // "cam-01" | "cam-02" | "sim-01"
+  const [selectedFeed, setSelectedFeed] = useState("cam-01");
   const [footageOk, setFootageOk] = useState(true);
   const motionRef = useRef({ phase: 0, pan: 0, lastNow: null });
 
   frameRef.current = frame;
   if (frame?.thermal) thermalRef.current = frame.thermal;
 
-  const isVideoMode = selectedFeed !== "sim-01" && footageOk;
-  const currentVideoUrl = selectedFeed === "cam-02" ? FALLBACK_FOOTAGE_URL : PRIMARY_FOOTAGE_URL;
+  const activeDef = CAM_FEEDS[selectedFeed] || CAM_FEEDS["cam-01"];
+  const isVideoMode = selectedFeed !== "sim-01" && footageOk && activeDef.url;
+  const currentVideoUrl = activeDef.url || "/sortie-incursion.mp4";
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -88,36 +92,19 @@ export default function CameraFeed({ frame }) {
         right={
           <div className="flex items-center gap-2">
             <div className="flex items-center bg-panel2 rounded p-0.5 border border-line text-[10px]">
-              <button
-                type="button"
-                onClick={() => setSelectedFeed("cam-01")}
-                className={`px-1.5 py-0.5 rounded transition-colors ${
-                  selectedFeed === "cam-01" ? "bg-panel text-ink font-semibold" : "text-muted hover:text-ink"
-                }`}
-                title="Primary sortie incursion"
-              >
-                CAM-01
-              </button>
-              <button
-                type="button"
-                onClick={() => setSelectedFeed("cam-02")}
-                className={`px-1.5 py-0.5 rounded transition-colors ${
-                  selectedFeed === "cam-02" ? "bg-panel text-ink font-semibold" : "text-muted hover:text-ink"
-                }`}
-                title="Tactical Iris rover reconnaissance"
-              >
-                CAM-02
-              </button>
-              <button
-                type="button"
-                onClick={() => setSelectedFeed("sim-01")}
-                className={`px-1.5 py-0.5 rounded transition-colors ${
-                  selectedFeed === "sim-01" ? "bg-panel text-ink font-semibold" : "text-muted hover:text-ink"
-                }`}
-                title="Synthetic physics corridor engine"
-              >
-                SIM-01
-              </button>
+              {Object.values(CAM_FEEDS).map((f) => (
+                <button
+                  key={f.id}
+                  type="button"
+                  onClick={() => setSelectedFeed(f.id)}
+                  className={`px-1.5 py-0.5 rounded transition-colors ${
+                    selectedFeed === f.id ? "bg-panel text-ink font-semibold" : "text-muted hover:text-ink"
+                  }`}
+                  title={f.name}
+                >
+                  {f.label}
+                </button>
+              ))}
             </div>
             <span className="data text-[11px] text-faint">
               {frame ? `t+${frame.t.toFixed(1)}s` : "Standby"}

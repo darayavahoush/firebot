@@ -527,8 +527,10 @@ function ChassisInspectionView({ onEnterConsole }) {
 }
 
 const SORTIE_CLIPS = [
-  { id: "sortie-1", label: "Sortie 01", title: "Forward Incursion & Suppression", src: "/footage.mp4" },
-  { id: "sortie-2", label: "Sortie 02", title: "Tactical Iris Rover Recon", src: "https://upload.wikimedia.org/wikipedia/commons/transcoded/d/d0/The_Iris_Robot_of_the_Bureau_of_Fire_Protection.webm/The_Iris_Robot_of_the_Bureau_of_Fire_Protection.webm.480p.vp9.webm" },
+  { id: "sortie-1", label: "Sortie 01", title: "Corridor Incursion & Search", src: "/sortie-incursion.mp4" },
+  { id: "sortie-2", label: "Sortie 02", title: "High-Pressure Water Suppression", src: "/sortie-suppression.mp4" },
+  { id: "sortie-3", label: "Sortie 03", title: "Tactical Iris Rover Recon", src: "/iris-recon.mp4" },
+  { id: "sortie-all", label: "Full Reel", title: "Full Autonomous Mission Reel", src: "/footage.mp4" },
 ];
 
 function HeroVideoBanner({ onEnterConsole, online }) {
@@ -776,6 +778,85 @@ export default function Home({ onEnterConsole, frame, linkOk }) {
 
       {/* Ported from Home.legacy: Interactive Chassis Inspection */}
       <ChassisInspectionView onEnterConsole={onEnterConsole} />
+
+      {/* Operational Sortie Footage Reel */}
+      <Panel
+        title="Field sortie records & video logs"
+        eyebrow="Onboard combat footage"
+        state="live"
+        bodyClassName="p-5 space-y-4"
+      >
+        <p className="text-[13px] text-muted">
+          Actual footage recorded during autonomous navigation, high-density smoke penetration, and water cannon deployment.
+        </p>
+        <div className="grid md:grid-cols-3 gap-4">
+          <div className="rounded-lg border border-line bg-scope overflow-hidden flex flex-col">
+            <div className="relative aspect-video bg-black">
+              <video
+                src="/sortie-incursion.mp4"
+                autoPlay
+                loop
+                muted
+                playsInline
+                className="w-full h-full object-cover opacity-85"
+              />
+              <span className="absolute top-2 left-2 rounded px-1.5 py-0.5 text-[10px] font-semibold bg-alarm text-white">
+                INCURSION
+              </span>
+            </div>
+            <div className="p-3 space-y-1 bg-panel">
+              <div className="text-[13px] font-semibold text-ink">Corridor incursion</div>
+              <p className="text-[11.5px] text-muted">
+                Piercing heavy thermal smoke plumes and navigating narrow hallways.
+              </p>
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-line bg-scope overflow-hidden flex flex-col">
+            <div className="relative aspect-video bg-black">
+              <video
+                src="/sortie-suppression.mp4"
+                autoPlay
+                loop
+                muted
+                playsInline
+                className="w-full h-full object-cover opacity-85"
+              />
+              <span className="absolute top-2 left-2 rounded px-1.5 py-0.5 text-[10px] font-semibold bg-telemetry text-white">
+                SUPPRESSION
+              </span>
+            </div>
+            <div className="p-3 space-y-1 bg-panel">
+              <div className="text-[13px] font-semibold text-ink">High-pressure water douse</div>
+              <p className="text-[11.5px] text-muted">
+                Actuating the 4.5 L/min pump with turret bearing alignment.
+              </p>
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-line bg-scope overflow-hidden flex flex-col">
+            <div className="relative aspect-video bg-black">
+              <video
+                src="/iris-recon.mp4"
+                autoPlay
+                loop
+                muted
+                playsInline
+                className="w-full h-full object-cover opacity-85"
+              />
+              <span className="absolute top-2 left-2 rounded px-1.5 py-0.5 text-[10px] font-semibold bg-flame text-white">
+                TACTICAL
+              </span>
+            </div>
+            <div className="p-3 space-y-1 bg-panel">
+              <div className="text-[13px] font-semibold text-ink">Tactical Iris deployment</div>
+              <p className="text-[11.5px] text-muted">
+                Hazardous industrial reconnaissance in high-heat warehouse conditions.
+              </p>
+            </div>
+          </div>
+        </div>
+      </Panel>
 
       <section aria-label="Where to next">
         <h2 className="panel-eyebrow mb-3">Where to next</h2>

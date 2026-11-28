@@ -775,6 +775,30 @@ export default function About({ onNavigate }) {
                   <span>↓</span>
                 </a>
               </div>
+
+              {/* Operational Hardware Field Footage */}
+              <div className="rounded-lg border border-line bg-scope overflow-hidden">
+                <div className="p-3 border-b border-line flex items-center justify-between text-xs bg-panel/30">
+                  <div className="flex items-center gap-2">
+                    <span className="h-2 w-2 rounded-full bg-ok" />
+                    <span className="font-semibold text-ink">Field Test Record: Tracked Chassis & Water Monitor In Action</span>
+                  </div>
+                  <span className="data text-faint">IRIS-RECON • 30 FPS</span>
+                </div>
+                <div className="relative aspect-video max-h-[280px] w-full bg-black">
+                  <video
+                    src="/iris-recon.mp4"
+                    autoPlay
+                    loop
+                    muted
+                    playsInline
+                    className="w-full h-full object-cover opacity-85"
+                  />
+                  <div className="absolute bottom-2 left-3 text-[11px] text-white/80 bg-black/60 px-2.5 py-1 rounded backdrop-blur">
+                    Bureau of Fire Protection field trials • Continuous tracked drive & remote nozzle suppression
+                  </div>
+                </div>
+              </div>
             </Panel>
           )}
         </section>
